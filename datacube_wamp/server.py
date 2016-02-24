@@ -1,6 +1,14 @@
-from os import environ
-import sys
-import decimal
+import os, sys
+import pandas as pd
+import numpy as np
+import scipy as sp
+from pandas import DataFrame, Series
+import seaborn as sns
+import pg8000
+import time
+import msgpack
+import msgpack_numpy as m
+m.patch()
 
 from twisted.internet.defer import inlineCallbacks
 
@@ -12,46 +20,23 @@ class Datacube(ApplicationSession):
 
     @inlineCallbacks
     def onJoin(self, details):
-        self.clear()
         yield self.register(self)
         print("Ok, datacube procedures registered!")
 
-    @wamp.register(u'org.alleninstitute.datacube.clear')
-    def clear(self, arg=None):
-        self.op = None
-        self.current = decimal.Decimal(0)
-        return str(self.current)
-
-    @wamp.register(u'org.alleninstitute.datacube.calc')
-    def calc(self, op, num):
-        num = decimal.Decimal(num)
-        if self.op:
-            if self.op == "+":
-                self.current += num
-            elif self.op == "-":
-                self.current -= num
-            elif self.op == "*":
-                self.current *= num
-            elif self.op == "/":
-                self.current /= num
-            self.op = op
-        else:
-            self.op = op
-            self.current = num
-
-        res = str(self.current)
-        if op == "=":
-            self.clear()
-
-        return res
+    @wamp.register(u'org.alleninstitute.datacube.load')
+    def load(self, arg=None):
+        msg = msgpack.packb("test message", use_bin_type=True)
+        print("msg", msg)
+        return "loaded"
 
 
 if __name__ == '__main__':
 
-    decimal.getcontext().prec = 20
-
     import sys
     import argparse
+
+    # load cell types data
+    data = np.load('../data/ivscc.npy')
 
     # parse command line arguments
     parser = argparse.ArgumentParser()
