@@ -5,7 +5,6 @@ from twisted.python import log
 from twisted.web.server import Site
 from twisted.web.static import File
 import numpy as np
-import pgmagick
 import argparse
 
 from autobahn.twisted.websocket import WebSocketServerFactory, \
