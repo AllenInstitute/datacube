@@ -4,6 +4,8 @@
     <script type="text/javascript">
          var sock = null;
          var ellog = null;
+         var width = 300;
+         var height = 300;
 
          window.onload = function() {
 
@@ -11,9 +13,9 @@
 
             var wsuri;
             if (window.location.protocol === "file:") {
-               wsuri = "ws://127.0.0.1:9000/ws?a=23&foo=bar";
+               wsuri = "ws://127.0.0.1:9000/ws";
             } else {
-               wsuri = "ws://" + window.location.hostname + ":9000/ws?a=23&foo=bar";
+               wsuri = "ws://" + window.location.hostname + ":9000/ws";
             }
 
             if ("WebSocket" in window) {
@@ -26,6 +28,8 @@
             }
 
             if (sock) {
+               sock.binaryType = "arraybuffer";
+
                sock.onopen = function() {
                   log("Connected to " + wsuri);
                }
@@ -37,6 +41,7 @@
 
                sock.onmessage = function(e) {
                   log("Got row: " + e.data);
+                  draw(e.data);
                }
             }
          };
@@ -55,13 +60,29 @@
             ellog.innerHTML += m + '\n';
             ellog.scrollTop = ellog.scrollHeight;
          };
-      </script>
+
+         function draw(data) {
+            var canvas = document.getElementById('graph');
+            context = canvas.getContext("2d");
+            context.fillStyle = 'blue';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+
+            imageData.data = data;
+            log(imageData.data[3450]);
+            context.putImageData(imageData, 0, 0);
+         }
+
+
+
+    </script>
 </head>
 <body>
 <h1>Datacube Dashboard</h1>
 <noscript>You must enable JavaScript</noscript>
+<canvas id="graph"  width="300" height="300"></canvas>
 <form>
-    <p>Message: <input id="message" type="text" size="50" maxlength="50" value="load"></p>
+    <p>Message: <input id="message" type="text" size="50" maxlength="50" value="cube"></p>
 </form>
 <button onclick='send();'>Send Message</button>
 <pre id="log" style="height: 20em; overflow-y: scroll; background-color: #faa;"></pre>
