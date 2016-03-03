@@ -72,6 +72,7 @@ def _get_local_query(darr, marr, global_query):
     for axis, mask in enumerate(global_query):
         if isinstance(mask, np.ndarray):
             if mask.dtype == np.bool and mask.size>0:
+                # TODO: support other dtypes
                 local_query[axis] = mask[darr.distribution._maps[axis].global_slice].astype(np.float32)
             elif np.issubdtype(mask.dtype, np.integer):
                 subscripted = True
@@ -106,34 +107,41 @@ def _get_local_query(darr, marr, global_query):
 
 
 class Datacube:
-    def __init__(self, data, observed=None, distribution=None):
-        self.context = Context()
+    def __init__(self, data, observed=None, distributed=False, distribution=None):
         assert(isinstance(data, np.ndarray))
         self.data = data
+        self.ndim = data.ndim
+        self.shape = data.shape
+        self.size = data.size
+        self.dtype = data.dtype
         if observed is not None:
             assert(isinstance(observed, np.ndarray))
             assert(observed.shape == data.shape)
             assert(observed.dtype == data.dtype)
         self.observed = observed
-        if distribution is not None:
-            assert(len(distribution) == data.ndim)
-            self.distribution = Distribution(self.context, self.data.shape, dist=distribution)
-        else:
-            # default to block-distributed on first axis and not distributed otherwise
-            self.distribution = Distribution(self.context, self.data.shape, tuple('b' if i == 0 else 'n' for i in range(0,data.ndim)))
 
-        self.dist_data = self.context.fromarray(self.data, self.distribution)
-        if self.observed is not None:
-            self.dist_observed = self.context.fromarray(self.observed, self.distribution)
-        else:
-            self.dist_observed = None
+        self.distributed = distributed
+        if self.distributed:
+            self.context = Context()
+            if distribution is not None:
+                assert(len(distribution) == data.ndim)
+                self.distribution = Distribution(self.context, self.data.shape, dist=distribution)
+            else:
+                # default to block-distributed on first axis and not distributed otherwise
+                self.distribution = Distribution(self.context, self.data.shape, tuple('b' if i == 0 else 'n' for i in range(0,data.ndim)))
 
-        self.context.push_function(_get_local_query.__name__, _get_local_query)
-        self.context.push_function(correlation_search.__name__, correlation_search)
+            self.dist_data = self.context.fromarray(self.data, self.distribution)
+            if self.observed is not None:
+                self.dist_observed = self.context.fromarray(self.observed, self.distribution)
+            else:
+                self.dist_observed = None
+
+            self.context.push_function(_get_local_query.__name__, _get_local_query)
+            self.context.push_function(correlation_search.__name__, correlation_search)
         
     def get_correlated(self, seed_index, axis, query=None):
         if query is None:
-            query = [None]*self.dist_data.ndim
+            query = [np.ones(1, dtype=self.dtype)]*self.ndim
 
         seed = self.data.take([seed_index], axis=axis)
         for i, mask in enumerate(query):
@@ -143,7 +151,10 @@ class Datacube:
         seed_observed = None
         if self.observed is not None:
             seed_observed = self.observed.take([seed_index], axis=axis)
-        
-        dist_observed_key = self.dist_observed.key if self.dist_observed is not None else None
-        args = (correlation_search.__name__, self.dist_data.key, seed, 0, query, dist_observed_key, seed_observed)
-        return np.concatenate(self.dist_data.context.apply(_local_search, args))
+
+        if self.distributed:        
+            dist_observed_key = self.dist_observed.key if self.dist_observed is not None else None
+            args = (correlation_search.__name__, self.dist_data.key, seed, 0, query, dist_observed_key, seed_observed)
+            return np.concatenate(self.dist_data.context.apply(_local_search, args))
+        else:
+            return correlation_search(self.data, seed, axis, query, self.observed, seed_observed)
