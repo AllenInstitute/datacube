@@ -10,6 +10,7 @@ from twisted.web.static import File
 from twisted.web.resource import Resource
 import numpy as np
 import argparse
+from datacube import Datacube
 
 from autobahn.twisted.websocket import WebSocketServerFactory, \
     WebSocketServerProtocol
@@ -33,6 +34,8 @@ class DatacubeProtocol(WebSocketServerProtocol):
         print("WebSocket connection request: {}".format(request))
 
     def onMessage(self, payload, isBinary):
+        r=datacube.get_correlated(10, 0)
+        print(np.nanmean(r))
         # parse the request
         request = self.parser.parse_args(payload.decode('utf8').split())
         # dispatch to the function
@@ -67,6 +70,8 @@ if __name__ == '__main__':
     # load cell types data
     data = np.load('../data/ivscc.npy')
     print("data ", data[0])
+
+    datacube = Datacube(data)
 
     factory = WebSocketServerFactory(u"ws://127.0.0.1:9000")
     factory.protocol = DatacubeProtocol
