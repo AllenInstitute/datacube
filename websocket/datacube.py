@@ -143,18 +143,26 @@ class Datacube:
         if query is None:
             query = [np.ones(1, dtype=self.dtype)]*self.ndim
 
-        seed = self.data.take([seed_index], axis=axis)
-        for i, mask in enumerate(query):
-            if i != axis and mask is not None and mask.dtype != np.bool and np.issubdtype(mask.dtype, np.integer):
-                seed = seed.take(mask, axis=i)
-        
         seed_observed = None
         if self.observed is not None:
             seed_observed = self.observed.take([seed_index], axis=axis)
 
+        seed = self.data.take([seed_index], axis=axis)
+        for i, mask in enumerate(query):
+            if i != axis and mask is not None and mask.dtype != np.bool and np.issubdtype(mask.dtype, np.integer):
+                seed = seed.take(mask, axis=i)
+                seed_observed = seed_observed.take(mask, axis=i)
+        
         if self.distributed:        
             dist_observed_key = self.dist_observed.key if self.dist_observed is not None else None
             args = (correlation_search.__name__, self.dist_data.key, seed, 0, query, dist_observed_key, seed_observed)
             return np.concatenate(self.dist_data.context.apply(_local_search, args))
         else:
-            return correlation_search(self.data, seed, axis, query, self.observed, seed_observed)
+            selected_data = self.data
+            selected_observed = self.observed
+            for i, mask in enumerate(query):
+                if i != axis and mask is not None and mask.dtype != np.bool and np.issubdtype(mask.dtype, np.integer):
+                    selected_data = selected_data.take(mask, axis=i)
+                    selected_observed = selected_observed.take(mask, axis=i)
+
+            return correlation_search(selected_data, seed, axis, query, selected_observed, seed_observed)
