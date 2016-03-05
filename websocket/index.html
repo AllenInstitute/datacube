@@ -41,7 +41,9 @@
 
                sock.onmessage = function(e) {
                   log("Got row: " + e.data);
-                  draw(e.data);
+                  if(e.data instanceof ArrayBuffer) {
+                     draw(e.data);
+                  }
                }
             }
          };
@@ -62,14 +64,25 @@
          };
 
          function draw(data) {
+            shape = new DataView(data, 0, 4*2);
+            width = shape.getInt32(0, false);
+            height = shape.getInt32(4, false);
+            float_data = new Float32Array(data, 4*2);
+            
             var canvas = document.getElementById('graph');
-            context = canvas.getContext("2d");
-            context.fillStyle = 'blue';
-            context.fillRect(0, 0, canvas.width, canvas.height);
-            var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+            canvas.width = width;
+            canvas.height = height;
 
-            imageData.data = data;
-            log(imageData.data[3450]);
+            var context = canvas.getContext("2d");
+            var imageData = context.createImageData(width, height);
+
+            for(var i = 0; i < float_data.length; ++i) {
+                var scaled = Math.round(Math.min(Math.max((float_data[i] + 2.0) / 4.0 * 255.0, 0.0), 255.0))
+                imageData.data[i*4] = scaled;
+                imageData.data[i*4+1] = scaled;
+                imageData.data[i*4+2] = scaled;
+                imageData.data[i*4+3] = 255;
+            }
             context.putImageData(imageData, 0, 0);
          }
 
@@ -82,7 +95,20 @@
 <noscript>You must enable JavaScript</noscript>
 <canvas id="graph"  width="300" height="300"></canvas>
 <form>
-    <p>Message: <input id="message" type="text" size="50" maxlength="50" value="cube"></p>
+    Message:
+    <p>
+        <textarea id="message" cols="80" rows="15">
+{
+    "call": "cube",
+    "select":
+    [
+        {"start": 0, "stop": 250},
+        null
+    ],
+    "seed": 0
+}
+        </textarea>
+    </p>
 </form>
 <button onclick='send();'>Send Message</button>
 <pre id="log" style="height: 20em; overflow-y: scroll; background-color: #faa;"></pre>
