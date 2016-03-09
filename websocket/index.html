@@ -51,7 +51,7 @@
          function send() {
             var msg = document.getElementById('message').value;
             if (sock) {
-               sock.send(msg);
+               sock.send(msg, true);
                log("Sent: " + msg);
             } else {
                log("Not connected.");
