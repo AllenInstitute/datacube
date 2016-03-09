@@ -26,11 +26,11 @@ class DatacubeProtocol(WebSocketServerProtocol):
         # parse the request
         request = json.loads(payload.decode('utf8'))
         # dispatch to the function
-        self.sendMessage(dispatch.functions[request['call']](request), dispatch.isBinary[request['call']])
+        self.sendMessage(dispatch.functions[request['call']](request), ('binary' in request and request['binary'] == True))
 
 
-# Responds to http requests with json payloads
-class TsvPage(Resource):
+# Api responds to http requests with json msg argument
+class Api(Resource):
     def render_GET(self, request):
         return self.process(request)
 
@@ -38,10 +38,11 @@ class TsvPage(Resource):
         return self.process(request)
 
     def process(self, request):
-        pprint(request.__dict__)
-        newdata = request.content.getvalue()
-        print newdata
-        return ''
+        # parse the request
+        pprint(request.args['msg'])
+        msg = json.loads(request.args['msg'][0])
+        # dispatch to the function
+        return dispatch.functions[msg['call']](msg)
 
 if __name__ == '__main__':
     log.startLogging(sys.stdout)
@@ -60,8 +61,8 @@ if __name__ == '__main__':
     factory.protocol = DatacubeProtocol
     root.putChild(u"ws", WebSocketResource(factory))
 
-    # respond to tab separated value request under "/tsv"
-    root.putChild(u"tsv", TsvPage())
+    # respond to tab separated value request under "/api"
+    root.putChild(u"api", Api())
 
     site = Site(root)
     reactor.listenTCP(9000, site)
