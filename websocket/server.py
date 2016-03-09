@@ -29,7 +29,7 @@ class DatacubeProtocol(WebSocketServerProtocol):
         self.sendMessage(dispatch.functions[request['call']](request), dispatch.isBinary[request['call']])
 
 
-# Responds to https requests with json payloads
+# Responds to http requests with json payloads
 class TsvPage(Resource):
     def render_GET(self, request):
         return self.process(request)
@@ -51,21 +51,18 @@ if __name__ == '__main__':
     datacube = Datacube(data)
     dispatch = Dispatch(datacube)
 
-    factory = WebSocketServerFactory(u"ws://127.0.0.1:9000")
-    factory.protocol = DatacubeProtocol
 
-    resource = WebSocketResource(factory)
-
-    # we server static files under "/" ..
+    # Serve static files under "/" ..
     root = File(".")
 
-    # and our WebSocket server under "/ws"
-    root.putChild(u"ws", resource)
+    # WebSocket server under "/ws"
+    factory = WebSocketServerFactory(u"ws://127.0.0.1:9000")
+    factory.protocol = DatacubeProtocol
+    root.putChild(u"ws", WebSocketResource(factory))
 
     # respond to tab separated value request under "/tsv"
     root.putChild(u"tsv", TsvPage())
 
-    # both under one Twisted Web Site
     site = Site(root)
     reactor.listenTCP(9000, site)
 
