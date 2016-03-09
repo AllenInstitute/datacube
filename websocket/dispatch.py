@@ -17,9 +17,6 @@ class Dispatch:
         self.functions = {  'cube': self.cube,
                             'corr': self.corr
         }
-        self.isBinary = {  'cube': True,
-                            'corr': False
-        }
 
         self.zscore = sp.stats.mstats.zscore(self.datacube.data, axis=1)
 
