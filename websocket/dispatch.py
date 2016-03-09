@@ -7,7 +7,6 @@ from scipy import stats
 from datacube import Datacube
 
 # This handles the dispatching of function calls on a datacube.  The functions are stored in the functions table.
-# The return protocol is stored in the isBinary table.  TODO: do we need this?  It would be nice to have client specify, but autobahn.js does not support this. Maybe everything should be binary.
 class Dispatch:
     def __init__(self, datacube):
         assert(isinstance(datacube, Datacube))
