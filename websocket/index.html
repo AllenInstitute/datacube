@@ -78,9 +78,9 @@
 
             for(var i = 0; i < float_data.length; ++i) {
                 var scaled = Math.round(Math.min(Math.max((float_data[i] + 2.0) / 4.0 * 255.0, 0.0), 255.0))
-                imageData.data[i*4] = scaled;
-                imageData.data[i*4+1] = scaled;
-                imageData.data[i*4+2] = scaled;
+                imageData.data[i*4] = Math.min(255, scaled*-2+256);
+                imageData.data[i*4+1] = Math.max(0, scaled*2-256);
+                imageData.data[i*4+2] = 0;
                 imageData.data[i*4+3] = 255;
             }
             context.putImageData(imageData, 0, 0);
