@@ -19,12 +19,11 @@ class Dispatch:
 
         self.zscore = sp.stats.mstats.zscore(self.datacube.data, axis=1)
 
-    # Return values from a section of the datacube (binary).
-    def cube(self, request):
-        subscripts = [slice(None,None,None)]*self.datacube.data.ndim
+    def _get_subscripts_from_request(self, request):
+        subscripts = [slice(None,None,None)]*self.datacube.ndim
         if 'select' in request:
             assert(isinstance(request['select'], list))
-            assert(len(request['select']) == self.datacube.data.ndim)
+            assert(len(request['select']) == self.datacube.ndim)
             for axis, selector in enumerate(request['select']):
                 if isinstance(selector, list):
                     if isinstance(selector[0], int):
@@ -36,11 +35,22 @@ class Dispatch:
                         subscripts[axis] = slice(selector['start'], selector['stop'], selector['step'])
                     else:
                         subscripts[axis] = slice(selector['start'], selector['stop'], None)
+        return subscripts
 
+    # Return values from a section of the datacube (binary).
+    def cube(self, request):
+        subscripts = self._get_subscripts_from_request(request)
         shape = self.datacube.data[subscripts].shape
         return struct.pack('>I', shape[1],) + struct.pack('>I', shape[0]) + self.zscore[subscripts].tobytes()
 
     # Return the correlation calculation based on a seed row (JSON)
     def corr(self, request):
-        r=self.datacube.get_correlated(request['seed'], 0)
+        query = self._get_subscripts_from_request(request)
+        for axis, subs in enumerate(query):
+            if subs == slice(None,None,None):
+                query[axis] = np.ones(1)
+            elif isinstance(subs, slice):
+                query[axis] = np.array(range(*subs.indices(self.datacube.shape[axis])), dtype=np.int)
+
+        r=self.datacube.get_correlated(request['seed'], 0, query)
         return json.dumps(np.argsort(-r).tolist())

@@ -4,11 +4,35 @@ import distarray
 from distarray.globalapi import Context, Distribution
 
 def correlation_search(data, seed, axis, query=None, mdata=None, mseed=None):
-    import numpy as np
+    """Compute correlation for each sample versus a seed sample, along an axis of a multi-dimensional array.
+
+    Compute the correlation of data.take(i, axis=axis) and seed for all i. Memory usage beyond the input
+    arguments themselves is negligible. Without costing additional memory, the computation can be
+    restricted along any axis with a 1-D boolean array in `query`. Missing values can be specified in
+    arrays `mdata` and `mseed` and will be omitted from the calculation. Any entry in the output where
+    no samples are included will be set to np.nan.
+
+    Args:
+        data (numpy.ndarray): N-dimensional array with N >= 2, of any float dtype.
+        seed (numpy.ndarray): Array with shape data.take(0, axis=axis).shape, and same dtype as `data`.
+        axis (int): Axis to operate along, in range(0, data.ndim)
+        query (Optional[list]): list of length data.ndim, where the ith element is either numpy.ones(1)
+            ("all") or an array of shape=(data.shape[i],) and dtype=numpy.bool.
+        mdata (Optional[numpy.ndarray]): Array of same shape and dtype as `data` where 1 indicates an
+            an observed entry and 0 is a missing entry.
+        mseed (Optional[numpy.ndarray]): Array of same shape and dtype as `seed` with the same semantics
+            as `mdata`.
+
+    Returns:
+        numpy.ndarray: Array of shape (data.shape[axis],) where the ith entry is the correlation of
+            data.take(i, axis=axis) with seed.
+    """
+
+    import numpy as np # import within this function in case it is being pushed to a distributed node
     
     if query is None:
         query = [np.ones(1)]*data.ndim
-    
+
     mask_args = \
         lambda axes=range(0,data.ndim), out_axes=[axis], more=[]: \
             list(sum([(mask.squeeze(),[i]) for i, mask in enumerate(query) if i in axes and mask.size>1], ()))+more+[out_axes]
@@ -30,15 +54,16 @@ def correlation_search(data, seed, axis, query=None, mdata=None, mseed=None):
 
     seed_mean = np.einsum(seed, sdims, *mask_args(sample_axes, [], mseed_args)) / seed_num_samples
     data_mean = np.einsum(data, ddims, *mask_args(more=mdata_args)) / num_samples
+    data_mean *= query[axis].flat
     data_mean.shape = tuple(data.shape[i] if i == axis else 1 for i in ddims) # restore dims after einsum
     
     seed_dev = np.einsum(seed-seed_mean, sdims, *mask_args(sample_axes, sdims, mseed_args))
     numerator = np.einsum(seed_dev, ddims, data, ddims, query[axis].flat, [axis], *mask_args((), [axis], mdata_args))
-    numerator -= np.einsum(seed_dev, ddims, data_mean*query[axis], ddims, [axis])
+    numerator -= np.einsum(seed_dev, ddims, data_mean, ddims, [axis])
 
     denominator = np.einsum(data, ddims, data, ddims, *mask_args(more=mdata_args))
     # data_mean has already been masked
-    denominator += -2.0*np.einsum(data, ddims, data_mean*query[axis], ddims, *mask_args(sample_axes, more=mdata_args))
+    denominator += -2.0*np.einsum(data, ddims, data_mean, ddims, *mask_args(sample_axes, more=mdata_args))
     denominator += np.sum(data_mean**2, axis=sample_axes) * num_samples
     denominator *= np.einsum(seed_dev**2, sdims, *mask_args(sample_axes))
     denominator = np.sqrt(denominator)
@@ -48,7 +73,6 @@ def correlation_search(data, seed, axis, query=None, mdata=None, mseed=None):
 
 def _local_search(search_function, darr, seed, axis, global_query, marr, mseed):
     import numpy as np
-
     query, data, mdata, empty = _get_local_query(darr, marr, global_query)
     if len(empty)>0:
         if axis in empty:
@@ -127,7 +151,7 @@ class Datacube:
                 assert(len(distribution) == data.ndim)
                 self.distribution = Distribution(self.context, self.data.shape, dist=distribution)
             else:
-                # default to block-distributed on first axis and not distributed otherwise
+                # TODO: default to block-distributed on first axis and not distributed otherwise
                 self.distribution = Distribution(self.context, self.data.shape, tuple('b' if i == 0 else 'n' for i in range(0,data.ndim)))
 
             self.dist_data = self.context.fromarray(self.data, self.distribution)
@@ -151,9 +175,11 @@ class Datacube:
         for i, mask in enumerate(query):
             if i != axis and mask is not None and mask.dtype != np.bool and np.issubdtype(mask.dtype, np.integer):
                 seed = seed.take(mask, axis=i)
-                seed_observed = seed_observed.take(mask, axis=i)
+                if seed_observed is not None:
+                    seed_observed = seed_observed.take(mask, axis=i)
         
         if self.distributed:        
+            assert(all(d == 'n' for i, d in enumerate(dist) if i != axis)) # TODO: correlation_search currently needs all non-query axes to be non-distributed
             dist_observed_key = self.dist_observed.key if self.dist_observed is not None else None
             args = (correlation_search.__name__, self.dist_data.key, seed, 0, query, dist_observed_key, seed_observed)
             return np.concatenate(self.dist_data.context.apply(_local_search, args))
@@ -163,6 +189,7 @@ class Datacube:
             for i, mask in enumerate(query):
                 if i != axis and mask is not None and mask.dtype != np.bool and np.issubdtype(mask.dtype, np.integer):
                     selected_data = selected_data.take(mask, axis=i)
-                    selected_observed = selected_observed.take(mask, axis=i)
-
+                    if self.observed is not None:
+                        selected_observed = selected_observed.take(mask, axis=i)
+            
             return correlation_search(selected_data, seed, axis, query, selected_observed, seed_observed)
