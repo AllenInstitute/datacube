@@ -187,8 +187,9 @@ class Datacube:
             selected_data = self.data
             selected_observed = self.observed
             for i, mask in enumerate(query):
-                if i != axis and mask is not None and mask.dtype != np.bool and np.issubdtype(mask.dtype, np.integer):
+                if mask is not None and mask.dtype != np.bool and np.issubdtype(mask.dtype, np.integer):
                     selected_data = selected_data.take(mask, axis=i)
+                    query[i] = np.ones(1, dtype=self.dtype)
                     if self.observed is not None:
                         selected_observed = selected_observed.take(mask, axis=i)
             
