@@ -6,18 +6,24 @@ from distarray.globalapi import Context, Distribution
 def correlation_search(data, seed, axis, query=None, mdata=None, mseed=None):
     """Compute correlation for each sample versus a seed sample, along an axis of a multi-dimensional array.
 
-    Compute the correlation of data.take(i, axis=axis) and seed for all i. Memory usage beyond the input
-    arguments themselves is negligible. Without costing additional memory, the computation can be
-    restricted along any axis with a 1-D boolean array in `query`. Missing values can be specified in
-    arrays `mdata` and `mseed` and will be omitted from the calculation. Any entry in the output where
-    no samples are included will be set to np.nan.
+    Compute the correlation of data.take(i, axis=axis) and seed for all i.
+
+    Memory usage beyond the input arguments themselves is negligible. Without costing additional memory, the
+    computation can be restricted along any axis with a 1-D boolean array in `query` (consider using same
+    dtype as `data`, however, for performance).
+
+    Missing values can be specified in arrays `mdata` and `mseed` and will be omitted from the calculation.
+    Any entry in the output where no samples are included will be set to np.nan.
 
     Args:
         data (numpy.ndarray): N-dimensional array with N >= 2, of any float dtype.
         seed (numpy.ndarray): Array with shape data.take(0, axis=axis).shape, and same dtype as `data`.
         axis (int): Axis to operate along, in range(0, data.ndim)
         query (Optional[list]): list of length data.ndim, where the ith element is either numpy.ones(1)
-            ("all") or an array of shape=(data.shape[i],) and dtype=numpy.bool.
+            ("all") or an array of shape=(data.shape[i],) containing 0's and 1's where the corresponding
+            index will be included in the calculation iff 1. dtype is not restricted to bool despite
+            containing boolean values; performance may be improved by using, for example, dtype=np.float32
+            when `data` also has dtype np.float32.
         mdata (Optional[numpy.ndarray]): Array of same shape and dtype as `data` where 1 indicates an
             an observed entry and 0 is a missing entry.
         mseed (Optional[numpy.ndarray]): Array of same shape and dtype as `seed` with the same semantics
@@ -97,7 +103,7 @@ def _get_local_query(darr, marr, global_query):
         if isinstance(mask, np.ndarray):
             if mask.dtype == np.bool and mask.size>0:
                 # TODO: support other dtypes
-                local_query[axis] = mask[darr.distribution._maps[axis].global_slice].astype(np.float32)
+                local_query[axis] = mask[darr.distribution._maps[axis].global_slice].astype(darr.dtype)
             elif np.issubdtype(mask.dtype, np.integer):
                 subscripted = True
                 local_indices = []
@@ -163,6 +169,29 @@ class Datacube:
             self.context.push_function(_get_local_query.__name__, _get_local_query)
             self.context.push_function(correlation_search.__name__, correlation_search)
         
+    """Compute correlation for each sample versus a particular seed index, along an axis of this datacube.
+
+    Restricted indices along any axis (including the query axis) can be selected, by supplying either a
+    1-dimensional array of indices or a boolean array, per axis (or numpy.ones(1) to select all for that
+    axis).
+
+    The choice between integer and boolean interfaces implies a time/memory trade-off. For all axes using
+    integer indices, a smaller array will be copied out from the full data, costing additional memory but
+    saving compute time on omitted entries. For any remaining axes using boolean masks, the computation is
+    done in place, costing no memory but "wasting" time on omitted entries by carrying out a calculation
+    that doesn't contribute to the final result.
+
+    Args:
+        seed_index (int): Index along `axis` containing seed sample against which to compare.
+        axis (int): Axis to operate along, in range(0, self.ndim)
+        query (Optional[list]): list of length data.ndim, where the ith element is either numpy.ones(1)
+            ("all"), a 1-dimensional array of integral indices, or a boolean array of shape=(data.shape[i],),
+            where True indicates that the values at that index should be included.
+
+    Returns:
+        numpy.ndarray: Array of shape (data.shape[axis],), or (query[axis].size,) if using integral indices
+            along the query axis.
+    """
     def get_correlated(self, seed_index, axis, query=None):
         if query is None:
             query = [np.ones(1, dtype=self.dtype)]*self.ndim

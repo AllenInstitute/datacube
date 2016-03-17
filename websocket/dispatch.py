@@ -30,10 +30,10 @@ class Dispatch:
             assert(len(request['select']) == self.datacube.ndim)
             for axis, selector in enumerate(request['select']):
                 if isinstance(selector, list):
-                    if isinstance(selector[0], int):
-                        subscripts[axis] = np.array(selector, dtype=np.int)
-                    elif isintance(selector[0], bool):
+                    if isinstance(selector[0], bool):
                         subscripts[axis] = np.array(selector, dtype=np.bool)
+                    elif isinstance(selector[0], int):
+                        subscripts[axis] = np.array(selector, dtype=np.int)
                 elif isinstance(selector, dict):
                     if 'step' in selector:
                         subscripts[axis] = slice(selector['start'], selector['stop'], selector['step'])
@@ -44,6 +44,12 @@ class Dispatch:
     # Return values from a section of the datacube (binary).
     def cube(self, request):
         subscripts = self._get_subscripts_from_request(request)
+        for axis, subs in enumerate(subscripts):
+            if isinstance(subs, np.ndarray) and subs.dtype == np.bool:
+                subscripts[axis] = subs.nonzero()[0]
+            elif isinstance(subs, slice):
+                subscripts[axis] = np.array(range(*subs.indices(self.datacube.shape[axis])), dtype=np.int)
+        subscripts = np.ix_(*subscripts)
         shape = self.datacube.data[subscripts].shape
         return struct.pack('>I', shape[1],) + struct.pack('>I', shape[0]) + self.zscore[subscripts].tobytes()
 
