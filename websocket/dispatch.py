@@ -5,16 +5,20 @@ import scipy as sp
 from scipy import stats
 
 from datacube import Datacube
+from database import Database
 
 # This handles the dispatching of function calls on a datacube.  The functions are stored in the functions table.
 class Dispatch:
-    def __init__(self, datacube):
+    def __init__(self, datacube, database):
         assert(isinstance(datacube, Datacube))
+        assert(isinstance(database, Database))
         self.datacube = datacube
+        self.database = database
 
         # This is a dispatch table of functions that respond to the call request
         self.functions = {  'cube': self.cube,
-                            'corr': self.corr
+                            'corr': self.corr,
+                            'meta': self.meta
         }
 
         self.zscore = sp.stats.mstats.zscore(self.datacube.data, axis=1)
@@ -54,3 +58,8 @@ class Dispatch:
 
         r=self.datacube.get_correlated(request['seed'], 0, query)
         return json.dumps(np.argsort(-r).tolist())
+
+    # Return metadata (JSON)
+    def meta(self, request):
+        r=self.database.get_meta(self.datacube)
+        return r

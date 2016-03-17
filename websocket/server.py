@@ -9,6 +9,7 @@ from twisted.web.resource import Resource
 import numpy as np
 import json
 from datacube import Datacube
+from database import Database
 from dispatch import Dispatch
 
 from autobahn.twisted.websocket import WebSocketServerFactory, \
@@ -47,11 +48,11 @@ class Api(Resource):
 if __name__ == '__main__':
     log.startLogging(sys.stdout)
 
-    # load cell types data
+    # load cell types data, database and dispatch
     data = np.load('../data/ivscc.npy').astype(np.float32)
     datacube = Datacube(data)
-    dispatch = Dispatch(datacube)
-
+    database = Database('postgresql+pg8000://postgres:postgres@ibs-andys-ux3:5432/wh')
+    dispatch = Dispatch(datacube, database)
 
     # Serve static files under "/" ..
     root = File(".")
