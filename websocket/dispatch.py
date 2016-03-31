@@ -17,6 +17,7 @@ class Dispatch:
 
         # This is a dispatch table of functions that respond to the call request
         self.functions = {  'cube': self.cube,
+                            'shape': self.shape,
                             'corr': self.corr,
                             'meta': self.meta
         }
@@ -35,13 +36,17 @@ class Dispatch:
                     elif isinstance(selector[0], int):
                         subscripts[axis] = np.array(selector, dtype=np.int)
                 elif isinstance(selector, dict):
-                    if 'step' in selector:
-                        subscripts[axis] = slice(selector['start'], selector['stop'], selector['step'])
-                    else:
-                        subscripts[axis] = slice(selector['start'], selector['stop'], None)
+                    subscripts[axis] = slice(selector.get('start'), selector.get('stop'), selector.get('step'))
         return subscripts
 
-    # Return values from a section of the datacube (binary).
+    # Get the shape of the datacube.
+    def shape(self, request):
+        if request['binary']:
+            return struct.pack('!%sI' % self.datacube.ndim, *self.datacube.shape)
+        else:
+            return json.dumps(list(self.datacube.shape))
+
+    # Return values from a section of the datacube.
     def cube(self, request):
         subscripts = self._get_subscripts_from_request(request)
         for axis, subs in enumerate(subscripts):
@@ -51,7 +56,10 @@ class Dispatch:
                 subscripts[axis] = np.array(range(*subs.indices(self.datacube.shape[axis])), dtype=np.int)
         subscripts = np.ix_(*subscripts)
         shape = self.datacube.data[subscripts].shape
-        return struct.pack('>I', shape[1],) + struct.pack('>I', shape[0]) + self.zscore[subscripts].tobytes()
+        if request['binary']:
+            return struct.pack('!I', shape[0]) + struct.pack('!I', shape[1]) + self.zscore[subscripts].tobytes()
+        else:
+            return json.dumps({'shape': shape, 'data': [None if np.isnan(x) else float(x) for x in self.zscore[subscripts].flat]})
 
     # Return the correlation calculation based on a seed row (JSON)
     def corr(self, request):
@@ -63,7 +71,8 @@ class Dispatch:
                 query[axis] = np.array(range(*subs.indices(self.datacube.shape[axis])), dtype=np.int)
 
         r=self.datacube.get_correlated(request['seed'], 0, query)
-        return json.dumps(np.argsort(-r).tolist())
+        sort_idxs = np.argsort(-r)
+        return json.dumps({'indexes': sort_idxs.tolist(), 'correlations': [None if np.isnan(x) else x for x in r[sort_idxs]]})
 
     # Return metadata (JSON)
     def meta(self, request):
