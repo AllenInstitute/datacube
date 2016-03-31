@@ -24,11 +24,13 @@ class DatacubeProtocol(WebSocketServerProtocol):
         print("WebSocket connection request: {}".format(request))
 
     def onMessage(self, payload, isBinary):
-        # parse the request
-        request = json.loads(payload.decode('utf8'))
-        # dispatch to the function
-        self.sendMessage(dispatch.functions[request['call']](request), ('binary' in request and request['binary'] == True))
-
+        try:
+            # parse the request
+            request = json.loads(payload.decode('utf8'))
+            # dispatch to the function
+            self.sendMessage(dispatch.functions[request['call']](request), ('binary' in request and request['binary'] == True))
+        except Exception as e:
+            self.sendMessage(e.message, False)
 
 # Api responds to http requests with json msg argument
 class Api(Resource):

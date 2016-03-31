@@ -2,73 +2,78 @@
 <html>
 <head>
     <script type="text/javascript">
-         var sock = null;
-         var ellog = null;
-         var width = 300;
-         var height = 300;
+        var sock = null;
+        var ellog = null;
+        var width = 300;
+        var height = 300;
 
-         window.onload = function() {
+        ellog = document.getElementById('log');
 
-            ellog = document.getElementById('log');
+        var wsuri;
+        if (window.location.protocol === "file:") {
+            wsuri = "ws://127.0.0.1:9000/ws";
+        } else {
+            wsuri = "ws://" + window.location.hostname + ":9000/ws";
+        }
 
-            var wsuri;
-            if (window.location.protocol === "file:") {
-               wsuri = "ws://127.0.0.1:9000/ws";
-            } else {
-               wsuri = "ws://" + window.location.hostname + ":9000/ws";
+        if ("WebSocket" in window) {
+            sock = new WebSocket(wsuri);
+        } else if ("MozWebSocket" in window) {
+            sock = new MozWebSocket(wsuri);
+        } else {
+            log("Browser does not support WebSocket!");
+            window.location = "http://autobahn.ws/unsupportedbrowser";
+        }
+
+        if (sock) {
+            sock.binaryType = "arraybuffer";
+
+            sock.onopen = function() {
+                log("Connected to " + wsuri);
             }
 
-            if ("WebSocket" in window) {
-               sock = new WebSocket(wsuri);
-            } else if ("MozWebSocket" in window) {
-               sock = new MozWebSocket(wsuri);
-            } else {
-               log("Browser does not support WebSocket!");
-               window.location = "http://autobahn.ws/unsupportedbrowser";
+            sock.onclose = function(e) {
+                log("Connection closed (wasClean = " + e.wasClean + ", code = " + e.code + ", reason = '" + e.reason + "')");
+                sock = null;
             }
 
-            if (sock) {
-               sock.binaryType = "arraybuffer";
-
-               sock.onopen = function() {
-                  log("Connected to " + wsuri);
-               }
-
-               sock.onclose = function(e) {
-                  log("Connection closed (wasClean = " + e.wasClean + ", code = " + e.code + ", reason = '" + e.reason + "')");
-                  sock = null;
-               }
-
-               sock.onmessage = function(e) {
-                  log("Got row: " + e.data);
-                  if(e.data instanceof ArrayBuffer) {
-                     draw(e.data);
-                  }
-               }
+            sock.onmessage = function(e) {
+                if (e.data instanceof ArrayBuffer) {
+                    log("Got data: " + e.data);
+                    draw(e.data);
+                } else if (typeof e.data == 'string') {
+                    log("Got data:");
+                    log(JSON.stringify(JSON.parse(e.data), function(k, v) {
+                        return v instanceof Array && v.length > 50 ? JSON.stringify(v) : v
+                    }, 4));
+                } else {
+                    log("Got data: " + e.data);
+                }
             }
-         };
+        }
 
-         function send() {
+
+        function send() {
             var msg = document.getElementById('message').value;
             if (sock) {
-               sock.send(msg, true);
-               log("Sent: " + msg);
+                sock.send(msg, true);
+                log("Sent: " + msg);
             } else {
-               log("Not connected.");
+                log("Not connected.");
             }
-         };
+        };
 
-         function log(m) {
+        function log(m) {
             ellog.innerHTML += m + '\n';
             ellog.scrollTop = ellog.scrollHeight;
-         };
+        };
 
-         function draw(data) {
-            shape = new DataView(data, 0, 4*2);
-            width = shape.getInt32(0, false);
-            height = shape.getInt32(4, false);
-            float_data = new Float32Array(data, 4*2);
-            
+        function draw(data) {
+            shape = new DataView(data, 0, 4 * 2);
+            height = shape.getInt32(0, false);
+            width = shape.getInt32(4, false);
+            float_data = new Float32Array(data, 4 * 2);
+
             var canvas = document.getElementById('graph');
             canvas.width = width;
             canvas.height = height;
@@ -76,18 +81,15 @@
             var context = canvas.getContext("2d");
             var imageData = context.createImageData(width, height);
 
-            for(var i = 0; i < float_data.length; ++i) {
+            for (var i = 0; i < float_data.length; ++i) {
                 var scaled = Math.round(Math.min(Math.max((float_data[i] + 2.0) / 4.0 * 255.0, 0.0), 255.0))
-                imageData.data[i*4] = Math.min(255, scaled*-2+256);
-                imageData.data[i*4+1] = Math.max(0, scaled*2-256);
-                imageData.data[i*4+2] = 0;
-                imageData.data[i*4+3] = 255;
+                imageData.data[i * 4] = Math.min(255, scaled * -2 + 256);
+                imageData.data[i * 4 + 1] = Math.max(0, scaled * 2 - 256);
+                imageData.data[i * 4 + 2] = 0;
+                imageData.data[i * 4 + 3] = 255;
             }
             context.putImageData(imageData, 0, 0);
-         }
-
-
-
+        }
     </script>
 </head>
 <body>
