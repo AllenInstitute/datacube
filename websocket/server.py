@@ -30,7 +30,9 @@ class DatacubeProtocol(WebSocketServerProtocol):
             # dispatch to the function
             self.sendMessage(dispatch.functions[request['call']](request), ('binary' in request and request['binary'] == True))
         except Exception as e:
-            self.sendMessage(e.message, False)
+            template = "An exception of type {0} occured. Arguments:\n{1!r}"
+            message = template.format(type(e).__name__, e.args)
+            self.sendMessage(message, False)
 
 # Api responds to http requests with json msg argument
 class Api(Resource):
