@@ -148,7 +148,14 @@ class Datacube:
             assert(isinstance(observed, np.ndarray))
             assert(observed.shape == data.shape)
             assert(observed.dtype == data.dtype)
+            self.data = self.data / observed # make sure unobserved entries are NaN
         self.observed = observed
+
+        self.mean = []
+        self.std = []
+        for axis in range(0, self.ndim):
+            self.mean.append(np.nanmean(self.data, axis, keepdims=True))
+            self.std.append(np.nanstd(self.data, axis, keepdims=True))
 
         self.distributed = distributed
         if self.distributed:
@@ -168,7 +175,17 @@ class Datacube:
 
             self.context.push_function(_get_local_query.__name__, _get_local_query)
             self.context.push_function(correlation_search.__name__, correlation_search)
-        
+
+    def get_data(self, subscripts):
+        return self.data[subscripts]
+
+    def get_log2_1p(self, subscripts):
+        return np.log1p(self.data[subscripts])/np.log(2.0)
+
+    def get_standard(self, subscripts, axis):
+        sample_subs = np.ix_(*[[0] if i == axis else x.flat for i, x in enumerate(subscripts)])
+        return (self.data[subscripts] - self.mean[axis][sample_subs]) / self.std[axis][sample_subs]
+
     """Compute correlation for each sample versus a particular seed index, along an axis of this datacube.
 
     Restricted indices along any axis (including the query axis) can be selected, by supplying either a

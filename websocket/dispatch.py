@@ -16,27 +16,37 @@ class Dispatch:
         self.database = database
 
         # This is a dispatch table of functions that respond to the call request
-        self.functions = {  'cube': self.cube,
+        self.functions = {  'raw': self.raw,
+                            'log2_1p': self.log2_1p,
+                            'standard': self.standard,
                             'shape': self.shape,
                             'corr': self.corr,
                             'meta': self.meta
         }
 
-        self.zscore = sp.stats.mstats.zscore(self.datacube.data, axis=1)
-
-    def _get_subscripts_from_request(self, request):
-        subscripts = [slice(None,None,None)]*self.datacube.ndim
+    def _parse_select_from_request(self, request):
+        select = [slice(None,None,None)]*self.datacube.ndim
         if 'select' in request:
             assert(isinstance(request['select'], list))
             assert(len(request['select']) == self.datacube.ndim)
             for axis, selector in enumerate(request['select']):
                 if isinstance(selector, list):
                     if isinstance(selector[0], bool):
-                        subscripts[axis] = np.array(selector, dtype=np.bool)
+                        select[axis] = np.array(selector, dtype=np.bool)
                     elif isinstance(selector[0], int):
-                        subscripts[axis] = np.array(selector, dtype=np.int)
+                        select[axis] = np.array(selector, dtype=np.int)
                 elif isinstance(selector, dict):
-                    subscripts[axis] = slice(selector.get('start'), selector.get('stop'), selector.get('step'))
+                    select[axis] = slice(selector.get('start'), selector.get('stop'), selector.get('step'))
+        return select
+
+    def _get_subscripts_from_request(self, request):
+        subscripts = self._parse_select_from_request(request)
+        for axis, subs in enumerate(subscripts):
+            if isinstance(subs, np.ndarray) and subs.dtype == np.bool:
+                subscripts[axis] = subs.nonzero()[0]
+            elif isinstance(subs, slice):
+                subscripts[axis] = np.array(range(*subs.indices(self.datacube.shape[axis])), dtype=np.int)
+        subscripts = np.ix_(*subscripts)
         return subscripts
 
     # Get the shape of the datacube.
@@ -46,20 +56,28 @@ class Dispatch:
         else:
             return json.dumps(list(self.datacube.shape))
 
-    # Return values from a section of the datacube.
-    def cube(self, request):
+    def raw(self, request):
         subscripts = self._get_subscripts_from_request(request)
-        for axis, subs in enumerate(subscripts):
-            if isinstance(subs, np.ndarray) and subs.dtype == np.bool:
-                subscripts[axis] = subs.nonzero()[0]
-            elif isinstance(subs, slice):
-                subscripts[axis] = np.array(range(*subs.indices(self.datacube.shape[axis])), dtype=np.int)
-        subscripts = np.ix_(*subscripts)
-        shape = self.datacube.data[subscripts].shape
-        if request['binary']:
-            return struct.pack('!I', shape[0]) + struct.pack('!I', shape[1]) + self.zscore[subscripts].tobytes()
+        data = self.datacube.get_data(subscripts)
+        return self._format_data_response(data, request['binary'])
+
+    def log2_1p(self, request):
+        subscripts = self._get_subscripts_from_request(request)
+        data = self.datacube.get_log2_1p(subscripts)
+        return self._format_data_response(data, request['binary'])
+
+    def standard(self, request):
+        subscripts = self._get_subscripts_from_request(request)
+        data = self.datacube.get_standard(subscripts, request['axis'])
+        return self._format_data_response(data, request['binary'])
+
+    # Return values from a section of the datacube.
+    def _format_data_response(self, data, binary):
+        shape = data.shape
+        if binary:
+            return struct.pack('!I', shape[0]) + struct.pack('!I', shape[1]) + data.tobytes()
         else:
-            return json.dumps({'shape': shape, 'data': [None if np.isnan(x) else float(x) for x in self.zscore[subscripts].flat]})
+            return json.dumps({'shape': shape, 'data': [None if np.isnan(x) else float(x) for x in data.flat]})
 
     # Return the correlation calculation based on a seed row (JSON)
     def corr(self, request):
