@@ -19,10 +19,13 @@ class Dispatch:
         self.functions = {  'raw': self.raw,
                             'log2_1p': self.log2_1p,
                             'standard': self.standard,
-                            'shape': self.shape,
+                            'info': self.info,
                             'corr': self.corr,
                             'meta': self.meta
         }
+
+    def call(self, request):
+        return self.functions[request['call']](request)
 
     def _parse_select_from_request(self, request):
         select = [slice(None,None,None)]*self.datacube.ndim
@@ -50,11 +53,11 @@ class Dispatch:
         return subscripts
 
     # Get the shape of the datacube.
-    def shape(self, request):
-        if request['binary']:
-            return struct.pack('!%sI' % self.datacube.ndim, *self.datacube.shape)
-        else:
-            return json.dumps(list(self.datacube.shape))
+    def info(self, request):
+        return json.dumps({
+            'ndim': self.datacube.ndim,
+            'shape': list(self.datacube.shape),
+            'dtype': self.datacube.dtype.name})
 
     def raw(self, request):
         subscripts = self._get_subscripts_from_request(request)
@@ -75,20 +78,21 @@ class Dispatch:
     def _format_data_response(self, data, binary):
         shape = data.shape
         if binary:
-            return struct.pack('!I', shape[0]) + struct.pack('!I', shape[1]) + data.tobytes()
+            big_endian = data.byteswap() # copy array into network-order (big-endian)
+            return struct.pack('!I', shape[0]) + struct.pack('!I', shape[1]) + big_endian.tobytes()
         else:
             return json.dumps({'shape': shape, 'data': [None if np.isnan(x) else float(x) for x in data.flat]})
 
     # Return the correlation calculation based on a seed row (JSON)
     def corr(self, request):
-        query = self._get_subscripts_from_request(request)
+        query = self._parse_select_from_request(request)
         for axis, subs in enumerate(query):
             if subs == slice(None,None,None):
                 query[axis] = np.ones(1)
             elif isinstance(subs, slice):
                 query[axis] = np.array(range(*subs.indices(self.datacube.shape[axis])), dtype=np.int)
 
-        r=self.datacube.get_correlated(request['seed'], 0, query)
+        r=self.datacube.get_correlated(request['seed'], request['axis'], query)
         sort_idxs = np.argsort(-r)
         return json.dumps({'indexes': sort_idxs.tolist(), 'correlations': [None if np.isnan(x) else x for x in r[sort_idxs]]})
 

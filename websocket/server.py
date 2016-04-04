@@ -8,15 +8,19 @@ from twisted.web.static import File
 from twisted.web.resource import Resource
 import numpy as np
 import json
+import struct
 from datacube import Datacube
 from database import Database
 from dispatch import Dispatch
+import traceback
 
 from autobahn.twisted.websocket import WebSocketServerFactory, \
     WebSocketServerProtocol
 
 from autobahn.twisted.resource import WebSocketResource
 
+ERR_NONE = 0
+ERR_UNSPECIFIED = 1
 
 # Responds to web socket messages with json payloads
 class DatacubeProtocol(WebSocketServerProtocol):
@@ -28,11 +32,19 @@ class DatacubeProtocol(WebSocketServerProtocol):
             # parse the request
             request = json.loads(payload.decode('utf8'))
             # dispatch to the function
-            self.sendMessage(dispatch.functions[request['call']](request), ('binary' in request and request['binary'] == True))
+            response = dispatch.call(request)
+
+            if ('binary' in request) and request['binary']:
+                self.sendMessage(struct.pack('!I', ERR_NONE) + response, True)
+            else:
+                self.sendMessage(response, False)
         except Exception as e:
-            template = "An exception of type {0} occured. Arguments:\n{1!r}"
-            message = template.format(type(e).__name__, e.args)
-            self.sendMessage(message, False)
+            traceback.print_exc()
+            err_dict = {'args': e.args, 'class': e.__class__.__name__, 'doc': e.__doc__, 'message': e.message, 'code': ERR_UNSPECIFIED}
+            if ('binary' in request) and request['binary']:
+                self.sendMessage(struct.pack('!I', err_dict['code']) + json.dumps(err_dict, encoding='utf-8'), True)
+            else:
+                self.sendMessage(json.dumps({'error': err_dict}), False)
 
 # Api responds to http requests with json msg argument
 class Api(Resource):

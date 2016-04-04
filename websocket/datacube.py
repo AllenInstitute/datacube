@@ -102,7 +102,6 @@ def _get_local_query(darr, marr, global_query):
     for axis, mask in enumerate(global_query):
         if isinstance(mask, np.ndarray):
             if mask.dtype == np.bool and mask.size>0:
-                # TODO: support other dtypes
                 local_query[axis] = mask[darr.distribution._maps[axis].global_slice].astype(darr.dtype)
             elif np.issubdtype(mask.dtype, np.integer):
                 subscripted = True
@@ -164,7 +163,8 @@ class Datacube:
                 assert(len(distribution) == data.ndim)
                 self.distribution = Distribution(self.context, self.data.shape, dist=distribution)
             else:
-                # TODO: default to block-distributed on first axis and not distributed otherwise
+                # default to block-distributed on first axis and not distributed otherwise
+                # TODO: support other distributions
                 self.distribution = Distribution(self.context, self.data.shape, tuple('b' if i == 0 else 'n' for i in range(0,data.ndim)))
 
             self.dist_data = self.context.fromarray(self.data, self.distribution)
