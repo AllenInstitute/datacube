@@ -35,7 +35,7 @@ class DatacubeProtocol(WebSocketServerProtocol):
             response = dispatch.call(request)
 
             if ('binary' in request) and request['binary']:
-                if type(response) != 'str':
+                if not isinstance(response, str):
                     response = json.dumps(response, encoding='utf-8')
                 self.sendMessage(struct.pack('!I', ERR_NONE) + response, True)
             else:
