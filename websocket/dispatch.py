@@ -54,10 +54,11 @@ class Dispatch:
 
     # Get the shape of the datacube.
     def info(self, request):
-        return json.dumps({
+        return {
             'ndim': self.datacube.ndim,
             'shape': list(self.datacube.shape),
-            'dtype': self.datacube.dtype.name})
+            'dtype': self.datacube.dtype.name
+        }
 
     def raw(self, request):
         subscripts = self._get_subscripts_from_request(request)
@@ -81,7 +82,7 @@ class Dispatch:
             big_endian = data.byteswap() # copy array into network-order (big-endian)
             return struct.pack('!I', shape[0]) + struct.pack('!I', shape[1]) + big_endian.tobytes()
         else:
-            return json.dumps({'shape': shape, 'data': [None if np.isnan(x) else float(x) for x in data.flat]})
+            return {'shape': shape, 'data': [None if np.isnan(x) else float(x) for x in data.flat]}
 
     # Return the correlation calculation based on a seed row (JSON)
     def corr(self, request):
@@ -94,7 +95,7 @@ class Dispatch:
 
         r=self.datacube.get_correlated(request['seed'], request['axis'], query)
         sort_idxs = np.argsort(-r)
-        return json.dumps({'indexes': sort_idxs.tolist(), 'correlations': [None if np.isnan(x) else x for x in r[sort_idxs]]})
+        return {'indexes': sort_idxs.tolist(), 'correlations': [None if np.isnan(x) else x for x in r[sort_idxs]]}
 
     # Return metadata (JSON)
     def meta(self, request):

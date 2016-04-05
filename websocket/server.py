@@ -35,16 +35,18 @@ class DatacubeProtocol(WebSocketServerProtocol):
             response = dispatch.call(request)
 
             if ('binary' in request) and request['binary']:
+                if type(response) != 'str':
+                    response = json.dumps(response, encoding='utf-8')
                 self.sendMessage(struct.pack('!I', ERR_NONE) + response, True)
             else:
-                self.sendMessage(response, False)
+                self.sendMessage(json.dumps(response, encoding='utf-8'), False)
         except Exception as e:
             traceback.print_exc()
-            err_dict = {'args': e.args, 'class': e.__class__.__name__, 'doc': e.__doc__, 'message': e.message, 'code': ERR_UNSPECIFIED}
+            err_dict = {'args': e.args, 'class': e.__class__.__name__, 'doc': e.__doc__, 'message': e.message, 'traceback': traceback.format_exc(), 'code': ERR_UNSPECIFIED}
             if ('binary' in request) and request['binary']:
                 self.sendMessage(struct.pack('!I', err_dict['code']) + json.dumps(err_dict, encoding='utf-8'), True)
             else:
-                self.sendMessage(json.dumps({'error': err_dict}), False)
+                self.sendMessage(json.dumps({'error': err_dict}, encoding='utf-8'), False)
 
 # Api responds to http requests with json msg argument
 class Api(Resource):
