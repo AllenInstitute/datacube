@@ -69,6 +69,14 @@
             },
             "required": ["call", "select", "axis", "seed"]
         }
+        ,
+        "meta": {
+            "type": "object",
+            "properties": {
+                "call": {"type": "string", "pattern": "^meta$"}
+            },
+            "required": ["call"]
+        }
     },
     
     "oneOf": [
@@ -76,6 +84,7 @@
         {"$ref": "#/definitions/raw"},
         {"$ref": "#/definitions/log2_1p"},
         {"$ref": "#/definitions/standard"},
-        {"$ref": "#/definitions/corr"}
+        {"$ref": "#/definitions/corr"},
+        {"$ref": "#/definitions/meta"}
     ]
 }
