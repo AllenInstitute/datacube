@@ -8,11 +8,14 @@ from twisted.web.static import File
 from twisted.web.resource import Resource
 import numpy as np
 import json
+import jsonschema
 import struct
 from datacube import Datacube
 from database import Database
 from dispatch import Dispatch
+import dispatch
 import traceback
+
 
 from autobahn.twisted.websocket import WebSocketServerFactory, \
     WebSocketServerProtocol
@@ -21,18 +24,26 @@ from autobahn.twisted.resource import WebSocketResource
 
 ERR_NONE = 0
 ERR_UNSPECIFIED = 1
+ERR_FUNCTION_NAME = 2
+ERR_REQUEST_VALIDATION = 3
 
 # Responds to web socket messages with json payloads
 class DatacubeProtocol(WebSocketServerProtocol):
     def onConnect(self, request):
         print("WebSocket connection request: {}".format(request))
 
+    def _send_error_message(self, err_dict, request):
+        if ('binary' in request) and request['binary']:
+            self.sendMessage(struct.pack('!I', err_dict['code']) + json.dumps(err_dict, encoding='utf-8'), True)
+        else:
+            self.sendMessage(json.dumps({'error': err_dict}, encoding='utf-8'), False)
+
     def onMessage(self, payload, isBinary):
         try:
             # parse the request
             request = json.loads(payload.decode('utf8'))
             # dispatch to the function
-            response = dispatch.call(request)
+            response = dispatch_instance.call(request)
 
             if ('binary' in request) and request['binary']:
                 if not isinstance(response, str):
@@ -40,13 +51,19 @@ class DatacubeProtocol(WebSocketServerProtocol):
                 self.sendMessage(struct.pack('!I', ERR_NONE) + response, True)
             else:
                 self.sendMessage(json.dumps(response, encoding='utf-8'), False)
+        except dispatch.FunctionNameError as e:
+            self._send_error_message({'message': e.message, 'code': ERR_FUNCTION_NAME}, request)
+        except jsonschema.ValidationError as e:
+            message = 'request'
+            if len(e.absolute_path) > 0:
+                message += '[' + ']['.join(["'%s'" % x if isinstance(x, str) else str(x) for x in e.absolute_path]) + ']'
+            message += ': ' + e.message
+            err_dict = {'code': ERR_REQUEST_VALIDATION, 'message': message}
+            self._send_error_message(err_dict, request)
         except Exception as e:
             traceback.print_exc()
             err_dict = {'args': e.args, 'class': e.__class__.__name__, 'doc': e.__doc__, 'message': e.message, 'traceback': traceback.format_exc(), 'code': ERR_UNSPECIFIED}
-            if ('binary' in request) and request['binary']:
-                self.sendMessage(struct.pack('!I', err_dict['code']) + json.dumps(err_dict, encoding='utf-8'), True)
-            else:
-                self.sendMessage(json.dumps({'error': err_dict}, encoding='utf-8'), False)
+            self._send_error_message(err_dict, request)
 
 # Api responds to http requests with json msg argument
 class Api(Resource):
@@ -61,7 +78,7 @@ class Api(Resource):
         pprint(request.args['msg'])
         msg = json.loads(request.args['msg'][0])
         # dispatch to the function
-        return dispatch.functions[msg['call']](msg)
+        return dispatch_instance.functions[msg['call']](msg)
 
 if __name__ == '__main__':
     log.startLogging(sys.stdout)
@@ -70,7 +87,7 @@ if __name__ == '__main__':
     data = np.load('../data/ivscc.npy').astype(np.float32)
     datacube = Datacube(data)
     database = Database('postgresql+pg8000://postgres:postgres@ibs-andys-ux3:5432/wh')
-    dispatch = Dispatch(datacube, database)
+    dispatch_instance = Dispatch(datacube, database)
 
     # Serve static files under "/" ..
     root = File(".")
