@@ -9,53 +9,35 @@ import copy
 from datacube import Datacube
 from database import Database
 
+FUNCTIONS = ['raw', 'log2_1p', 'standard', 'info', 'corr', 'meta']
+
 class FunctionNameError(RuntimeError):
     pass
 
-# This handles the dispatching of function calls on a datacube.  The functions are stored in the functions table.
-class Dispatch:
-    def __init__(self, datacube, database):
-        assert(isinstance(datacube, Datacube))
-        assert(isinstance(database, Database))
-        self.datacube = datacube
-        self.database = database
-
-        # This is a dispatch table of functions that respond to the call request
-        self.functions = {  'raw': self.raw,
-                            'log2_1p': self.log2_1p,
-                            'standard': self.standard,
-                            'info': self.info,
-                            'corr': self.corr,
-                            'meta': self.meta
-        }
-
-        self.request_schema = json.loads(open('request_schema.json').read())
+class RequestValidator:
+    def __init__(self, file, shape):
+        self.schema = json.loads(open(file).read())
         # dynamically modify schema a bit to take into account datacube ndim and shape
-        self.request_schema['definitions']['select']['items'] = \
-            [copy.deepcopy(self.request_schema['definitions']['selector']) for axis in range(0, self.datacube.ndim)]
-        for axis in range(0, self.datacube.ndim):
+        self.schema['definitions']['select']['items'] = \
+            [copy.deepcopy(self.schema['definitions']['selector']) for axis in range(0, len(shape))]
+        for axis in range(0, len(shape)):
             # NOTE: this assumes boolean array selector is at index 2 in selector schema in request_schema.json
-            self.request_schema['definitions']['select']['items'][axis]['oneOf'][2]['minItems'] = self.datacube.shape[axis]
-            self.request_schema['definitions']['select']['items'][axis]['oneOf'][2]['maxItems'] = self.datacube.shape[axis]
-        self.request_schema['definitions']['select']['minItems'] = self.datacube.ndim
-        self.request_schema['definitions']['select']['maxItems'] = self.datacube.ndim
-        self.request_schema['definitions']['axis']['maximum'] = self.datacube.ndim-1
-
-    def call(self, request):
-        self._validate_request(request)
-        # dispatch to function
-        return self.functions[request['call']](request)
+            self.schema['definitions']['select']['items'][axis]['oneOf'][2]['minItems'] = shape[axis]
+            self.schema['definitions']['select']['items'][axis]['oneOf'][2]['maxItems'] = shape[axis]
+        self.schema['definitions']['select']['minItems'] = len(shape)
+        self.schema['definitions']['select']['maxItems'] = len(shape)
+        self.schema['definitions']['axis']['maximum'] = len(shape)
 
     # validate request against JSON schema, and find the most sensible error to respond with
-    def _validate_request(self, request):
+    def validate(self, request):
         # make sure function exists
-        if 'call' not in request or request['call'] not in self.functions:
+        if 'call' not in request or request['call'] not in FUNCTIONS:
             raise FunctionNameError('The specified function \'%s\' does not exist or is spelled incorrectly.' % request['call'])
 
         def filter_call_pattern(error):
             validator = error.validator
             if list(error.path) == ['call']:
-                if error.instance in self.functions:
+                if error.instance in FUNCTIONS:
                     call_precedence = 1
                 else:
                     call_precedence = -1
@@ -64,8 +46,23 @@ class Dispatch:
             return call_precedence, validator not in ['minItems', 'maxItems'], jsonschema.exceptions.relevance(error)
 
         err = jsonschema.exceptions.best_match( \
-            jsonschema.Draft4Validator(self.request_schema).iter_errors(request), key=filter_call_pattern)
+            jsonschema.Draft4Validator(self.schema).iter_errors(request), key=filter_call_pattern)
         if err: raise err
+
+# This handles the dispatching of function calls on a datacube.
+class Dispatch:
+    def __init__(self, datacube, database):
+        assert(isinstance(datacube, Datacube))
+        assert(isinstance(database, Database))
+        self.datacube = datacube
+        self.database = database
+        self.request_validator = RequestValidator('request_schema.json', self.datacube.shape)
+
+    def call(self, request):
+        self.request_validator.validate(request)
+        # dispatch to function
+        assert(request['call'] in FUNCTIONS)
+        return getattr(self, request['call'])(request)
 
     def _parse_select_from_request(self, request):
         select = [slice(None,None,None)]*self.datacube.ndim
