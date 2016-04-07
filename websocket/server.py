@@ -56,7 +56,7 @@ class DatacubeProtocol(WebSocketServerProtocol):
         except jsonschema.ValidationError as e:
             message = 'request'
             if len(e.absolute_path) > 0:
-                message += '[' + ']['.join(["'%s'" % x if isinstance(x, str) else str(x) for x in e.absolute_path]) + ']'
+                message += '[' + ']['.join(['\'%s\'' % x if isinstance(x, basestring) else str(x) for x in e.absolute_path]) + ']'
             message += ': ' + e.message
             err_dict = {'code': ERR_REQUEST_VALIDATION, 'message': message}
             self._send_error_message(err_dict, request)
