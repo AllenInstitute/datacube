@@ -4,6 +4,7 @@ import numpy as np
 import scipy as sp
 from scipy import stats
 import jsonschema
+import copy
 
 from datacube import Datacube
 from database import Database
@@ -29,13 +30,28 @@ class Dispatch:
         }
 
         self.request_schema = json.loads(open('request_schema.json').read())
+        # dynamically modify schema a bit to take into account datacube ndim and shape
+        self.request_schema['definitions']['select']['items'] = \
+            [copy.deepcopy(self.request_schema['definitions']['selector']) for axis in range(0, self.datacube.ndim)]
+        for axis in range(0, self.datacube.ndim):
+            # NOTE: this assumes boolean array selector is at index 2 in selector schema in request_schema.json
+            self.request_schema['definitions']['select']['items'][axis]['oneOf'][2]['minItems'] = self.datacube.shape[axis]
+            self.request_schema['definitions']['select']['items'][axis]['oneOf'][2]['maxItems'] = self.datacube.shape[axis]
+        self.request_schema['definitions']['select']['minItems'] = self.datacube.ndim
+        self.request_schema['definitions']['select']['maxItems'] = self.datacube.ndim
+        self.request_schema['definitions']['axis']['maximum'] = self.datacube.ndim-1
 
     def call(self, request):
+        self._validate_request(request)
+        # dispatch to function
+        return self.functions[request['call']](request)
+
+    # validate request against JSON schema, and find the most sensible error to respond with
+    def _validate_request(self, request):
         # make sure function exists
         if 'call' not in request or request['call'] not in self.functions:
             raise FunctionNameError('The specified function \'%s\' does not exist or is spelled incorrectly.' % request['call'])
 
-        # validate request against JSON schema, and find the most sensible error to respond with
         def filter_call_pattern(error):
             validator = error.validator
             if list(error.path) == ['call']:
@@ -45,14 +61,11 @@ class Dispatch:
                     call_precedence = -1
             else:
                 call_precedence = 0
-            return call_precedence, jsonschema.exceptions.relevance(error)
+            return call_precedence, validator not in ['minItems', 'maxItems'], jsonschema.exceptions.relevance(error)
 
         err = jsonschema.exceptions.best_match( \
             jsonschema.Draft4Validator(self.request_schema).iter_errors(request), key=filter_call_pattern)
         if err: raise err
-
-        # dispatch to function
-        return self.functions[request['call']](request)
 
     def _parse_select_from_request(self, request):
         select = [slice(None,None,None)]*self.datacube.ndim
@@ -61,10 +74,10 @@ class Dispatch:
             assert(len(request['select']) == self.datacube.ndim)
             for axis, selector in enumerate(request['select']):
                 if isinstance(selector, list):
-                    if isinstance(selector[0], bool):
-                        select[axis] = np.array(selector, dtype=np.bool)
-                    elif isinstance(selector[0], int):
+                    if len(selector) == 0 or isinstance(selector[0], int):
                         select[axis] = np.array(selector, dtype=np.int)
+                    elif isinstance(selector[0], bool):
+                        select[axis] = np.array(selector, dtype=np.bool)
                 elif isinstance(selector, dict):
                     select[axis] = slice(selector.get('start'), selector.get('stop'), selector.get('step'))
         return select

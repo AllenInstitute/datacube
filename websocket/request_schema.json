@@ -2,24 +2,28 @@
     "$schema": "http://json-schema.org/schema#",
     
     "definitions": {
+        "selector": {
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "start": {"oneOf": [{"type": "integer"}, {"type": "null"}]},
+                        "stop": {"oneOf": [{"type": "integer"}, {"type": "null"}]},
+                        "step": {"oneOf": [{"type": "integer"}, {"type": "null"}]}
+                    }
+                },
+                {"type": "array", "items": {"type": "integer"}},
+                {"type": "array", "items": {"type": "boolean"}},
+                {"type": "null"}
+            ]
+        }
+        ,
         "select": {
             "type": "array",
-            "items": {
-                "oneOf": [
-                    {
-                        "type": "object",
-                        "properties": {
-                            "start": {"oneOf": [{"type": "integer"}, {"type": "null"}]},
-                            "stop": {"oneOf": [{"type": "integer"}, {"type": "null"}]},
-                            "step": {"oneOf": [{"type": "integer"}, {"type": "null"}]}
-                        }
-                    },
-                    {"type": "array", "items": {"type": "integer"}},
-                    {"type": "array", "items": {"type": "boolean"}},
-                    {"type": "null"}
-                ]
-            }
+            "items": {"$ref": "#/definitions/selector"}
         }
+        ,
+        "axis": {"type": "integer", "minimum": 0}
         ,
         "info": {
             "type": "object",
@@ -53,7 +57,7 @@
                 "call": {"type": "string", "pattern": "^standard$"},
                 "select": {"$ref": "#/definitions/select"},
                 "binary": {"type": "boolean"},
-                "axis": {"type": "integer", "minimum": 0}
+                "axis": {"$ref": "#/definitions/axis"}
             },
             "required": ["call", "select", "axis"]
         }
@@ -64,7 +68,7 @@
                 "call": {"type": "string", "pattern": "^corr$"},
                 "select": {"$ref": "#/definitions/select"},
                 "binary": {"type": "boolean"},
-                "axis": {"type": "integer", "minimum": 0},
+                "axis": {"$ref": "#/definitions/axis"},
                 "seed": {"type": "integer"}
             },
             "required": ["call", "select", "axis", "seed"]
