@@ -22,48 +22,64 @@ from autobahn.twisted.websocket import WebSocketServerFactory, \
 
 from autobahn.twisted.resource import WebSocketResource
 
+class RequestNotValidJSON(RuntimeError):
+    pass
+
 ERR_NONE = 0
 ERR_UNSPECIFIED = 1
-ERR_FUNCTION_NAME = 2
-ERR_REQUEST_VALIDATION = 3
+ERR_NOT_JSON = 2
+ERR_FUNCTION_NAME = 3
+ERR_REQUEST_VALIDATION = 4
+ERR_MIXED_TYPES_IN_SELECTOR = 5
 
 # Responds to web socket messages with json payloads
 class DatacubeProtocol(WebSocketServerProtocol):
     def onConnect(self, request):
         print("WebSocket connection request: {}".format(request))
 
-    def _send_error_message(self, err_dict, request):
-        if ('binary' in request) and request['binary']:
+    def _send_error_message(self, err_dict, binary):
+        if binary:
             self.sendMessage(struct.pack('!I', err_dict['code']) + json.dumps(err_dict, encoding='utf-8'), True)
         else:
             self.sendMessage(json.dumps({'error': err_dict}, encoding='utf-8'), False)
 
     def onMessage(self, payload, isBinary):
         try:
-            # parse the request
-            request = json.loads(payload.decode('utf8'))
+            binary = False
+            try:
+                # parse the request
+                request = json.loads(payload.decode('utf8'))
+            except ValueError as e:
+                raise RequestNotValidJSON(e.message)
+
+            binary = ('binary' in request) and request['binary']
+
             # dispatch to the function
             response = dispatch_instance.call(request)
 
-            if ('binary' in request) and request['binary']:
+            if binary:
                 if not isinstance(response, str):
                     response = json.dumps(response, encoding='utf-8')
                 self.sendMessage(struct.pack('!I', ERR_NONE) + response, True)
             else:
                 self.sendMessage(json.dumps(response, encoding='utf-8'), False)
+        except RequestNotValidJSON as e:
+            self._send_error_message({'message': e.message, 'code': ERR_NOT_JSON}, binary)
         except dispatch.FunctionNameError as e:
-            self._send_error_message({'message': e.message, 'code': ERR_FUNCTION_NAME}, request)
+            self._send_error_message({'message': e.message, 'code': ERR_FUNCTION_NAME}, binary)
+        except dispatch.MixedTypesInSelector as e:
+            self._send_error_message({'message': e.message, 'code': ERR_MIXED_TYPES_IN_SELECTOR, 'axis': e.axis}, binary)
         except jsonschema.ValidationError as e:
             message = 'request'
             if len(e.absolute_path) > 0:
                 message += '[' + ']['.join(['\'%s\'' % x if isinstance(x, basestring) else str(x) for x in e.absolute_path]) + ']'
             message += ': ' + e.message
             err_dict = {'code': ERR_REQUEST_VALIDATION, 'message': message}
-            self._send_error_message(err_dict, request)
+            self._send_error_message(err_dict, binary)
         except Exception as e:
             traceback.print_exc()
             err_dict = {'args': e.args, 'class': e.__class__.__name__, 'doc': e.__doc__, 'message': e.message, 'traceback': traceback.format_exc(), 'code': ERR_UNSPECIFIED}
-            self._send_error_message(err_dict, request)
+            self._send_error_message(err_dict, binary)
 
 # Api responds to http requests with json msg argument
 class Api(Resource):

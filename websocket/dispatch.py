@@ -14,6 +14,11 @@ FUNCTIONS = ['raw', 'log2_1p', 'standard', 'info', 'corr', 'meta']
 class FunctionNameError(RuntimeError):
     pass
 
+class MixedTypesInSelector(RuntimeError):
+    def __init__(self, axis):
+        super(MixedTypesInSelector, self).__init__('All elements of selector for axis %i do not have the same type.' % axis)
+        self.axis = axis
+
 class RequestValidator:
     def __init__(self, file, shape):
         self.schema = json.loads(open(file).read())
@@ -78,10 +83,12 @@ class Dispatch:
                 if isinstance(selector, list):
                     if len(selector) == 0:
                         select[axis] = np.array([], dtype=np.int)
-                    elif isinstance(selector[0], bool):
+                    elif all(isinstance(x, bool) for x in selector):
                         select[axis] = np.array(selector, dtype=np.bool)
-                    elif isinstance(selector[0], int):
+                    elif all(isinstance(x, int) for x in selector):
                         select[axis] = np.array(selector, dtype=np.int)
+                    else:
+                        raise MixedTypesInSelector(axis)
                 elif isinstance(selector, dict):
                     select[axis] = slice(selector.get('start'), selector.get('stop'), selector.get('step'))
         return select
