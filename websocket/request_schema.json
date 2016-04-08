@@ -12,8 +12,8 @@
                         "step": {"oneOf": [{"type": "integer"}, {"type": "null"}]}
                     }
                 },
-                {"type": "array", "items": {"type": "integer"}},
-                {"type": "array", "items": {"type": "boolean"}},
+                {"type": "array", "items": [{"type": "integer"}]},
+                {"type": "array", "items": [{"type": "boolean"}]},
                 {"type": "null"}
             ]
         }
@@ -28,8 +28,7 @@
         "info": {
             "type": "object",
             "properties": {
-                "call": {"type": "string", "pattern": "^info$"},
-                "binary": {"type": "boolean"}
+                "call": {"type": "string", "pattern": "^info$"}
             }
         }
         ,
@@ -37,8 +36,7 @@
             "type": "object",
             "properties": {
                 "call": {"type": "string", "pattern": "^raw$"},
-                "select": {"$ref": "#/definitions/select"},
-                "binary": {"type": "boolean"}
+                "select": {"$ref": "#/definitions/select"}
             }
         }
         ,
@@ -46,8 +44,7 @@
             "type": "object",
             "properties": {
                 "call": {"type": "string", "pattern": "^log2_1p$"},
-                "select": {"$ref": "#/definitions/select"},
-                "binary": {"type": "boolean"}
+                "select": {"$ref": "#/definitions/select"}
             }
         }
         ,
@@ -56,7 +53,6 @@
             "properties": {
                 "call": {"type": "string", "pattern": "^standard$"},
                 "select": {"$ref": "#/definitions/select"},
-                "binary": {"type": "boolean"},
                 "axis": {"$ref": "#/definitions/axis"}
             },
             "required": ["call", "select", "axis"]
@@ -67,7 +63,6 @@
             "properties": {
                 "call": {"type": "string", "pattern": "^corr$"},
                 "select": {"$ref": "#/definitions/select"},
-                "binary": {"type": "boolean"},
                 "axis": {"$ref": "#/definitions/axis"},
                 "seed": {"type": "integer"}
             },
@@ -83,12 +78,26 @@
         }
     },
     
-    "oneOf": [
-        {"$ref": "#/definitions/info"},
-        {"$ref": "#/definitions/raw"},
-        {"$ref": "#/definitions/log2_1p"},
-        {"$ref": "#/definitions/standard"},
-        {"$ref": "#/definitions/corr"},
-        {"$ref": "#/definitions/meta"}
+    "allOf": [
+        {
+            "type": "object",
+            "properties": {
+                "call": {"type": "string"},
+                "binary": {"type": "boolean"},
+                "validate": {"type": "boolean"}
+            },
+            "required": ["call"]
+        }
+        ,
+        {
+            "oneOf": [
+                {"$ref": "#/definitions/info"},
+                {"$ref": "#/definitions/raw"},
+                {"$ref": "#/definitions/log2_1p"},
+                {"$ref": "#/definitions/standard"},
+                {"$ref": "#/definitions/corr"},
+                {"$ref": "#/definitions/meta"}
+            ]
+        }
     ]
 }

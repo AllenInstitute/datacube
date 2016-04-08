@@ -59,7 +59,12 @@ class Dispatch:
         self.request_validator = RequestValidator('request_schema.json', self.datacube.shape)
 
     def call(self, request):
-        self.request_validator.validate(request)
+        # validate, if requested
+        if ('validate' not in request) or request['validate']:
+            self.request_validator.validate(request)
+        # default binary to false
+        if 'binary' not in request:
+            request['binary'] = false
         # dispatch to function
         assert(request['call'] in FUNCTIONS)
         return getattr(self, request['call'])(request)
