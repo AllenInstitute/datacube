@@ -1,7 +1,31 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <script type="text/javascript">
+</head>
+<body>
+<h1>Datacube Dashboard</h1>
+<noscript>You must enable JavaScript</noscript>
+<canvas id="graph"  width="300" height="300"></canvas>
+<form>
+    Message:
+    <p>
+        <textarea id="message" cols="80" rows="15">
+{
+    "call": "standard",
+    "select":
+    [
+        {"start": 0, "stop": 250},
+        null
+    ],
+    "axis": 1,
+    "binary": true
+}
+        </textarea>
+    </p>
+</form>
+<button onclick='send();'>Send Message</button>
+<pre id="log" style="height: 20em; overflow-y: scroll; background-color: #faa;"></pre>
+<script type="text/javascript">
         var sock = null;
         var ellog = null;
         var width = 300;
@@ -90,30 +114,6 @@
             }
             context.putImageData(imageData, 0, 0);
         }
-    </script>
-</head>
-<body>
-<h1>Datacube Dashboard</h1>
-<noscript>You must enable JavaScript</noscript>
-<canvas id="graph"  width="300" height="300"></canvas>
-<form>
-    Message:
-    <p>
-        <textarea id="message" cols="80" rows="15">
-{
-    "call": "standard",
-    "select":
-    [
-        {"start": 0, "stop": 250},
-        null
-    ],
-    "axis": 1,
-    "binary": true
-}
-        </textarea>
-    </p>
-</form>
-<button onclick='send();'>Send Message</button>
-<pre id="log" style="height: 20em; overflow-y: scroll; background-color: #faa;"></pre>
+</script>
 </body>
 </html>
