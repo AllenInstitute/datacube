@@ -71,10 +71,12 @@ class Dispatch:
             assert(len(request['select']) == self.datacube.ndim)
             for axis, selector in enumerate(request['select']):
                 if isinstance(selector, list):
-                    if len(selector) == 0 or isinstance(selector[0], int):
-                        select[axis] = np.array(selector, dtype=np.int)
+                    if len(selector) == 0:
+                        select[axis] = np.array([], dtype=np.int)
                     elif isinstance(selector[0], bool):
                         select[axis] = np.array(selector, dtype=np.bool)
+                    elif isinstance(selector[0], int):
+                        select[axis] = np.array(selector, dtype=np.int)
                 elif isinstance(selector, dict):
                     select[axis] = slice(selector.get('start'), selector.get('stop'), selector.get('step'))
         return select
