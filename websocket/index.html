@@ -93,10 +93,12 @@
         };
 
         function draw(data) {
-            shape = new DataView(data, 0, 4 * 2);
-            height = shape.getInt32(0, false);
-            width = shape.getInt32(4, false);
-            float_data = new Float32Array(data, 4 * 2);
+            header = new DataView(data, 0, 4 * 3);
+            response_code = header.getInt32(0, false);
+            log("Response code: " + response_code);
+            height = header.getInt32(4, false);
+            width = header.getInt32(8, false);
+            float_data = new Float32Array(data, 4 * 3);
 
             var canvas = document.getElementById('graph');
             canvas.width = width;
