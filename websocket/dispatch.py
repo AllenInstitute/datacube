@@ -9,7 +9,7 @@ import copy
 from datacube import Datacube
 from database import Database
 
-FUNCTIONS = ['raw', 'log2_1p', 'standard', 'info', 'corr', 'meta']
+FUNCTIONS = ['raw', 'log2_1p', 'standard', 'info', 'corr', 'fold_change', 'meta']
 
 class FunctionNameError(RuntimeError):
     pass
@@ -43,11 +43,15 @@ class RequestValidator:
             validator = error.validator
             if list(error.path) == ['call']:
                 if error.instance in FUNCTIONS:
-                    call_precedence = 1
+                    call_precedence = 2
                 else:
-                    call_precedence = -1
+                    call_precedence = -2
             else:
-                call_precedence = 0
+                call_pattern = error.schema.get('properties', {}).get('call', {}).get('pattern')
+                if call_pattern == '^' + request['call'] + '$':
+                    call_precedence = -1
+                else:
+                    call_precedence = 1
             return call_precedence, validator not in ['minItems', 'maxItems'], jsonschema.exceptions.relevance(error)
 
         err = jsonschema.exceptions.best_match( \
@@ -74,27 +78,26 @@ class Dispatch:
         assert(request['call'] in FUNCTIONS)
         return getattr(self, request['call'])(request)
 
-    def _parse_select_from_request(self, request):
+    def _parse_select_from_request(self, select_element):
         select = [slice(None,None,None)]*self.datacube.ndim
-        if 'select' in request:
-            assert(isinstance(request['select'], list))
-            assert(len(request['select']) == self.datacube.ndim)
-            for axis, selector in enumerate(request['select']):
-                if isinstance(selector, list):
-                    if len(selector) == 0:
-                        select[axis] = np.array([], dtype=np.int)
-                    elif all(isinstance(x, bool) for x in selector):
-                        select[axis] = np.array(selector, dtype=np.bool)
-                    elif all(isinstance(x, int) for x in selector):
-                        select[axis] = np.array(selector, dtype=np.int)
-                    else:
-                        raise MixedTypesInSelector(axis)
-                elif isinstance(selector, dict):
-                    select[axis] = slice(selector.get('start'), selector.get('stop'), selector.get('step'))
+        assert(isinstance(select_element, list))
+        assert(len(select_element) == self.datacube.ndim)
+        for axis, selector in enumerate(select_element):
+            if isinstance(selector, list):
+                if len(selector) == 0:
+                    select[axis] = np.array([], dtype=np.int)
+                elif all(isinstance(x, bool) for x in selector):
+                    select[axis] = np.array(selector, dtype=np.bool)
+                elif all(isinstance(x, int) for x in selector):
+                    select[axis] = np.array(selector, dtype=np.int)
+                else:
+                    raise MixedTypesInSelector(axis)
+            elif isinstance(selector, dict):
+                select[axis] = slice(selector.get('start'), selector.get('stop'), selector.get('step'))
         return select
 
-    def _get_subscripts_from_request(self, request):
-        subscripts = self._parse_select_from_request(request)
+    def _get_subscripts_from_request(self, select_element):
+        subscripts = self._parse_select_from_request(select_element)
         for axis, subs in enumerate(subscripts):
             if isinstance(subs, np.ndarray) and subs.dtype == np.bool:
                 subscripts[axis] = subs.nonzero()[0]
@@ -112,17 +115,17 @@ class Dispatch:
         }
 
     def raw(self, request):
-        subscripts = self._get_subscripts_from_request(request)
+        subscripts = self._get_subscripts_from_request(request['select'])
         data = self.datacube.get_data(subscripts)
         return self._format_data_response(data, request['binary'])
 
     def log2_1p(self, request):
-        subscripts = self._get_subscripts_from_request(request)
+        subscripts = self._get_subscripts_from_request(request['select'])
         data = self.datacube.get_log2_1p(subscripts)
         return self._format_data_response(data, request['binary'])
 
     def standard(self, request):
-        subscripts = self._get_subscripts_from_request(request)
+        subscripts = self._get_subscripts_from_request(request['select'])
         data = self.datacube.get_standard(subscripts, request['axis'])
         return self._format_data_response(data, request['binary'])
 
@@ -135,18 +138,33 @@ class Dispatch:
         else:
             return {'shape': shape, 'data': [None if np.isnan(x) else float(x) for x in data.flat]}
 
-    # Return the correlation calculation based on a seed row (JSON)
-    def corr(self, request):
-        query = self._parse_select_from_request(request)
+    def _convert_slices_to_indices(self, query):
         for axis, subs in enumerate(query):
             if subs == slice(None,None,None):
                 query[axis] = np.ones(1)
             elif isinstance(subs, slice):
                 query[axis] = np.array(range(*subs.indices(self.datacube.shape[axis])), dtype=np.int)
+        return query
+
+    # Return the correlation calculation based on a seed row (JSON)
+    def corr(self, request):
+        query = self._parse_select_from_request(request['select'])
+        query = self._convert_slices_to_indices(query)
 
         r=self.datacube.get_correlated(request['seed'], request['axis'], query)
         sort_idxs = np.argsort(-r)
-        return {'indexes': sort_idxs.tolist(), 'correlations': [None if np.isnan(x) else x for x in r[sort_idxs]]}
+        return {'indexes': sort_idxs.tolist(), 'correlations': [None if np.isnan(x) else x for x in r]}
+
+    def fold_change(self, request):
+        domain1 = self._parse_select_from_request(request['numerator'])
+        domain2 = self._parse_select_from_request(request['denominator'])
+        domain1 = self._convert_slices_to_indices(domain1)
+        domain2 = self._convert_slices_to_indices(domain2)
+
+        r=self.datacube.get_fold_change(request['axis'], domain1, domain2)
+        r[np.logical_not(np.isfinite(r))] = np.nan
+        sort_idxs = np.argsort(-r)
+        return {'indexes': sort_idxs.tolist(), 'fold_changes': [None if np.isnan(x) else x for x in r]}
 
     # Return metadata (JSON)
     def meta(self, request):

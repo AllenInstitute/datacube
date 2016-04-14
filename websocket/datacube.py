@@ -3,7 +3,11 @@ import scipy as sp
 import distarray
 from distarray.globalapi import Context, Distribution
 
-def correlation_search(data, seed, axis, query=None, mdata=None, mseed=None):
+def _mask_args(axis, ndim, query):
+    return lambda axes=range(0,ndim), out_axes=[axis], more=[]: \
+        list(sum([(mask.squeeze(),[i]) for i, mask in enumerate(query) if i in axes and mask.size>1], ()))+more+[out_axes]
+
+def correlation(data, seed, axis, query=None, mdata=None, mseed=None):
     """Compute correlation for each sample versus a seed sample, along an axis of a multi-dimensional array.
 
     Compute the correlation of data.take(i, axis=axis) and seed for all i.
@@ -39,9 +43,7 @@ def correlation_search(data, seed, axis, query=None, mdata=None, mseed=None):
     if query is None:
         query = [np.ones(1)]*data.ndim
 
-    mask_args = \
-        lambda axes=range(0,data.ndim), out_axes=[axis], more=[]: \
-            list(sum([(mask.squeeze(),[i]) for i, mask in enumerate(query) if i in axes and mask.size>1], ()))+more+[out_axes]
+    mask_args = _mask_args(axis, data.ndim, query)
     
     sdims = range(0,seed.ndim)
     ddims = range(0,data.ndim)
@@ -76,10 +78,60 @@ def correlation_search(data, seed, axis, query=None, mdata=None, mseed=None):
 
     return np.clip(numerator / denominator, -1.0, 1.0) / query[axis].flat # intentional divide by zero
 
+def _local_differential(differential_function, darr, axis, domain1, domain2, marr, **kwargs):
+    import numpy as np
 
-def _local_search(search_function, darr, seed, axis, global_query, marr, mseed):
+    domain2[axis] = domain1[axis]
+    for paired_axis in paired:
+        domain2[paired_axis] = domain1[paired_axis]
+
+    d1_query, d1_data, d1_mdata, d1_empty = _get_local_query(darr, marr, domain1)
+    d2_query, d2_data, d2_mdata, d2_empty = _get_local_query(darr, marr, domain2)
+
+    return globals()[differential_function](d1_data, d2_data, axis, d1_query, d2_query, d1_mdata, d2_mdata, **kwargs)
+
+def fold_change(d1_data, d2_data, axis, domain1=None, domain2=None, d1_mdata=None, d2_mdata=None):
+    import numpy as np
+    
+    assert(d1_data.ndim == d2_data.ndim)
+    ndim = d1_data.ndim
+    if domain1 is None:
+        domain1 = [np.ones(1)]*ndim
+    if domain2 is None:
+        domain2 = [np.ones(1)]*ndim
+
+    d1_mask_args = _mask_args(axis, ndim, domain1)
+    d2_mask_args = _mask_args(axis, ndim, domain2)
+
+    ddims = range(0,ndim)
+    sample_axes = np.array([i for i in ddims if i != axis])
+
+    if d1_mdata is None:
+        d1_num_samples = np.prod(np.array([domain1[i].sum() if domain1[i].size>1 else d1_data.shape[i] for i in sample_axes]))
+        d1_mdata_args = []
+    else:
+        d1_num_samples = np.einsum(d1_mdata, ddims, *d1_mask_args())
+        d1_mdata_args = [d1_mdata, range(0, ndim)]
+
+    d1_mean = np.einsum(d1_data, ddims, *d1_mask_args(more=d1_mdata_args)) / d1_num_samples
+    d1_mean *= domain1[axis].flat
+
+    if d2_mdata is None:
+        d2_num_samples = np.prod(np.array([domain2[i].sum() if domain2[i].size>1 else d2_data.shape[i] for i in sample_axes]))
+        d2_mdata_args = []
+    else:
+        d2_num_samples = np.einsum(d2_mdata, ddims, *d2_mask_args())
+        d2_mdata_args = [d2_mdata, range(0, ndim)]
+    
+    d2_mean = np.einsum(d2_data, ddims, *d2_mask_args(more=d2_mdata_args)) / d2_num_samples
+    d2_mean *= domain2[axis].flat
+
+    return np.divide(d1_mean, d2_mean) / domain1[axis].flat # intentional divide by zero
+
+def _local_search(search_function, darr, seed, axis, global_query, marr, mseed, **kwargs):
     import numpy as np
     query, data, mdata, empty = _get_local_query(darr, marr, global_query)
+    # skip computation and return sensible outputs when some axes of the query are empty
     if len(empty)>0:
         if axis in empty:
             return np.array([], dtype=darr.ndarray.dtype)
@@ -88,9 +140,12 @@ def _local_search(search_function, darr, seed, axis, global_query, marr, mseed):
             result.fill(np.nan)
             return result
 
-    return globals()[search_function](data, seed, axis, query, mdata, mseed)
+    return globals()[search_function](data, seed, axis, query, mdata, mseed, **kwargs)
 
-
+# apply a query to local chunks of the datacube. boolean selectors just need to be chunked in the same
+# way as the datacube, while integer indices need to be individually mapped.  for integer indices,
+# the selected part of the datacube chunk is copied to a new array.  if there are no integer indices,
+# a view on the local array is returned.
 def _get_local_query(darr, marr, global_query):
     import numpy as np
     assert(len(global_query)==darr.ndim)
@@ -150,12 +205,14 @@ class Datacube:
             self.data = self.data / observed # make sure unobserved entries are NaN
         self.observed = observed
 
+        # precompute and store some statistics on the datacube
         self.mean = []
         self.std = []
         for axis in range(0, self.ndim):
             self.mean.append(np.nanmean(self.data, axis, keepdims=True))
             self.std.append(np.nanstd(self.data, axis, keepdims=True))
 
+        # set up for distributed computations
         self.distributed = distributed
         if self.distributed:
             self.context = Context()
@@ -174,7 +231,8 @@ class Datacube:
                 self.dist_observed = None
 
             self.context.push_function(_get_local_query.__name__, _get_local_query)
-            self.context.push_function(correlation_search.__name__, correlation_search)
+            self.context.push_function(correlation.__name__, correlation)
+            self.context.push_function(fold_change.__name__, fold_change)
 
     def get_data(self, subscripts):
         return self.data[subscripts]
@@ -227,16 +285,36 @@ class Datacube:
         if self.distributed:        
             assert(all(d == 'n' for i, d in enumerate(dist) if i != axis)) # TODO: correlation_search currently needs all non-query axes to be non-distributed
             dist_observed_key = self.dist_observed.key if self.dist_observed is not None else None
-            args = (correlation_search.__name__, self.dist_data.key, seed, 0, query, dist_observed_key, seed_observed)
+            args = (correlation.__name__, self.dist_data.key, seed, axis, query, dist_observed_key, seed_observed)
             return np.concatenate(self.dist_data.context.apply(_local_search, args))
         else:
-            selected_data = self.data
-            selected_observed = self.observed
-            for i, mask in enumerate(query):
-                if mask is not None and mask.dtype != np.bool and np.issubdtype(mask.dtype, np.integer):
-                    selected_data = selected_data.take(mask, axis=i)
-                    query[i] = np.ones(1, dtype=self.dtype)
-                    if self.observed is not None:
-                        selected_observed = selected_observed.take(mask, axis=i)
-            
-            return correlation_search(selected_data, seed, axis, query, selected_observed, seed_observed)
+            selected_data, selected_observed, query = self._apply_query(query)
+            return correlation(selected_data, seed, axis, query, selected_observed, seed_observed)
+
+    def get_fold_change(self, axis, domain1=None, domain2=None):
+        if domain1 is None:
+            domain1 = [np.ones(1, dtype=self.dtype)]*self.ndim
+        if domain2 is None:
+            domain2 = [np.ones(1, dtype=self.dtype)]*self.ndim
+
+        if self.distributed:
+            assert(all(d == 'n' for i, d in enumerate(dist) if i != axis))
+            dist_observed_key = self.dist_observed.key if self.dist_observed is not None else None
+            args = (fold_change.__name__, self.dist_data.key, axis, domain1, domain2, dist_observed_key)
+            return np.concatenate(self.dist_data.context.apply(_local_differential, args))
+        else:
+            d1_data, d1_mdata, domain1 = self._apply_query(domain1)
+            d2_data, d2_mdata, domain2 = self._apply_query(domain2)
+            return fold_change(d1_data, d2_data, axis, domain1, domain2, d1_mdata, d2_mdata)
+
+    # apply integer indexes in query by copying the subarray to a new array, and update the query accordingly
+    def _apply_query(self, query):
+        data = self.data
+        mdata = self.observed
+        for i, mask in enumerate(query):
+            if mask is not None and mask.dtype != np.bool and np.issubdtype(mask.dtype, np.integer):
+                data = data.take(mask, axis=i)
+                query[i] = np.ones(1, dtype=self.dtype)
+                if self.observed is not None:
+                    mdata = mdata.take(mask, axis=i)
+        return data, mdata, query

@@ -69,6 +69,17 @@
             "required": ["call", "select", "axis", "seed"]
         }
         ,
+        "fold_change": {
+            "type": "object",
+            "properties": {
+                "call": {"type": "string", "pattern": "^fold_change$"},
+                "numerator": {"$ref": "#/definitions/select"},
+                "denominator": {"$ref": "#/definitions/select"},
+                "axis": {"$ref": "#/definitions/axis"}
+            },
+            "required": ["call", "numerator", "denominator", "axis"]
+        }
+        ,
         "meta": {
             "type": "object",
             "properties": {
@@ -96,6 +107,7 @@
                 {"$ref": "#/definitions/log2_1p"},
                 {"$ref": "#/definitions/standard"},
                 {"$ref": "#/definitions/corr"},
+                {"$ref": "#/definitions/fold_change"},
                 {"$ref": "#/definitions/meta"}
             ]
         }
