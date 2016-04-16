@@ -41,7 +41,7 @@ def correlation(data, seed, axis, query=None, mdata=None, mseed=None):
     import numpy as np # import within this function in case it is being pushed to a distributed node
     
     if query is None:
-        query = [np.ones(1)]*data.ndim
+        query = [np.ones(1, dtype=data.dtype)]*data.ndim
 
     mask_args = _mask_args(axis, data.ndim, query)
     
@@ -82,11 +82,20 @@ def _local_differential(differential_function, darr, axis, domain1, domain2, mar
     import numpy as np
 
     domain2[axis] = domain1[axis]
-    for paired_axis in paired:
-        domain2[paired_axis] = domain1[paired_axis]
+    if 'paired' in kwargs:
+        for paired_axis in kwargs['paired']:
+            domain2[paired_axis] = domain1[paired_axis]
 
     d1_query, d1_data, d1_mdata, d1_empty = _get_local_query(darr, marr, domain1)
     d2_query, d2_data, d2_mdata, d2_empty = _get_local_query(darr, marr, domain2)
+
+    # skip computation and return sensible outputs when one of the domains is empty
+    if axis in d1_empty:
+        return np.array([], dtype=darr.ndarray.dtype)
+    elif len(d1_empty)>0 or len(d2_empty)>0:
+        result = np.empty((darr.local_shape[axis]), dtype=darr.ndarray.dtype)
+        result.fill(np.nan)
+        return result
 
     return globals()[differential_function](d1_data, d2_data, axis, d1_query, d2_query, d1_mdata, d2_mdata, **kwargs)
 
@@ -96,9 +105,9 @@ def fold_change(d1_data, d2_data, axis, domain1=None, domain2=None, d1_mdata=Non
     assert(d1_data.ndim == d2_data.ndim)
     ndim = d1_data.ndim
     if domain1 is None:
-        domain1 = [np.ones(1)]*ndim
+        domain1 = [np.ones(1, dtype=d1_data.dtype)]*ndim
     if domain2 is None:
-        domain2 = [np.ones(1)]*ndim
+        domain2 = [np.ones(1, dtype=d2_data.dtype)]*ndim
 
     d1_mask_args = _mask_args(axis, ndim, domain1)
     d2_mask_args = _mask_args(axis, ndim, domain2)
@@ -150,7 +159,7 @@ def _get_local_query(darr, marr, global_query):
     import numpy as np
     assert(len(global_query)==darr.ndim)
     
-    local_query = [np.ones(1)]*darr.ndim
+    local_query = [np.ones(1, dtype=darr.dtype)]*darr.ndim
     local_subscripts = [range(0,darr.local_shape[axis]) for axis in range(0,darr.ndim)]
     subscripted = False
     empty = []
@@ -173,7 +182,7 @@ def _get_local_query(darr, marr, global_query):
                 else:
                     empty.append(axis)
             else:
-                raise IndexError
+                raise IndexError('Query selector must be either boolean or integer ndarray, not %s' % str(mask.dtype))
 
     mdata = None
     if len(empty)>0:
@@ -231,6 +240,7 @@ class Datacube:
                 self.dist_observed = None
 
             self.context.push_function(_get_local_query.__name__, _get_local_query)
+            self.context.push_function(_mask_args.__name__, _mask_args)
             self.context.push_function(correlation.__name__, correlation)
             self.context.push_function(fold_change.__name__, fold_change)
 
@@ -269,7 +279,7 @@ class Datacube:
     """
     def get_correlated(self, seed_index, axis, query=None):
         if query is None:
-            query = [np.ones(1, dtype=self.dtype)]*self.ndim
+            query = [None]*self.ndim
 
         seed_observed = None
         if self.observed is not None:
@@ -282,8 +292,8 @@ class Datacube:
                 if seed_observed is not None:
                     seed_observed = seed_observed.take(mask, axis=i)
         
-        if self.distributed:        
-            assert(all(d == 'n' for i, d in enumerate(dist) if i != axis)) # TODO: correlation_search currently needs all non-query axes to be non-distributed
+        if self.distributed:
+            assert(all(d == 'n' for i, d in enumerate(self.distribution.dist) if i != axis)) # TODO: correlation_search currently needs all non-query axes to be non-distributed
             dist_observed_key = self.dist_observed.key if self.dist_observed is not None else None
             args = (correlation.__name__, self.dist_data.key, seed, axis, query, dist_observed_key, seed_observed)
             return np.concatenate(self.dist_data.context.apply(_local_search, args))
@@ -298,16 +308,19 @@ class Datacube:
             domain2 = [np.ones(1, dtype=self.dtype)]*self.ndim
 
         if self.distributed:
-            assert(all(d == 'n' for i, d in enumerate(dist) if i != axis))
+            assert(all(d == 'n' for i, d in enumerate(self.distribution.dist) if i != axis))
             dist_observed_key = self.dist_observed.key if self.dist_observed is not None else None
             args = (fold_change.__name__, self.dist_data.key, axis, domain1, domain2, dist_observed_key)
             return np.concatenate(self.dist_data.context.apply(_local_differential, args))
         else:
+            domain2[axis] = domain1[axis]
             d1_data, d1_mdata, domain1 = self._apply_query(domain1)
             d2_data, d2_mdata, domain2 = self._apply_query(domain2)
             return fold_change(d1_data, d2_data, axis, domain1, domain2, d1_mdata, d2_mdata)
 
-    # apply integer indexes in query by copying the subarray to a new array, and update the query accordingly
+    # apply integer indexes in query by copying the subarray to a new array,
+    # and updating the query accordingly. also convert None selectors to
+    # the trivial mask array [1.0]
     def _apply_query(self, query):
         data = self.data
         mdata = self.observed
@@ -317,4 +330,6 @@ class Datacube:
                 query[i] = np.ones(1, dtype=self.dtype)
                 if self.observed is not None:
                     mdata = mdata.take(mask, axis=i)
+            elif mask is None:
+                query[i] = np.ones(1, dtype=self.dtype)
         return data, mdata, query

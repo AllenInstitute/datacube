@@ -15,7 +15,7 @@ from database import Database
 from dispatch import Dispatch
 import dispatch
 import traceback
-
+from ipyparallel.error import CompositeError
 
 from autobahn.twisted.websocket import WebSocketServerFactory, \
     WebSocketServerProtocol
@@ -76,6 +76,16 @@ class DatacubeProtocol(WebSocketServerProtocol):
             message += ': ' + e.message
             err_dict = {'code': ERR_REQUEST_VALIDATION, 'message': message}
             self._send_error_message(err_dict, binary)
+        except CompositeError as e:
+            # error from parallel nodes needs special call to render_traceback()
+            # and comes back with ANSI control codes which need to be stripped
+            import re
+            ansi_escape = re.compile(r'(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]')
+            tb = '\n'.join([ansi_escape.sub('', x) for x in e.render_traceback()])
+            print tb
+            # TODO: provide information about the compute nodes where the error(s) happened
+            err_dict = {'code': ERR_UNSPECIFIED, 'message': tb}
+            self._send_error_message(err_dict, binary)
         except Exception as e:
             traceback.print_exc()
             err_dict = {'args': e.args, 'class': e.__class__.__name__, 'doc': e.__doc__, 'message': e.message, 'traceback': traceback.format_exc(), 'code': ERR_UNSPECIFIED}
@@ -101,7 +111,7 @@ if __name__ == '__main__':
 
     # load cell types data, database and dispatch
     data = np.load('../data/ivscc.npy').astype(np.float32)
-    datacube = Datacube(data)
+    datacube = Datacube(data, distributed=False)
     database = Database('postgresql+pg8000://postgres:postgres@ibs-andys-ux3:5432/wh')
     dispatch_instance = Dispatch(datacube, database)
 

@@ -78,6 +78,8 @@ class Dispatch:
         assert(request['call'] in FUNCTIONS)
         return getattr(self, request['call'])(request)
 
+    # convert parsed json dict selectors into slice objects,
+    # index and bool ndarrays
     def _parse_select_from_request(self, select_element):
         select = [slice(None,None,None)]*self.datacube.ndim
         assert(isinstance(select_element, list))
@@ -96,6 +98,7 @@ class Dispatch:
                 select[axis] = slice(selector.get('start'), selector.get('stop'), selector.get('step'))
         return select
 
+    # convert all request selectors into index arrays
     def _get_subscripts_from_request(self, select_element):
         subscripts = self._parse_select_from_request(select_element)
         for axis, subs in enumerate(subscripts):
@@ -138,10 +141,12 @@ class Dispatch:
         else:
             return {'shape': shape, 'data': [None if np.isnan(x) else float(x) for x in data.flat]}
 
+    # slices are materialized as 1-d arrays of integer indices, except
+    # slice(None,None,None) which is encoded as None.
     def _convert_slices_to_indices(self, query):
         for axis, subs in enumerate(query):
             if subs == slice(None,None,None):
-                query[axis] = np.ones(1)
+                query[axis] = None
             elif isinstance(subs, slice):
                 query[axis] = np.array(range(*subs.indices(self.datacube.shape[axis])), dtype=np.int)
         return query
@@ -153,7 +158,7 @@ class Dispatch:
 
         r=self.datacube.get_correlated(request['seed'], request['axis'], query)
         sort_idxs = np.argsort(-r)
-        return {'indexes': sort_idxs.tolist(), 'correlations': [None if np.isnan(x) else x for x in r]}
+        return {'indexes': sort_idxs.tolist(), 'correlations': [None if np.isnan(x) else float(x) for x in r]}
 
     def fold_change(self, request):
         domain1 = self._parse_select_from_request(request['numerator'])
@@ -164,7 +169,7 @@ class Dispatch:
         r=self.datacube.get_fold_change(request['axis'], domain1, domain2)
         r[np.logical_not(np.isfinite(r))] = np.nan
         sort_idxs = np.argsort(-r)
-        return {'indexes': sort_idxs.tolist(), 'fold_changes': [None if np.isnan(x) else x for x in r]}
+        return {'indexes': sort_idxs.tolist(), 'fold_changes': [None if np.isnan(x) else float(x) for x in r]}
 
     # Return metadata (JSON)
     def meta(self, request):
