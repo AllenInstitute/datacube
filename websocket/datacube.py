@@ -55,8 +55,8 @@ def correlation(data, seed, axis, query=None, mdata=None, mseed=None):
         mseed_args = []
         mdata_args = []
     else:
-        seed_num_samples = np.einsum(mseed, range(0,mseed.ndim), *mask_args(sample_axes, []))
-        num_samples = np.einsum(mdata, range(0,mdata.ndim), *mask_args())
+        seed_num_samples = np.einsum(mseed, range(0,mseed.ndim), *mask_args(sample_axes, []), dtype=np.int)
+        num_samples = np.einsum(mdata, range(0,mdata.ndim), *mask_args(), dtype=np.int)
         mseed_args = [mseed, range(0, mseed.ndim)]
         mdata_args = [mdata, range(0, mdata.ndim)]
 
@@ -119,7 +119,7 @@ def fold_change(d1_data, d2_data, axis, domain1=None, domain2=None, d1_mdata=Non
         d1_num_samples = np.prod(np.array([domain1[i].sum() if domain1[i].size>1 else d1_data.shape[i] for i in sample_axes]))
         d1_mdata_args = []
     else:
-        d1_num_samples = np.einsum(d1_mdata, ddims, *d1_mask_args())
+        d1_num_samples = np.einsum(d1_mdata, ddims, *d1_mask_args(), dtype=np.int)
         d1_mdata_args = [d1_mdata, range(0, ndim)]
 
     d1_mean = np.einsum(d1_data, ddims, *d1_mask_args(more=d1_mdata_args)) / d1_num_samples
@@ -210,7 +210,6 @@ class Datacube:
         if observed is not None:
             assert(isinstance(observed, np.ndarray))
             assert(observed.shape == data.shape)
-            assert(observed.dtype == data.dtype)
             self.data = self.data / observed # make sure unobserved entries are NaN
         self.observed = observed
 

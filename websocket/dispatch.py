@@ -41,14 +41,11 @@ class RequestValidator:
 
         def filter_call_pattern(error):
             validator = error.validator
-            if list(error.path) == ['call']:
-                if error.instance in FUNCTIONS:
-                    call_precedence = 2
-                else:
-                    call_precedence = -2
+            if validator == 'pattern' and len(error.path) > 0 and list(error.path)[-1] == 'call':
+                call_precedence = 2
             else:
                 call_pattern = error.schema.get('properties', {}).get('call', {}).get('pattern')
-                if call_pattern == '^' + request['call'] + '$':
+                if validator == 'pattern' and call_pattern is not None and call_pattern == '^' + error.instance['call'] + '$':
                     call_precedence = -1
                 else:
                     call_precedence = 1
