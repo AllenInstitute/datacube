@@ -9,7 +9,7 @@ import copy
 from datacube import Datacube
 from database import Database
 
-FUNCTIONS = ['raw', 'log2_1p', 'standard', 'info', 'corr', 'fold_change', 'meta']
+FUNCTIONS = ['raw', 'log2_1p', 'standard', 'info', 'corr', 'fold_change', 'diff', 'meta']
 
 class FunctionNameError(RuntimeError):
     pass
@@ -95,7 +95,7 @@ class Dispatch:
                 select[axis] = slice(selector.get('start'), selector.get('stop'), selector.get('step'))
         return select
 
-    # convert all request selectors into index arrays
+    # parse and convert all request selectors into index arrays
     def _get_subscripts_from_request(self, select_element):
         subscripts = self._parse_select_from_request(select_element)
         for axis, subs in enumerate(subscripts):
@@ -139,7 +139,8 @@ class Dispatch:
             return {'shape': shape, 'data': [None if np.isnan(x) else float(x) for x in data.flat]}
 
     # slices are materialized as 1-d arrays of integer indices, except
-    # slice(None,None,None) which is encoded as None.
+    # slice(None,None,None) which is encoded as None. boolean and integer
+    # selectors are left as-is.
     def _convert_slices_to_indices(self, query):
         for axis, subs in enumerate(query):
             if subs == slice(None,None,None):
@@ -167,6 +168,19 @@ class Dispatch:
         r[np.logical_not(np.isfinite(r))] = np.nan
         sort_idxs = np.argsort(-r)
         return {'indexes': sort_idxs.tolist(), 'fold_changes': [None if np.isnan(x) else float(x) for x in r]}
+
+    def diff(self, request):
+        domain1 = self._parse_select_from_request(request['numerator'])
+        domain2 = self._parse_select_from_request(request['denominator'])
+        domain1 = self._convert_slices_to_indices(domain1)
+        domain2 = self._convert_slices_to_indices(domain2)
+
+        p_vals, fold_changes = self.datacube.get_differential(request['axis'], domain1, domain2)
+        p_vals[np.logical_not(np.isfinite(p_vals))] = np.nan
+        sort_idxs = np.argsort(p_vals)
+        return {'indexes': sort_idxs.tolist(),
+                'p_values': [None if np.isnan(x) else float(x) for x in p_vals],
+                'fold_changes': [None if np.isnan(x) else float(x) for x in fold_changes]}
 
     # Return metadata (JSON)
     def meta(self, request):

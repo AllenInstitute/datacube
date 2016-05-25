@@ -80,6 +80,17 @@
             "required": ["call", "numerator", "denominator", "axis"]
         }
         ,
+        "diff": {
+            "type": "object",
+            "properties": {
+                "call": {"type": "string", "pattern": "^diff$"},
+                "numerator": {"$ref": "#/definitions/select"},
+                "denominator": {"$ref": "#/definitions/select"},
+                "axis": {"$ref": "#/definitions/axis"}
+            },
+            "required": ["call", "numerator", "denominator", "axis"]
+        }
+        ,
         "meta": {
             "type": "object",
             "properties": {
@@ -108,6 +119,7 @@
                 {"$ref": "#/definitions/standard"},
                 {"$ref": "#/definitions/corr"},
                 {"$ref": "#/definitions/fold_change"},
+                {"$ref": "#/definitions/diff"},
                 {"$ref": "#/definitions/meta"}
             ]
         }
