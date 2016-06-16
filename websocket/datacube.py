@@ -1,7 +1,5 @@
 import numpy as np
 import scipy as sp
-import distarray
-from distarray.globalapi import Context, Distribution
 
 def _mask_args(axis, ndim, query):
     return lambda axes=range(0,ndim), out_axes=[axis], more=[]: \
@@ -274,6 +272,9 @@ class Datacube:
         # set up for distributed computations
         self.distributed = distributed
         if self.distributed:
+            import distarray
+            from distarray.globalapi import Context, Distribution
+
             self.context = Context()
             if distribution is not None:
                 assert(len(distribution) == data.ndim)

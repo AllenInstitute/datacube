@@ -15,7 +15,7 @@ from database import Database
 from dispatch import Dispatch
 import dispatch
 import traceback
-from ipyparallel.error import CompositeError
+import argparse
 
 from autobahn.twisted.websocket import WebSocketServerFactory, \
     WebSocketServerProtocol
@@ -109,9 +109,17 @@ class Api(Resource):
 if __name__ == '__main__':
     log.startLogging(sys.stdout)
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--distributed', action='store_true', default=False)
+    parser.add_argument('--port', type=int, default=9000)
+    args = parser.parse_args()
+
+    if args.distributed:
+        from ipyparallel.error import CompositeError
+
     # load cell types data, database and dispatch
     data = np.load('../data/ivscc.npy').astype(np.float32)
-    datacube = Datacube(data, distributed=False)
+    datacube = Datacube(data, distributed=args.distributed)
     database = Database('postgresql+pg8000://postgres:postgres@ibs-andys-ux3:5432/wh')
     dispatch_instance = Dispatch(datacube, database)
 
@@ -119,7 +127,7 @@ if __name__ == '__main__':
     root = File(".")
 
     # WebSocket server under "/ws"
-    factory = WebSocketServerFactory(u"ws://127.0.0.1:9000")
+    factory = WebSocketServerFactory(u"ws://127.0.0.1:"+str(args.port))
     factory.protocol = DatacubeProtocol
     root.putChild(u"ws", WebSocketResource(factory))
 
@@ -127,6 +135,6 @@ if __name__ == '__main__':
     root.putChild(u"api", Api())
 
     site = Site(root)
-    reactor.listenTCP(9000, site)
+    reactor.listenTCP(args.port, site)
 
     reactor.run()
