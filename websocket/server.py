@@ -16,11 +16,21 @@ from dispatch import Dispatch
 import dispatch
 import traceback
 import argparse
+import pg8000
+import os
 
 from autobahn.twisted.websocket import WebSocketServerFactory, \
     WebSocketServerProtocol
 
 from autobahn.twisted.resource import WebSocketResource
+
+DATA_DIR = './data/'
+
+DB_HOST = 'testdb2'
+DB_PORT = 5942
+DB_NAME = 'warehouse-R193'
+DB_USER = 'postgres'
+DB_PASSWORD = 'postgres'
 
 class RequestNotValidJSON(RuntimeError):
     pass
@@ -109,18 +119,39 @@ class Api(Resource):
 if __name__ == '__main__':
     log.startLogging(sys.stdout)
 
+    conn = pg8000.connect(user=DB_USER, host=DB_HOST, port=DB_PORT, database=DB_NAME, password=DB_PASSWORD)
+    cursor = conn.cursor()
+    cursor.execute("select name from data_cube_runs")
+    results = cursor.fetchall()
+    #available_cubes = str(results[0])
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--distributed', action='store_true', default=False)
     parser.add_argument('--port', type=int, default=9000)
+    #parser.add_argument('--include-cubes', type=str)
     args = parser.parse_args()
+    #args.include_cubes = args.include_cubes.split(',')
+
+    if not os.path.exists(DATA_DIR):
+        os.makedirs(DATA_DIR)
+
+    data = None
+    if not os.path.exists(DATA_DIR + 'cell_types.npy'):
+        print 'Loading cell_types data cube from warehouse ...'
+        cursor.execute("select data from data_cubes dc join data_cube_runs dcr on dc.data_cube_run_id = dcr.id where dcr.name = '%s'" % 'cell_types')
+        results = cursor.fetchall()
+        data = np.asarray(results, dtype=np.float32)[:,0]
+        np.save(DATA_DIR + 'cell_types.npy', data)
+    else:
+        print 'Loading cell_types data cube from filesystem ...'
+        data = np.load(DATA_DIR + 'cell_types.npy').astype(np.float32)
 
     if args.distributed:
         from ipyparallel.error import CompositeError
 
     # load cell types data, database and dispatch
-    data = np.load('../data/ivscc.npy').astype(np.float32)
     datacube = Datacube(data, distributed=args.distributed)
-    database = Database('postgresql+pg8000://postgres:postgres@ibs-andys-ux3:5432/wh')
+    database = Database('postgresql+pg8000://' + DB_USER + ':' + DB_PASSWORD + '@' + DB_HOST + ':' + str(DB_PORT) + '/' + DB_NAME)
     dispatch_instance = Dispatch(datacube, database)
 
     # Serve static files under "/" ..
