@@ -148,6 +148,9 @@ if __name__ == '__main__':
 
     if args.distributed:
         from ipyparallel.error import CompositeError
+    else:
+        class CompositeError(RuntimeError):
+            pass
 
     # load cell types data, database and dispatch
     datacube = Datacube(data, distributed=args.distributed)
