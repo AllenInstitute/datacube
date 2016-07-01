@@ -31,7 +31,7 @@ class RequestValidator:
             self.schema['definitions']['select']['items'][axis]['oneOf'][2]['maxItems'] = shape[axis]
         self.schema['definitions']['select']['minItems'] = len(shape)
         self.schema['definitions']['select']['maxItems'] = len(shape)
-        self.schema['definitions']['axis']['maximum'] = len(shape)
+        self.schema['definitions']['axis']['maximum'] = len(shape)-1
 
     # validate request against JSON schema, and find the most sensible error to respond with
     def validate(self, request):
