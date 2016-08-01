@@ -153,7 +153,7 @@ if __name__ == '__main__':
             pass
 
     # load cell types data, database and dispatch
-    datacube = Datacube(data, distributed=args.distributed)
+    datacube = Datacube(data, distributed=args.distributed, observed=~np.isnan(data))
     database = Database('postgresql+pg8000://' + DB_USER + ':' + DB_PASSWORD + '@' + DB_HOST + ':' + str(DB_PORT) + '/' + DB_NAME)
     dispatch_instance = Dispatch(datacube, database)
 

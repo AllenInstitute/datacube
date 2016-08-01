@@ -131,12 +131,13 @@ class Dispatch:
 
     # Return values from a section of the datacube.
     def _format_data_response(self, data, binary):
+        ndim = data.ndim
         shape = data.shape
         if binary:
             big_endian = data.byteswap() # copy array into network-order (big-endian)
-            return struct.pack('!I', shape[0]) + struct.pack('!I', shape[1]) + big_endian.tobytes()
+            return struct.pack('!I', ndim) + struct.pack('!%uI' % ndim, *shape) + big_endian.tobytes()
         else:
-            return {'shape': shape, 'data': [None if np.isnan(x) else float(x) for x in data.flat]}
+            return {'ndim': ndim, 'shape': shape, 'data': [None if np.isnan(x) else float(x) for x in data.flat]}
 
     # slices are materialized as 1-d arrays of integer indices, except
     # slice(None,None,None) which is encoded as None. boolean and integer

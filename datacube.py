@@ -70,7 +70,7 @@ def correlation(data, seed, axis, query=None, mdata=None, mseed=None):
     denominator = np.einsum(data, ddims, data, ddims, *mask_args(more=mdata_args))
     # data_mean has already been masked
     denominator += -2.0*np.einsum(data, ddims, data_mean, ddims, *mask_args(sample_axes, more=mdata_args))
-    denominator += np.sum(data_mean**2, axis=sample_axes) * num_samples
+    denominator += np.sum(data_mean**2, axis=tuple(sample_axes)) * num_samples
     denominator *= np.einsum(seed_dev**2, sdims, *mask_args(sample_axes))
     denominator = np.sqrt(denominator)
 
