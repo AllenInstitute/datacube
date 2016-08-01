@@ -4,7 +4,7 @@ import numpy as np
 from allensdk.core.brain_observatory_nwb_data_set import BrainObservatoryNwbDataSet
 
 def load():
-    conn = pg8000.connect(user='postgres', host='localhost', port=5432, database='lims', password='postgres')
+    conn = pg8000.connect(user='atlasreader', host='limsdb2', port=5432, database='lims2', password='atlasro')
     cursor = conn.cursor()
     cursor.execute("""
         select distinct ec.id from experiment_containers ec

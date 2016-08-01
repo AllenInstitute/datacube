@@ -177,7 +177,7 @@ if __name__ == '__main__':
     # load cam data, database and dispatch
     data = None
     if not os.path.exists(DATA_DIR + 'cam.npy'):
-        print 'Loading cell_types datacube from lims ...'
+        print 'Loading cam datacube from lims ...'
         data = cam.load()
         np.save(DATA_DIR + 'cam.npy', data)
     else:
