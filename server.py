@@ -13,7 +13,8 @@ import struct
 from datacube import Datacube
 from database import Database
 from dispatch import Dispatch
-import dispatch
+from dispatch import FunctionNameError
+from dispatch import MixedTypesInSelector
 import traceback
 import argparse
 import pg8000
@@ -65,7 +66,7 @@ class DatacubeProtocol(WebSocketServerProtocol):
             binary = ('binary' in request) and request['binary']
 
             # dispatch to the function
-            response = dispatch_instance.call(request)
+            response = dispatch.call(request)
 
             if binary:
                 if not isinstance(response, str):
@@ -75,9 +76,9 @@ class DatacubeProtocol(WebSocketServerProtocol):
                 self.sendMessage(json.dumps(response, encoding='utf-8'), False)
         except RequestNotValidJSON as e:
             self._send_error_message({'message': e.message, 'code': ERR_NOT_JSON}, binary)
-        except dispatch.FunctionNameError as e:
+        except FunctionNameError as e:
             self._send_error_message({'message': e.message, 'code': ERR_FUNCTION_NAME}, binary)
-        except dispatch.MixedTypesInSelector as e:
+        except MixedTypesInSelector as e:
             self._send_error_message({'message': e.message, 'code': ERR_MIXED_TYPES_IN_SELECTOR, 'axis': e.axis}, binary)
         except jsonschema.ValidationError as e:
             message = 'request'
@@ -114,7 +115,7 @@ class Api(Resource):
         pprint(request.args['msg'])
         msg = json.loads(request.args['msg'][0])
         # dispatch to the function
-        return dispatch_instance.functions[msg['call']](msg)
+        return dispatch.functions[msg['call']](msg)
 
 if __name__ == '__main__':
     log.startLogging(sys.stdout)
@@ -155,7 +156,7 @@ if __name__ == '__main__':
     # load cell types data, database and dispatch
     datacube = Datacube(data, distributed=args.distributed, observed=~np.isnan(data))
     database = Database('postgresql+pg8000://' + DB_USER + ':' + DB_PASSWORD + '@' + DB_HOST + ':' + str(DB_PORT) + '/' + DB_NAME)
-    dispatch_instance = Dispatch(datacube, database)
+    dispatch = Dispatch(datacube, database)
 
     # Serve static files under "/" ..
     root = File(".")
