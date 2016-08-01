@@ -15,6 +15,7 @@ from database import Database
 from dispatch import Dispatch
 from dispatch import FunctionNameError
 from dispatch import MixedTypesInSelector
+import cam
 import traceback
 import argparse
 import pg8000
@@ -65,8 +66,19 @@ class DatacubeProtocol(WebSocketServerProtocol):
 
             binary = ('binary' in request) and request['binary']
 
+            # find which cube is being requested
+            if 'cube' in request:
+                cube = request['cube']
+                if cube not in datacube:
+                    raise RuntimeError('Datacube named ''%s'' does not exist.' % cube)
+            else:
+                if 1 == len(datacube):
+                    cube = datacube.keys()[0]
+                else:
+                    raise RuntimeError('Server has multiple datacubes; specify a datacube name using the "cube" property.')
+
             # dispatch to the function
-            response = dispatch.call(request)
+            response = dispatch[cube].call(request)
 
             if binary:
                 if not isinstance(response, str):
@@ -133,12 +145,23 @@ if __name__ == '__main__':
     args = parser.parse_args()
     #args.include_cubes = args.include_cubes.split(',')
 
+    if args.distributed:
+        from ipyparallel.error import CompositeError
+    else:
+        class CompositeError(RuntimeError):
+            pass
+
     if not os.path.exists(DATA_DIR):
         os.makedirs(DATA_DIR)
 
+    datacube = dict()
+    database = dict()
+    dispatch = dict()
+
+    # load cell types data, database and dispatch
     data = None
     if not os.path.exists(DATA_DIR + 'cell_types.npy'):
-        print 'Loading cell_types data cube from warehouse ...'
+        print 'Loading cell_types datacube from warehouse ...'
         cursor.execute("select data from data_cubes dc join data_cube_runs dcr on dc.data_cube_run_id = dcr.id where dcr.name = '%s'" % 'cell_types')
         results = cursor.fetchall()
         data = np.asarray(results, dtype=np.float32)[:,0]
@@ -147,16 +170,23 @@ if __name__ == '__main__':
         print 'Loading cell_types data cube from filesystem ...'
         data = np.load(DATA_DIR + 'cell_types.npy').astype(np.float32)
 
-    if args.distributed:
-        from ipyparallel.error import CompositeError
-    else:
-        class CompositeError(RuntimeError):
-            pass
+    datacube['cell_types'] = Datacube(data, distributed=args.distributed, observed=~np.isnan(data))
+    database['cell_types'] = Database('postgresql+pg8000://' + DB_USER + ':' + DB_PASSWORD + '@' + DB_HOST + ':' + str(DB_PORT) + '/' + DB_NAME)
+    dispatch['cell_types'] = Dispatch(datacube['cell_types'], database['cell_types'])
 
-    # load cell types data, database and dispatch
-    datacube = Datacube(data, distributed=args.distributed, observed=~np.isnan(data))
-    database = Database('postgresql+pg8000://' + DB_USER + ':' + DB_PASSWORD + '@' + DB_HOST + ':' + str(DB_PORT) + '/' + DB_NAME)
-    dispatch = Dispatch(datacube, database)
+    # load cam data, database and dispatch
+    data = None
+    if not os.path.exists(DATA_DIR + 'cam.npy'):
+        print 'Loading cell_types datacube from lims ...'
+        data = cam.load()
+        np.save(DATA_DIR + 'cam.npy', data)
+    else:
+        print 'Loading cam datacube from filesystem ...'
+        data = np.load(DATA_DIR + 'cam.npy').astype(np.float32)
+
+    datacube['cam'] = Datacube(data, distributed=args.distributed, observed=~np.isnan(data))
+    database['cam'] = Database('postgresql+pg8000://' + DB_USER + ':' + DB_PASSWORD + '@' + DB_HOST + ':' + str(DB_PORT) + '/' + DB_NAME)
+    dispatch['cam'] = Dispatch(datacube['cam'], database['cam'])
 
     # Serve static files under "/" ..
     root = File(".")

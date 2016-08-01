@@ -104,6 +104,7 @@
         {
             "type": "object",
             "properties": {
+                "cube": {"type": "string"},
                 "call": {"type": "string"},
                 "binary": {"type": "boolean"},
                 "validate": {"type": "boolean"}
