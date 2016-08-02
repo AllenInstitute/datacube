@@ -15,6 +15,7 @@ from database import Database
 from dispatch import Dispatch
 from dispatch import FunctionNameError
 from dispatch import MixedTypesInSelector
+from urllib2 import URLError
 import cam
 import traceback
 import argparse
@@ -43,6 +44,7 @@ ERR_NOT_JSON = 2
 ERR_FUNCTION_NAME = 3
 ERR_REQUEST_VALIDATION = 4
 ERR_MIXED_TYPES_IN_SELECTOR = 5
+ERR_URL = 6
 
 # Responds to web socket messages with json payloads
 class DatacubeProtocol(WebSocketServerProtocol):
@@ -88,6 +90,8 @@ class DatacubeProtocol(WebSocketServerProtocol):
                 self.sendMessage(json.dumps(response, encoding='utf-8'), False)
         except RequestNotValidJSON as e:
             self._send_error_message({'message': e.message, 'code': ERR_NOT_JSON}, binary)
+        except URLError as e:
+            self._send_error_message({'message': str(e.reason), 'code': ERR_URL}, binary)
         except FunctionNameError as e:
             self._send_error_message({'message': e.message, 'code': ERR_FUNCTION_NAME}, binary)
         except MixedTypesInSelector as e:

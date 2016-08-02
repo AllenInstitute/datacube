@@ -5,6 +5,8 @@ import scipy as sp
 from scipy import stats
 import jsonschema
 import copy
+import json
+import urllib2
 
 from datacube import Datacube
 from database import Database
@@ -32,6 +34,8 @@ class RequestValidator:
         self.schema['definitions']['select']['minItems'] = len(shape)
         self.schema['definitions']['select']['maxItems'] = len(shape)
         self.schema['definitions']['axis']['maximum'] = len(shape)-1
+        del self.schema['definitions']['selector']['oneOf'][3] # remove string (service uri) selector since these are
+        # substituted before runtime validation.
 
     # validate request against JSON schema, and find the most sensible error to respond with
     def validate(self, request):
@@ -65,6 +69,8 @@ class Dispatch:
         self.request_validator = RequestValidator('request_schema.json', self.datacube.shape)
 
     def call(self, request):
+        # substitute any service calls uri's before validating
+        request = self._selector_json_service_calls(request)
         # validate, if requested
         if ('validate' not in request) or request['validate']:
             self.request_validator.validate(request)
@@ -74,6 +80,14 @@ class Dispatch:
         # dispatch to function
         assert(request['call'] in FUNCTIONS)
         return getattr(self, request['call'])(request)
+
+    # interpret strings in selector as restful service uri's
+    # and insert the json response in their place.
+    def _selector_json_service_calls(self, request):
+        for axis, selector in enumerate(request['select']):
+            if isinstance(selector, basestring):
+                request['select'][axis] = json.load(urllib2.urlopen(selector))
+        return request
 
     # convert parsed json dict selectors into slice objects,
     # index and bool ndarrays
@@ -85,9 +99,9 @@ class Dispatch:
             if isinstance(selector, list):
                 if len(selector) == 0:
                     select[axis] = np.array([], dtype=np.int)
-                elif all(isinstance(x, bool) for x in selector):
+                elif all(type(x) == bool for x in selector):
                     select[axis] = np.array(selector, dtype=np.bool)
-                elif all(isinstance(x, int) for x in selector):
+                elif all(type(x) == int for x in selector):
                     select[axis] = np.array(selector, dtype=np.int)
                 else:
                     raise MixedTypesInSelector(axis)
