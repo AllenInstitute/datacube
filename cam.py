@@ -57,7 +57,7 @@ def load():
     
     for session in all_sessions:
         f = h5py.File(session[0],'r')
-        print 'Reading %s' % session[0]
+        print('Reading %s' % session[0])
         
         nwb_file = session[1]
         data_set = BrainObservatoryNwbDataSet(nwb_file)
