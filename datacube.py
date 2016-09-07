@@ -82,14 +82,14 @@ class Datacube(DatacubeCore):
             if isinstance(selector, list):
                 if any(type(x) != type(selector[0]) for x in selector):
                     raise error.SelectorError('All elements of selector for axis {0} do not have the same type.'.format(axis))
-                if not isinstance(selector[0], int) and not isinstance(selector[0], bool):
+                if not isinstance(selector[0], (int, long)) and not isinstance(selector[0], bool):
                     raise error.SelectorError('Elements of list selector for axis {0} must be of type int or bool.'.format(axis))
                 if isinstance(selector[0], bool) and len(selector) != self.shape[axis]:
                     raise error.SelectorError('Boolean list selector for axis {0} must have length {1} to match the size of the datacube.'.format(axis, self.shape[axis]))
             elif isinstance(selector, dict):
                 keys = ['start', 'stop', 'step']
                 for key in keys:
-                    if key in selector and selector[key] is not None and not isinstance(selector[key], int):
+                    if key in selector and selector[key] is not None and not isinstance(selector[key], (int, long)):
                         raise error.SelectorError('Slice selector for axis {0} must have ''{1}'' of type int.'.format(axis, key))
 
     # convert dict selectors into slice objects,
@@ -104,10 +104,10 @@ class Datacube(DatacubeCore):
                     select[axis] = np.array([], dtype=np.int)
                 elif all(type(x) == bool for x in selector):
                     select[axis] = np.array(selector, dtype=np.bool)
-                elif all(type(x) == int for x in selector):
+                elif all(isinstance(x, (int, long)) for x in selector):
                     select[axis] = np.array(selector, dtype=np.int)
                 else:
-                    raise error.MixedTypesInSelector(axis)
+                    raise error.SelectorError('All elements of selector for axis {0} do not have the same type.'.format(axis))
             elif isinstance(selector, dict):
                 select[axis] = slice(selector.get('start'), selector.get('stop'), selector.get('step'))
         return select
