@@ -8,8 +8,7 @@ def load():
     cursor = conn.cursor()
     cursor.execute("""
         select distinct ec.id from experiment_containers ec
-        join experiment_sessions es on ec.id = es.experiment_container_id
-        where es.workflow_state = 'passed'
+        where ec.published_at IS NOT NULL
         order by ec.id
     """)
     experiment_container_ids = cursor.fetchall()
