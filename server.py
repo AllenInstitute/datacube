@@ -100,6 +100,8 @@ class DatacubeComponent(ApplicationSession):
         except Exception as e:
             print("could not register procedure: {0}".format(e))
 
+        print("Server ready.")
+
     def _select_cube(self, cube):
         if cube is not None:
             if cube not in datacube:
