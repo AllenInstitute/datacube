@@ -19,8 +19,8 @@ import error
 
 DATA_DIR = './data/'
 
-DB_HOST = 'testdb2'
-DB_PORT = 5942
+DB_HOST = 'testwarehouse1'
+DB_PORT = 5432
 DB_NAME = 'warehouse-R193'
 DB_USER = 'postgres'
 DB_PASSWORD = 'postgres'
@@ -126,10 +126,6 @@ class DatacubeComponent(ApplicationSession):
 
 
 if __name__ == '__main__':
-    txaio.use_twisted()
-    log = txaio.make_logger()
-    txaio.start_logging()
-
     conn = pg8000.connect(user=DB_USER, host=DB_HOST, port=DB_PORT, database=DB_NAME, password=DB_PASSWORD)
     cursor = conn.cursor()
     cursor.execute("select name from data_cube_runs")
@@ -153,12 +149,37 @@ if __name__ == '__main__':
     data = None
     if not os.path.exists(DATA_DIR + 'cell_types.npy'):
         print('Loading cell_types datacube from warehouse ...')
+
+        cursor.execute("select array_length(col_ids, 1) from data_cube_runs where name = 'cell_types'")
+        num_cols = cursor.fetchall()[0][0]
+
+        cursor.execute("""select count(*) from data_cubes dc
+            join data_cube_runs dcr on dc.data_cube_run_id = dcr.id
+            where dcr.name = 'cell_types'""")
+        num_rows = cursor.fetchall()[0][0]
+
+        data = np.full((num_rows, num_cols), np.nan, dtype=np.float32)
+
         cursor.execute("select data from data_cubes dc join data_cube_runs dcr on dc.data_cube_run_id = dcr.id where dcr.name = '%s'" % 'cell_types')
-        results = cursor.fetchall()
-        data = np.asarray(results, dtype=np.float32)[:,0]
+
+        from tqdm import tqdm
+        progress = tqdm(total=num_rows, dynamic_ncols=True, unit='rows')
+
+        BATCH_SIZE=50
+        row_idx = 0
+        while True:
+            chunk = cursor.fetchmany(BATCH_SIZE)
+            if 0 == len(chunk):
+                break
+            else:
+                data[row_idx:row_idx+len(chunk),:] = np.asarray(chunk, dtype=np.float32)[:,0]
+                row_idx += len(chunk)
+                progress.update(BATCH_SIZE)
+        progress.close()
+
         np.save(DATA_DIR + 'cell_types.npy', data)
     else:
-        print('Loading cell_types data cube from filesystem ...')
+        print('Loading cell_types datacube from filesystem ...')
         data = np.load(DATA_DIR + 'cell_types.npy').astype(np.float32)
 
     datacube['cell_types'] = Datacube(data, distributed=args.distributed, observed=~np.isnan(data))
@@ -176,6 +197,11 @@ if __name__ == '__main__':
 
     datacube['cam'] = Datacube(data, distributed=args.distributed, observed=~np.isnan(data))
     database['cam'] = Database('postgresql+pg8000://' + DB_USER + ':' + DB_PASSWORD + '@' + DB_HOST + ':' + str(DB_PORT) + '/' + DB_NAME)
+
+    # logging
+    txaio.use_twisted()
+    log = txaio.make_logger()
+    txaio.start_logging()
 
     # wamp
     runner = ApplicationRunner(CROSSBAR_ROUTER_URL, WAMP_REALM_NAME)
