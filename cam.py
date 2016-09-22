@@ -2,6 +2,7 @@ import pg8000
 import h5py
 import numpy as np
 from allensdk.core.brain_observatory_nwb_data_set import BrainObservatoryNwbDataSet
+from progressbar import ProgressBar, Percentage, Bar, ETA, Counter, FileTransferSpeed
 
 def load():
     conn = pg8000.connect(user='atlasreader', host='limsdb2', port=5432, database='lims2', password='atlasro')
@@ -54,9 +55,10 @@ def load():
     row_ids.sort()
     A = np.full((len(row_ids), num_columns, 3), np.nan)
     
-    for session in all_sessions:
+    progress = ProgressBar(widgets=[Percentage(), ' ', Bar(), ' ', Counter(), '/' + str(len(all_sessions)) + ' ', ETA(), ' ', FileTransferSpeed(unit='files')], maxval=len(all_sessions))
+    progress.start()
+    for session_index, session in enumerate(all_sessions):
         f = h5py.File(session[0],'r')
-        print('Reading %s' % session[0])
         
         nwb_file = session[1]
         data_set = BrainObservatoryNwbDataSet(nwb_file)
@@ -71,5 +73,8 @@ def load():
                 A[row_id,n_ns:(n_ns+n_sg),:] = f['analysis']['response_sg'][:,:,:,idx,:].reshape((n_sg, 3))
             if 'response_dg' in f['analysis'].keys():
                 A[row_id,(n_ns+n_sg):,:] = f['analysis']['response_dg'][:,:,idx,:].reshape((n_dg, 3))
+
+        progress.update(session_index)
+    progress.finish()
 
     return A

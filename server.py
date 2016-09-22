@@ -10,6 +10,7 @@ import argparse
 import pg8000
 import os
 import sys
+from progressbar import ProgressBar, Percentage, Bar, ETA, Counter, FileTransferSpeed
 
 from datacube import Datacube
 from database import Database
@@ -164,8 +165,8 @@ if __name__ == '__main__':
 
         cursor.execute("select data from data_cubes dc join data_cube_runs dcr on dc.data_cube_run_id = dcr.id where dcr.name = '%s'" % 'cell_types')
 
-        from tqdm import tqdm
-        progress = tqdm(total=num_rows, dynamic_ncols=True, unit='rows')
+        progress = ProgressBar(widgets=[Percentage(), ' ', Bar(), ' ', Counter(), '/' + str(num_rows) + ' ', ETA(), ' ', FileTransferSpeed(unit='rows')], maxval=num_rows)
+        progress.start()
 
         BATCH_SIZE=50
         row_idx = 0
@@ -176,8 +177,8 @@ if __name__ == '__main__':
             else:
                 data[row_idx:row_idx+len(chunk),:] = np.asarray(chunk, dtype=np.float32)[:,0]
                 row_idx += len(chunk)
-                progress.update(BATCH_SIZE)
-        progress.close()
+                progress.update(row_idx)
+        progress.finish()
 
         np.save(DATA_DIR + 'cell_types.npy', data)
     else:
