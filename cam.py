@@ -1,10 +1,15 @@
 import pg8000
 import h5py
+import json
+import zlib
+import base64
 import numpy as np
 from allensdk.core.brain_observatory_nwb_data_set import BrainObservatoryNwbDataSet
 from progressbar import ProgressBar, Percentage, Bar, ETA, Counter, FileTransferSpeed
+from itertools import product
 
 def load():
+    # TODO: pass in connection params
     conn = pg8000.connect(user='atlasreader', host='limsdb2', port=5432, database='lims2', password='atlasro')
     cursor = conn.cursor()
     cursor.execute("""
@@ -15,11 +20,13 @@ def load():
     experiment_container_ids = cursor.fetchall()
     
     row_ids = []
-    n_ns = 119
-    n_sg = (6*6*4)
-    n_dg = (8*6)
-    num_columns = n_ns + n_sg + n_dg
     all_sessions = []
+    ns_frames = []
+    sg_orivals = []
+    sg_sfvals = []
+    sg_phasevals = []
+    dg_orivals = []
+    dg_tfvals = []
     
     for ec_id in experiment_container_ids:
         cursor.execute("""
@@ -49,13 +56,70 @@ def load():
             data_set = BrainObservatoryNwbDataSet(nwb_file)
             cs_ids[session[2]] = data_set.get_cell_specimen_ids()
             merged_cs_ids = list(set().union(merged_cs_ids, cs_ids[session[2]]))
+
+            try:
+                stimulus_table = data_set.get_stimulus_table('natural_scenes')
+                stim_table = stimulus_table.fillna(value=0.)
+                ns_frames = list(set().union(ns_frames, np.unique(stim_table.frame).astype(int)))
+            except:
+                pass
+
+            try:
+                stimulus_table = data_set.get_stimulus_table('static_gratings')
+                stim_table = stimulus_table.fillna(value=0.)
+                sg_orivals = list(set().union(sg_orivals, np.unique(stim_table.orientation.dropna())))
+                sg_sfvals = list(set().union(sg_sfvals, np.unique(stim_table.spatial_frequency.dropna())))
+                sg_phasevals = list(set().union(sg_phasevals, np.unique(stim_table.phase.dropna())))
+            except:
+                pass
+
+            try:
+                stimulus_table = data_set.get_stimulus_table('drifting_gratings')
+                stim_table = stimulus_table.fillna(value=0.)
+                dg_orivals = list(set().union(dg_orivals, np.unique(stim_table.orientation).astype(int)))
+                dg_tfvals = list(set().union(dg_tfvals, np.unique(stim_table.temporal_frequency).astype(int)))
+            except:
+                pass
         
         row_ids += merged_cs_ids
     
+
+    row_meta_fields = ["cell_specimen_id", "experiment_container_id", "area", "tld1_id", "tld1_name",
+        "tld2_id", "tld2_name", "tlr1_id", "tlr1_name", "imaging_depth", "osi_dg", "dsi_dg",
+        "pref_dir_dg", "pref_tf_dg", "p_dg", "osi_sg", "pref_ori_sg", "pref_sf_sg", "pref_phase_sg",
+        "p_sg", "time_to_peak_sg", "pref_image_ns", "time_to_peak_ns", "p_ns", "all_stim"]
+
+    wh_conn = pg8000.connect(user='postgres', host='testwarehouse1', port=5432, database='warehouse-R193', password='postgres')
+    wh_cursor = wh_conn.cursor()
+    with open('./data/cam_rows.json.zz.b64', 'w') as json_file:
+        wh_cursor.execute('select ' + ', '.join(row_meta_fields) + ' from api_cam_cell_metrics order by cell_specimen_id asc')
+        #json_file.write(json.dumps([row_meta_fields] + list(wh_cursor.fetchall()), json_file))
+        s = json.dumps([{row_meta_fields[i]: v for i,v in enumerate(row)} for row in list(wh_cursor.fetchall())])
+        json_file.write(base64.b64encode(zlib.compress(s)))
+
+
+    n_ns = len(ns_frames)
+    n_sg = len(sg_orivals)*len(sg_sfvals)*len(sg_phasevals)
+    n_dg = len(dg_orivals)*len(dg_tfvals)
+    num_columns = n_ns + n_sg + n_dg
+
+    col_meta_fields = ["stimulus_type", "frame", "orientation", "spatial_frequency", "phase", "temporal_frequency"]
+    col_meta = []
+    for frame in ns_frames:
+        col_meta.append({"stimulus_type": "ns", "frame": frame})
+    for stim in product(sg_orivals, sg_sfvals, sg_phasevals):
+        col_meta.append({"stimulus_type": "sg", "orientation": float(stim[0]), "spatial_frequency": float(stim[1]), "phase": float(stim[2])})
+    for stim in product(dg_orivals, dg_tfvals):
+        col_meta.append({"stimulus_type": "dg", "orientation": stim[0], "temporal_frequency": stim[1]})
+
+    with open('./data/cam_cols.json.zz.b64', 'w') as json_file:
+        json_file.write(base64.b64encode(zlib.compress(json.dumps(col_meta))))
+
+
     row_ids.sort()
     A = np.full((len(row_ids), num_columns, 3), np.nan)
-    
-    progress = ProgressBar(widgets=[Percentage(), ' ', Bar(), ' ', Counter(), '/' + str(len(all_sessions)) + ' ', ETA(), ' ', FileTransferSpeed(unit='files')], maxval=len(all_sessions))
+
+    progress = ProgressBar(widgets=[Percentage(), ' ', Bar(), ' ', Counter(), '/' + str(len(all_sessions)) + ' nwb files ', ETA(), ' ', FileTransferSpeed(unit='files')], maxval=len(all_sessions))
     progress.start()
     for session_index, session in enumerate(all_sessions):
         f = h5py.File(session[0],'r')

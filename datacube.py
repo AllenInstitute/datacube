@@ -128,8 +128,9 @@ class Datacube(DatacubeCore):
     # selectors are left as-is.
     def _convert_slices_to_indices(self, query):
         for axis, subs in enumerate(query):
-            if subs == slice(None,None,None):
-                query[axis] = None
-            elif isinstance(subs, slice):
-                query[axis] = np.array(range(*subs.indices(self.shape[axis])), dtype=np.int)
+            if isinstance(subs, slice):
+                if subs == slice(None,None,None):
+                    query[axis] = None
+                else:
+                    query[axis] = np.array(range(*subs.indices(self.shape[axis])), dtype=np.int)
         return query

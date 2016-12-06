@@ -90,6 +90,14 @@ class DatacubeComponent(ApplicationSession):
             except Exception as e:
                 self._format_unspecified_error(e)
 
+        def meta(cube=None):
+            try:
+                cube_name = cube
+                cube = self._select_cube(cube)
+                return {'cols': open(DATA_DIR+cube_name+'_cols.json.zz.b64').read(), 'rows': open(DATA_DIR+cube_name+'_rows.json.zz.b64').read()}
+            except Exception as e:
+                self._format_unspecified_error(e)
+
         try:
             yield self.register(raw, u'org.alleninstitute.datacube.raw')
             yield self.register(log2_1p, u'org.alleninstitute.datacube.log2_1p')
@@ -98,6 +106,7 @@ class DatacubeComponent(ApplicationSession):
             yield self.register(corr, u'org.alleninstitute.datacube.corr')
             yield self.register(fold_change, u'org.alleninstitute.datacube.fold_change')
             yield self.register(diff, u'org.alleninstitute.datacube.diff')
+            yield self.register(meta, u'org.alleninstitute.datacube.meta')
         except Exception as e:
             print("could not register procedure: {0}".format(e))
 
@@ -165,7 +174,7 @@ if __name__ == '__main__':
 
         cursor.execute("select data from data_cubes dc join data_cube_runs dcr on dc.data_cube_run_id = dcr.id where dcr.name = '%s'" % 'cell_types')
 
-        progress = ProgressBar(widgets=[Percentage(), ' ', Bar(), ' ', Counter(), '/' + str(num_rows) + ' ', ETA(), ' ', FileTransferSpeed(unit='rows')], maxval=num_rows)
+        progress = ProgressBar(widgets=[Percentage(), ' ', Bar(), ' ', Counter(), '/' + str(num_rows) + ' rows ', ETA(), ' ', FileTransferSpeed(unit='rows')], maxval=num_rows)
         progress.start()
 
         BATCH_SIZE=50
@@ -182,7 +191,7 @@ if __name__ == '__main__':
 
         np.save(DATA_DIR + 'cell_types.npy', data)
     else:
-        print('Loading cell_types datacube from filesystem ...')
+        print('Loading cached cell_types datacube from ./data/cell_types.npy ...')
         data = np.load(DATA_DIR + 'cell_types.npy').astype(np.float32)
 
     datacube['cell_types'] = Datacube(data, distributed=args.distributed, observed=~np.isnan(data))
@@ -195,7 +204,7 @@ if __name__ == '__main__':
         data = cam.load()
         np.save(DATA_DIR + 'cam.npy', data)
     else:
-        print('Loading cam datacube from filesystem ...')
+        print('Loading cached cam datacube from ./data/cam.npy ...')
         data = np.load(DATA_DIR + 'cam.npy').astype(np.float32)
 
     datacube['cam'] = Datacube(data, distributed=args.distributed, observed=~np.isnan(data))

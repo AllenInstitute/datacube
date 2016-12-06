@@ -261,7 +261,7 @@ class DatacubeCore:
         if observed is not None:
             assert(isinstance(observed, np.ndarray))
             assert(observed.shape == data.shape)
-            self.data = self.data / observed # make sure unobserved entries are NaN
+            self.data[np.isnan(self.data)] = 0.0 # make sure unobserved entries are not NaN
         self.observed = observed
 
         # precompute and store some statistics on the datacube
