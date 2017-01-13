@@ -43,7 +43,7 @@ class DatacubeComponent(ApplicationSession):
                     'dtype': datacube[cube].dtype.name
                 }
             except Exception as e:
-                self._format_unspecified_error(e)
+                self._format_error(e)
 
         def raw(select, cube=None):
             try:
@@ -51,7 +51,7 @@ class DatacubeComponent(ApplicationSession):
                 data = datacube[cube].raw(select)
                 return self._format_data_response(data)
             except Exception as e:
-                self._format_unspecified_error(e)
+                self._format_error(e)
 
         def log2_1p(select, cube=None):
             try:
@@ -59,7 +59,7 @@ class DatacubeComponent(ApplicationSession):
                 data = datacube[cube].log2_1p(select)
                 return self._format_data_response(data)
             except Exception as e:
-                self._format_unspecified_error(e)
+                self._format_error(e)
 
         def standard(select, axis, cube=None):
             try:
@@ -67,28 +67,28 @@ class DatacubeComponent(ApplicationSession):
                 data = datacube[cube].standard(select, axis)
                 return self._format_data_response(data)
             except Exception as e:
-                self._format_unspecified_error(e)
+                self._format_error(e)
 
         def corr(select, axis, seed, cube=None):
             try:
                 cube = self._select_cube(cube)
                 return datacube[cube].corr(select, axis, seed)
             except Exception as e:
-                self._format_unspecified_error(e)
+                self._format_error(e)
 
         def fold_change(numerator, denominator, axis, cube=None):
             try:
                 cube = self._select_cube(cube)
                 return datacube[cube].fold_change(numerator, denominator, axis)
             except Exception as e:
-                self._format_unspecified_error(e)
+                self._format_error(e)
 
         def diff(numerator, denominator, axis, cube=None):
             try:
                 cube = self._select_cube(cube)
                 return datacube[cube].diff(numerator, denominator, axis)
             except Exception as e:
-                self._format_unspecified_error(e)
+                self._format_error(e)
 
         def meta(cube=None):
             try:
@@ -96,7 +96,7 @@ class DatacubeComponent(ApplicationSession):
                 cube = self._select_cube(cube)
                 return {'cols': open(DATA_DIR+cube_name+'_cols.json.zz.b64').read(), 'rows': open(DATA_DIR+cube_name+'_rows.json.zz.b64').read()}
             except Exception as e:
-                self._format_unspecified_error(e)
+                self._format_error(e)
 
         try:
             yield self.register(raw, u'org.alleninstitute.datacube.raw')
@@ -131,10 +131,10 @@ class DatacubeComponent(ApplicationSession):
         enc_data = base64.b64encode(big_endian.tobytes())
         return {'ndim': ndim, 'shape': shape, 'data': enc_data, 'dtype': data.dtype.name}
 
-    def _format_unspecified_error(self, e):
+    def _format_error(self, e):
         traceback.print_exc()
-        err_dict = {'args': e.args, 'class': e.__class__.__name__, 'doc': e.__doc__, 'message': e.message, 'traceback': traceback.format_exc()}
-        raise error.UnspecifiedError(json.dumps(err_dict, encoding='utf-8'))
+        err_dict = {'error': True, 'args': e.args, 'class': e.__class__.__name__, 'doc': e.__doc__, 'message': e.message, 'traceback': traceback.format_exc()}
+        raise error.UnspecifiedError(err_dict)
 
 
 if __name__ == '__main__':
