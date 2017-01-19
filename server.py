@@ -94,7 +94,15 @@ class DatacubeComponent(ApplicationSession):
             try:
                 cube_name = cube
                 cube = self._select_cube(cube)
-                return {'cols': open(DATA_DIR+cube_name+'_cols.json.zz.b64').read(), 'rows': open(DATA_DIR+cube_name+'_rows.json.zz.b64').read()}
+
+                col_meta_file = DATA_DIR+cube_name+'_cols.json.zz.b64'
+                row_meta_file = DATA_DIR+cube_name+'_rows.json.zz.b64'
+                meta_dict = {}
+                if os.path.exists(col_meta_file):
+                    meta_dict['cols'] = open(col_meta_file).read()
+                if os.path.exists(row_meta_file):
+                    meta_dict['rows'] = open(row_meta_file).read()
+                return meta_dict
             except Exception as e:
                 self._format_error(e)
 
