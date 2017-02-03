@@ -3,102 +3,73 @@
 <head>
 </head>
 <body>
-<h1>Datacube Dashboard</h1>
+<h3>datacube test page</h3>
 <noscript>You must enable JavaScript</noscript>
-<canvas id="graph"  width="300" height="300"></canvas>
+<canvas id="graph"  width="300" height="150"></canvas>
 <form>
-    Message:
-    <p>
-        <textarea id="message" cols="80" rows="15">
+    <div>call:</div>
+    <textarea id="call" cols="80">org.alleninstitute.datacube.raw</textarea>
+    <div>args:</div>
+    <textarea id="args" cols="80">[]</textarea>
+    <div>kwargs:</div>
+    <textarea id="kwargs" cols="80" rows="15">
 {
-    "call": "standard",
-    "select":
-    [
-        {"start": 0, "stop": 250},
-        null
-    ],
-    "axis": 1,
-    "binary": true
+    "cube": "cell_types",
+    "select": [{"start": 0, "stop": 150}, {"start": 0, "stop": 1000}]
 }
-        </textarea>
-    </p>
+    </textarea>
 </form>
-<button onclick='send();'>Send Message</button>
-<pre id="log" style="height: 20em; overflow-y: scroll; background-color: #faa;"></pre>
+<div><button onclick='send();'>send</button></div>
+<p><textarea id="log" style="background-color: #faa; width: 80%;" rows="20" disabled></textarea></div></p>
+<script type="text/javascript" src="./autobahn.min.js"></script>
 <script type="text/javascript">
-        var sock = null;
         var ellog = null;
-        var width = 300;
-        var height = 300;
-
         ellog = document.getElementById('log');
 
-        var wsuri;
-        if (window.location.protocol === "file:") {
-            wsuri = "ws://127.0.0.1:9000/ws";
-        } else {
-            wsuri = "ws://" + window.location.hostname + ":9000/ws";
-        }
+        var connection = new autobahn.Connection({
+             url: 'ws://devdatacube:8080/ws',
+             realm: 'datacube'
+        });
 
-        if ("WebSocket" in window) {
-            sock = new WebSocket(wsuri);
-        } else if ("MozWebSocket" in window) {
-            sock = new MozWebSocket(wsuri);
-        } else {
-            log("Browser does not support WebSocket!");
-            window.location = "http://autobahn.ws/unsupportedbrowser";
-        }
-
-        if (sock) {
-            sock.binaryType = "arraybuffer";
-
-            sock.onopen = function() {
-                log("Connected to " + wsuri);
-            }
-
-            sock.onclose = function(e) {
-                log("Connection closed (wasClean = " + e.wasClean + ", code = " + e.code + ", reason = '" + e.reason + "')");
-                sock = null;
-            }
-
-            sock.onmessage = function(e) {
-                if (e.data instanceof ArrayBuffer) {
-                    log("Got data: " + e.data);
-                    draw(e.data);
-                } else if (typeof e.data == 'string') {
-                    log("Got data:");
-                    log(JSON.stringify(JSON.parse(e.data), function(k, v) {
-                        return v instanceof Array && v.length > 50 ? JSON.stringify(v) : v
-                    }, 4));
-                } else {
-                    log("Got data: " + e.data);
-                }
-            }
-        }
-
-
-        function send() {
-            var msg = document.getElementById('message').value;
-            if (sock) {
-                sock.send(msg, true);
-                log("Sent: " + msg);
-            } else {
-                log("Not connected.");
-            }
+        var session;
+        connection.onopen = function (s) {
+            session = s;
         };
 
+        connection.open();
+
         function log(m) {
+            if(m.length > 5000) {
+                m = m.substr(0, 5000) + " ... (truncated)";
+            }
             ellog.innerHTML += m + '\n';
             ellog.scrollTop = ellog.scrollHeight;
         };
 
-        function draw(data) {
+        function send() {
+            call = document.getElementById('call').value;
+            args = JSON.parse(document.getElementById('args').value);
+            kwargs = JSON.parse(document.getElementById('kwargs').value);
+            session.call(call, args, kwargs).then(
+                function (res) {
+                    log("Result:" + JSON.stringify(res));
+                    if(res.data) {
+                        float_data = window.atob(res.data);
+                        draw(res.shape[1], res.shape[0], float_data);
+                    }
+                }
+            );
+        }
+
+        function draw(width, height, float_data) {
+            /*
             header = new DataView(data, 0, 4 * 3);
             response_code = header.getInt32(0, false);
             log("Response code: " + response_code);
             height = header.getInt32(4, false);
             width = header.getInt32(8, false);
             float_data = new Float32Array(data, 4 * 3);
+            */
 
             var canvas = document.getElementById('graph');
             canvas.width = width;

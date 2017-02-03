@@ -13,7 +13,6 @@ import sys
 from progressbar import ProgressBar, Percentage, Bar, ETA, Counter, FileTransferSpeed
 
 from datacube import Datacube
-from database import Database
 import cam
 import error
 
@@ -163,9 +162,8 @@ if __name__ == '__main__':
         os.makedirs(DATA_DIR)
 
     datacube = dict()
-    database = dict()
 
-    # load cell types data, database and dispatch
+    # load cell types data
     data = None
     if not os.path.exists(DATA_DIR + 'cell_types.npy'):
         print('Loading cell_types datacube from warehouse ...')
@@ -203,9 +201,8 @@ if __name__ == '__main__':
         data = np.load(DATA_DIR + 'cell_types.npy').astype(np.float32)
 
     datacube['cell_types'] = Datacube(data, distributed=args.distributed, observed=~np.isnan(data))
-    database['cell_types'] = Database('postgresql+pg8000://' + DB_USER + ':' + DB_PASSWORD + '@' + DB_HOST + ':' + str(DB_PORT) + '/' + DB_NAME)
 
-    # load cam data, database and dispatch
+    # load cam data
     data = None
     if not os.path.exists(DATA_DIR + 'cam.npy'):
         print('Loading cam datacube from lims ...')
@@ -216,7 +213,6 @@ if __name__ == '__main__':
         data = np.load(DATA_DIR + 'cam.npy').astype(np.float32)
 
     datacube['cam'] = Datacube(data, distributed=args.distributed, observed=~np.isnan(data))
-    database['cam'] = Database('postgresql+pg8000://' + DB_USER + ':' + DB_PASSWORD + '@' + DB_HOST + ':' + str(DB_PORT) + '/' + DB_NAME)
 
     # logging
     txaio.use_twisted()
