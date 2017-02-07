@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+</head>
+<body>
+<h3>pandas service test page</h3>
+<noscript>You must enable JavaScript</noscript>
+<form>
+    <div>call:</div>
+    <textarea id="call" cols="80">org.alleninstitute.pandas_service.filter_cell_specimens</textarea>
+    <div>args:</div>
+    <textarea id="args" cols="80">[]</textarea>
+    <div>kwargs:</div>
+    <textarea id="kwargs" cols="80" rows="15">
+{
+    "fields": ["cell_specimen_id", "static_gratings_large"],
+    "start": 10,
+    "stop": 20,
+    "filters": [
+        {
+            "field": "p_sg",
+            "op": "<=",
+            "value": 0.01
+        },
+        {
+            "field": "pref_phase_sg",
+            "op": "=",
+            "value": 0.25
+        },
+        {
+            "field": "pref_sf_sg",
+            "op": "=",
+            "value": 0.02
+        },
+        {
+            "field": "p_dg",
+            "op": "<=",
+            "value": 0.01
+        },
+        {
+            "field": "pref_tf_dg",
+            "op": "=",
+            "value": 1
+        },
+        {
+            "field": "dsi_dg",
+            "op": "between",
+            "value": [
+                0.7,
+                2
+            ]
+        },
+        {
+            "field": "time_to_peak_ns",
+            "op": "between",
+            "value": [
+                0,
+                0.18
+            ]
+        },
+        {
+            "field": "area",
+            "op": "in",
+            "value": [
+                "VISp",
+                "VISal",
+                "VISl"
+            ]
+        }
+    ]
+}
+</textarea>
+</form>
+<div><button onclick='send();'>send</button></div>
+<p>Elapsed time: <span id="elapsed"></span></p>
+<p><textarea id="log" style="background-color: #faa; width: 80%;" rows="20" disabled></textarea></div></p>
+<script type="text/javascript" src="./autobahn.min.js"></script>
+<script type="text/javascript">
+        var ellog = null;
+        ellog = document.getElementById('log');
+
+        var connection = new autobahn.Connection({
+             url: 'ws://localhost:8081/ws',
+             realm: 'pandas_service'
+        });
+
+        var session;
+        connection.onopen = function (s) {
+            session = s;
+        };
+
+        connection.open();
+
+        function log(m) {
+            if(m.length > 5000) {
+                m = m.substr(0, 5000) + " ... (truncated)";
+            }
+            ellog.innerHTML += m + '\n';
+            ellog.scrollTop = ellog.scrollHeight;
+        };
+
+        function send() {
+            call = document.getElementById('call').value;
+            args = JSON.parse(document.getElementById('args').value);
+            kwargs = JSON.parse(document.getElementById('kwargs').value);
+
+            var start_time = new Date()
+            session.call(call, args, kwargs).then(
+                function (res) {
+                    var end_time = new Date();
+                    document.getElementById('elapsed').innerHTML = (end_time - start_time) + 'ms';
+                    log("Result:" + res);
+                }
+            );
+        }
+</script>
+</body>
+</html>
