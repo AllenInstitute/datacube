@@ -23,17 +23,23 @@ class PandasServiceComponent(ApplicationSession):
         def filter_cell_specimens(filters=None,
                                   start=0,
                                   stop=None,
+                                  indexes=None,
                                   fields=None):
             r = cell_specimens
             if filters:
                 r = dataframe_query(r, filters)
-            if fields:
+            if fields and type(fields) is list:
                 r = r[fields]
+            if indexes:
+                r = r.iloc[indexes]
             r = r[start:stop]
-            json = r.to_json(orient='split')
-            if len(json) > 100e6:
-                raise ValueError('Requested data too large (' + str(len(json)) + ' bytes); please make a smaller request.')
-            return json
+            if fields == "indexes_only":
+                j = json.dumps(r.index.values.tolist())
+            else:
+                j = r.to_json(orient='split')
+            if len(j) > 10e6:
+                raise ValueError('Requested data too large (' + str(len(j)) + ' bytes); please make a smaller request.')
+            return j
 
  
         def dataframe_query(df, filters):
@@ -73,9 +79,14 @@ class PandasServiceComponent(ApplicationSession):
 
 if __name__ == '__main__':
     print('Loading bogus englarged cell metrics dataset ...')
-    api = BrainObservatoryApi(base_uri=None)
-    cell_specimens_list = api.get_cell_metrics()
-    cell_specimens = pd.DataFrame(cell_specimens_list * 7)
+    FILE = './cell_specimens.csv'
+    if os.path.isfile(FILE):
+        cell_specimens = pd.read_csv(FILE)
+    else:
+        api = BrainObservatoryApi(base_uri=None)
+        cell_specimens_list = api.get_cell_metrics()
+        cell_specimens = pd.DataFrame(cell_specimens_list * 7)
+        cell_specimens.to_csv('./cell_specimens.csv')
     print('Done.')
 
     # logging
