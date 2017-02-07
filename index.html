@@ -80,7 +80,7 @@
         ellog = document.getElementById('log');
 
         var connection = new autobahn.Connection({
-             url: 'ws://localhost:8081/ws',
+             url: 'ws://' + window.location.hostname + ':8081/ws',
              realm: 'pandas_service'
         });
 
@@ -110,6 +110,9 @@
                     var end_time = new Date();
                     document.getElementById('elapsed').innerHTML = (end_time - start_time) + 'ms';
                     log("Result:" + res);
+                },
+                function (err) {
+                    log("Error:" + JSON.stringify(err));
                 }
             );
         }

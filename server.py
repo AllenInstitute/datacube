@@ -30,7 +30,10 @@ class PandasServiceComponent(ApplicationSession):
             if fields:
                 r = r[fields]
             r = r[start:stop]
-            return r.to_json(orient='records')
+            json = r.to_json(orient='split')
+            if len(json) > 100e6:
+                raise ValueError('Requested data too large (' + str(len(json)) + ' bytes); please make a smaller request.')
+            return json
 
  
         def dataframe_query(df, filters):
