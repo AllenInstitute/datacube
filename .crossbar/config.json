@@ -106,10 +106,6 @@
                                 "debug": true
                             }
                         }
-                    },
-                    "options": {
-                        "auto_ping_interval": 0,
-                        "auto_ping_timeout": 0
                     }
                 }
             ]

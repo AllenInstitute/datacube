@@ -1,16 +1,17 @@
 import txaio
+from twisted.internet import threads
 from twisted.internet.defer import inlineCallbacks
-from autobahn.twisted.wamp import ApplicationSession, ApplicationRunner
+#from autobahn.twisted.wamp import ApplicationSession, ApplicationRunner
+from wamp import ApplicationSession, ApplicationRunner # copy of stock wamp.py with modified timeouts
 import pandas as pd
 import json
-import base64
 import os
 import sys
-import zlib
 
 from allensdk.api.queries.brain_observatory_api import BrainObservatoryApi
 
 DATA_DIR = './data/'
+MAX_RECORDS = 100
 
 CROSSBAR_ROUTER_URL = u"ws://127.0.0.1:8081/ws"
 WAMP_REALM_NAME = u"pandas_service"
@@ -25,24 +26,35 @@ class PandasServiceComponent(ApplicationSession):
                                   stop=None,
                                   indexes=None,
                                   fields=None):
+
+            d = threads.deferToThread(_filter_cell_specimens, filters, start, stop, indexes, fields)
+            return d
+
+
+        def _filter_cell_specimens(filters=None,
+                                  start=0,
+                                  stop=None,
+                                  indexes=None,
+                                  fields=None):
             r = cell_specimens
             if filters:
-                r = dataframe_query(r, filters)
+                r = _dataframe_query(r, filters)
             if fields and type(fields) is list:
                 r = r[fields]
             if indexes:
                 r = r.iloc[indexes]
             r = r[start:stop]
-            if fields == "indexes_only":
-                j = json.dumps(r.index.values.tolist())
-            else:
-                j = r.to_json(orient='split')
-            if len(j) > 10e6:
-                raise ValueError('Requested data too large (' + str(len(j)) + ' bytes); please make a smaller request.')
-            return j
 
- 
-        def dataframe_query(df, filters):
+            if fields == "indexes_only":
+                return r.index.values.tolist()
+            else:
+                if len(r.index.values) > MAX_RECORDS:
+                    raise ValueError('Requested would return ' + str(len(r.index.values)) + ' records; please limit request to ' + str(MAX_RECORDS) + ' records.')
+                else:
+                    return r.to_json(orient='split')
+
+
+        def _dataframe_query(df, filters):
             if not filters:
                 return df
             else:
@@ -96,4 +108,4 @@ if __name__ == '__main__':
 
     # wamp
     runner = ApplicationRunner(CROSSBAR_ROUTER_URL, WAMP_REALM_NAME)
-    runner.run(PandasServiceComponent)
+    runner.run(PandasServiceComponent, auto_reconnect=True)

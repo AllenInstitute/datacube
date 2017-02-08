@@ -16,6 +16,7 @@
     "fields": ["cell_specimen_id", "static_gratings_large"],
     "start": 10,
     "stop": 20,
+    "indexes": null,
     "filters": [
         {
             "field": "p_sg",
@@ -73,7 +74,14 @@
 </form>
 <div><button onclick='send();'>send</button></div>
 <p>Elapsed time: <span id="elapsed"></span></p>
-<p><textarea id="log" style="background-color: #faa; width: 80%;" rows="20" disabled></textarea></div></p>
+<p><textarea id="log" style="background-color: #faa; width: 80%;" rows="20" disabled></textarea></p>
+<hr />
+<h4>load test</h4>
+<p>Execute the above query N times from M different websocket connections (be aware of browser websocket connection limits). Does not close websocket connections-- reload to free up old connections.</p>
+<p>N: <input id="num_repeats" value="1" />, M: <input id="num_connections" value="1" /></p>
+<p>Succeeded: <span id="succeeded">0</span>, Failed: <span id="failed">0</span>, Total: <span id="total">0</span></p>
+<button onclick='load_test();'>execute</button>
+<p><textarea id="load_test_log" style="width: 80%;" rows="20" disabled></textarea></p>
 <script type="text/javascript" src="./autobahn.min.js"></script>
 <script type="text/javascript">
         var ellog = null;
@@ -109,13 +117,61 @@
                 function (res) {
                     var end_time = new Date();
                     document.getElementById('elapsed').innerHTML = (end_time - start_time) + 'ms';
-                    log("Result:" + res);
+                    log("Result:" + JSON.stringify(res));
                 },
                 function (err) {
                     log("Error:" + JSON.stringify(err));
                 }
             );
-        }
+        };
+
+
+        function load_test() {
+            document.getElementById('load_test_log').innerHTML = '';
+            var num_repeats = parseInt(document.getElementById('num_repeats').value);
+            var num_connections = parseInt(document.getElementById('num_connections').value);
+
+            var success_count = 0;
+            var error_count = 0;
+
+            connections = [];
+            for(var i = 0; i < num_connections; ++i) {
+                var c = new autobahn.Connection({
+                     url: 'ws://' + window.location.hostname + ':8081/ws',
+                     realm: 'pandas_service'
+                });
+
+                call = document.getElementById('call').value;
+                args = JSON.parse(document.getElementById('args').value);
+                kwargs = JSON.parse(document.getElementById('kwargs').value);
+
+                c.onopen = function(s) {
+                    for(var j = 0; j < num_repeats; ++j) {
+                        var start_time = new Date()
+                        s.call(call, args, kwargs).then(
+                            function (res) {
+                                var end_time = new Date();
+                                document.getElementById('load_test_log').innerHTML += (end_time - start_time) + 'ms' + '\n';
+                                success_count += 1;
+                                document.getElementById('succeeded').innerHTML = success_count;
+                                document.getElementById('total').innerHTML = success_count + error_count;
+                            },
+                            function (err) {
+                                document.getElementById('load_test_log').innerHTML += "Error:" + JSON.stringify(err) + '\n';
+                                error_count += 1;
+                                document.getElementById('failed').innerHTML = error_count;
+                                document.getElementById('total').innerHTML = success_count + error_count;
+                            }
+                        );
+                    }
+                };
+
+                connections.push(c);
+            }
+            for(var i = 0; i < num_connections; ++i) {
+                connections[i].open();
+            }
+        };
 </script>
 </body>
 </html>
