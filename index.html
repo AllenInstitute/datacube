@@ -7,72 +7,93 @@
 <noscript>You must enable JavaScript</noscript>
 <form>
     <div>call:</div>
-    <textarea id="call" cols="80">org.alleninstitute.pandas_service.filter_cell_specimens</textarea>
+    <textarea id="call" cols="80">"org.alleninstitute.pandas_service.filter_cell_specimens"</textarea>
     <div>args:</div>
     <textarea id="args" cols="80">[]</textarea>
     <div>kwargs:</div>
-    <textarea id="kwargs" cols="80" rows="15">
-{
-    "fields": ["cell_specimen_id", "static_gratings_large"],
-    "start": 10,
-    "stop": 20,
-    "indexes": null,
-    "filters": [
-        {
-            "field": "p_sg",
-            "op": "<=",
-            "value": 0.01
-        },
-        {
-            "field": "pref_phase_sg",
-            "op": "=",
-            "value": 0.25
-        },
-        {
-            "field": "pref_sf_sg",
-            "op": "=",
-            "value": 0.02
-        },
-        {
-            "field": "p_dg",
-            "op": "<=",
-            "value": 0.01
-        },
-        {
-            "field": "pref_tf_dg",
-            "op": "=",
-            "value": 1
-        },
-        {
-            "field": "dsi_dg",
-            "op": "between",
-            "value": [
-                0.7,
-                2
-            ]
-        },
-        {
-            "field": "time_to_peak_ns",
-            "op": "between",
-            "value": [
-                0,
-                0.18
-            ]
-        },
-        {
-            "field": "area",
-            "op": "in",
-            "value": [
-                "VISp",
-                "VISal",
-                "VISl"
-            ]
-        }
-    ]
+    <textarea id="kwargs" style="width: 80%;" rows="15">
+function getRandomInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
 }
+
+// get N random records
+var N = 100;
+var indexes = [];
+for(i = 0; i < N; ++i) {
+    indexes.push(getRandomInt(0, 180000));
+}
+JSON.parse(`
+    {
+        "indexes": ${JSON.stringify(indexes)}
+    }
+`);
+
+
+// get all indexes for a set of filters
+/*
+JSON.parse(`
+    {
+        "fields": "indexes_only",
+        "start": 0,
+        "stop": null,
+        "filters": [
+            {
+                "field": "p_sg",
+                "op": "<=",
+                "value": 0.01
+            },
+            {
+                "field": "pref_phase_sg",
+                "op": "=",
+                "value": 0.25
+            },
+            {
+                "field": "pref_sf_sg",
+                "op": "=",
+                "value": 0.02
+            },
+            {
+                "field": "p_dg",
+                "op": "<=",
+                "value": 0.01
+            },
+            {
+                "field": "pref_tf_dg",
+                "op": "=",
+                "value": 1
+            },
+            {
+                "field": "dsi_dg",
+                "op": "between",
+                "value": [
+                    0.7,
+                    2
+                ]
+            },
+            {
+                "field": "time_to_peak_ns",
+                "op": "between",
+                "value": [
+                    0,
+                    0.18
+                ]
+            },
+            {
+                "field": "area",
+                "op": "in",
+                "value": [
+                    "VISp",
+                    "VISal",
+                    "VISl"
+                ]
+            }
+        ]
+    }
+`);
+*/
 </textarea>
 </form>
-<div><button onclick='send();'>send</button></div>
+<div><button onclick="send()">send</button></div>
 <p>Elapsed time: <span id="elapsed"></span></p>
 <p><textarea id="log" style="background-color: #faa; width: 80%;" rows="20" disabled></textarea></p>
 <hr />
@@ -108,9 +129,9 @@
         };
 
         function send() {
-            call = document.getElementById('call').value;
-            args = JSON.parse(document.getElementById('args').value);
-            kwargs = JSON.parse(document.getElementById('kwargs').value);
+            call = eval(document.getElementById('call').value);
+            args = eval(document.getElementById('args').value);
+            kwargs = eval(document.getElementById('kwargs').value);
 
             var start_time = new Date()
             session.call(call, args, kwargs).then(
@@ -141,13 +162,13 @@
                      realm: 'pandas_service'
                 });
 
-                call = document.getElementById('call').value;
-                args = JSON.parse(document.getElementById('args').value);
-                kwargs = JSON.parse(document.getElementById('kwargs').value);
-
                 c.onopen = function(s) {
                     for(var j = 0; j < num_repeats; ++j) {
                         var start_time = new Date()
+                        call = eval(document.getElementById('call').value);
+                        args = eval(document.getElementById('args').value);
+                        kwargs = eval(document.getElementById('kwargs').value);
+
                         s.call(call, args, kwargs).then(
                             function (res) {
                                 var end_time = new Date();

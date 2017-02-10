@@ -5,6 +5,7 @@ from autobahn.twisted.wamp import ApplicationSession #, ApplicationRunner
 from autobahn.wamp.types import RegisterOptions
 #from wamp import ApplicationSession, ApplicationRunner # copy of stock wamp.py with modified timeouts
 import pandas as pd
+#import xarray as xr
 import numpy as np
 import json
 import base64
@@ -47,12 +48,12 @@ class PandasServiceComponent(ApplicationSession):
             #print('_filter_cell_specimens')
             #print(reactor.getThreadPool()._queue.qsize())
             r = self.cell_specimens
+            if indexes:
+                r = r[indexes]
             if filters:
                 r = _dataframe_query(r, filters)
             if fields and type(fields) is list:
                 r = r[fields]
-            if indexes:
-                r = r[indexes]
             r = r[start:stop]
 
             if fields == "indexes_only":
@@ -111,6 +112,10 @@ class PandasServiceComponent(ApplicationSession):
             return out
 
 
+        #def _structured_array_to_dataset(sa):
+        #    return xr.Dataset({field: ('dim_0', sa[field]) for field in sa.dtype.names})
+
+
         def _load_dataframes(): 
             print('Loading bogus englarged cell metrics dataset ...')
             if not os.path.isfile(NPY_FILE):
@@ -128,6 +133,7 @@ class PandasServiceComponent(ApplicationSession):
                 del cell_specimens_sa
             copyfile(NPY_FILE, SHM_FILE)
             self.cell_specimens = np.load(SHM_FILE, mmap_mode='r')
+            #self.cell_specimens = _structured_array_to_dataset(cell_specimens_shm)
             print('Done.')
 
         try:
