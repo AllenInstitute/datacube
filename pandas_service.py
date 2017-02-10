@@ -47,7 +47,8 @@ class PandasServiceComponent(ApplicationSession):
                                   fields=None):
             #print('_filter_cell_specimens')
             #print(reactor.getThreadPool()._queue.qsize())
-            r = self.cell_specimens
+            #r = self.cell_specimens
+            r = np.load(SHM_FILE, mmap_mode='r')
             if indexes:
                 r = r[indexes]
             if filters:
@@ -132,7 +133,7 @@ class PandasServiceComponent(ApplicationSession):
                 np.save(NPY_FILE, cell_specimens_sa)
                 del cell_specimens_sa
             copyfile(NPY_FILE, SHM_FILE)
-            self.cell_specimens = np.load(SHM_FILE, mmap_mode='r')
+            #self.cell_specimens = np.load(SHM_FILE, mmap_mode='r')
             #self.cell_specimens = _structured_array_to_dataset(cell_specimens_shm)
             print('Done.')
 
