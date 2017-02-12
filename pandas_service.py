@@ -63,8 +63,23 @@ class PandasServiceComponent(ApplicationSession):
                 if r.size > MAX_RECORDS:
                     raise ValueError('Requested would return ' + str(r.size) + ' records; please limit request to ' + str(MAX_RECORDS) + ' records.')
                 else:
-                    return base64.b64encode(zlib.compress(r.tobytes()))
+                    #return base64.b64encode(zlib.compress(r.tobytes()))
+                    return _format_structured_array_response(r)
 
+
+        def _format_structured_array_response(sa):
+            data = []
+            for field in sa.dtype.names:
+                col = sa[field]
+                # ensure network byte order
+                col = col.astype(col.dtype.str.replace('<', '>').replace('=', '>'))
+                data.append(col.tobytes())
+            data = b''.join(data)
+            return {'num_rows': sa.size,
+                    'col_names': list(sa.dtype.names),
+                    'col_types': [sa[name].dtype.name for name in sa.dtype.names],
+                    'item_sizes': [sa[name].dtype.itemsize for name in sa.dtype.names],
+                    'data': base64.b64encode(zlib.compress(data))}
 
         def _dataframe_query(df, filters):
             if not filters:
@@ -104,10 +119,17 @@ class PandasServiceComponent(ApplicationSession):
                 if data.dtype.kind == 'O':
                     if all(isinstance(x, basestring) or x is np.nan or x is None for x in data):
                         data[data == np.array([None])] = b''
-                        data = np.array([x for x in data], dtype=np.str)
+                        data[[True if str(x) == 'nan' else False for x in data]] = b''
+                        data = np.array([x + '\0' for x in data], dtype=np.str)
                 col_data.append(data)
                 col_names.append(name)
-                col_types.append(str(data.dtype))
+                # javascript cannot natively handle longs
+                if str(data.dtype) == 'int64':
+                    col_types.append('i4')
+                elif str(data.dtype) == 'uint64':
+                    col_types.append('u4')
+                else:
+                    col_types.append(data.dtype.str)
             out = np.array([tuple(data[j] for data in col_data) for j in range(len(df.index))],
                           dtype=[(str(col_names[i]), col_types[i]) for i in range(len(col_names))])
             return out

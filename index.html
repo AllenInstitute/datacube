@@ -104,6 +104,10 @@ JSON.parse(`
 <button onclick='load_test();'>execute</button>
 <p><textarea id="load_test_log" style="width: 80%;" rows="20" disabled></textarea></p>
 <script type="text/javascript" src="./autobahn.min.js"></script>
+<script type="text/javascript" src="./zlib.min.js"></script>
+<script type="text/javascript" src="./pako.min.js"></script>
+<script type="text/javascript" src="./encoding.js"></script>
+<script type="text/javascript" src="./structured_array.js"></script>
 <script type="text/javascript">
         var ellog = null;
         ellog = document.getElementById('log');
@@ -136,9 +140,18 @@ JSON.parse(`
             var start_time = new Date()
             session.call(call, args, kwargs).then(
                 function (res) {
-                    var end_time = new Date();
-                    document.getElementById('elapsed').innerHTML = (end_time - start_time) + 'ms';
-                    log("Result:" + JSON.stringify(res));
+                    if(kwargs.fields == "indexes_only") {
+                        var end_time = new Date();
+                        document.getElementById('elapsed').innerHTML = (end_time - start_time) + 'ms';
+                        log("Result:" + JSON.stringify(res));
+                    } else {
+                        //log("Result:" + JSON.stringify(res));
+                        decode_structured_array(res, function(records) {
+                            var end_time = new Date();
+                            document.getElementById('elapsed').innerHTML = (end_time - start_time) + 'ms';
+                            log("Result:" + JSON.stringify(records));
+                        });
+                    }
                 },
                 function (err) {
                     log("Error:" + JSON.stringify(err));
@@ -171,11 +184,13 @@ JSON.parse(`
 
                         s.call(call, args, kwargs).then(
                             function (res) {
-                                var end_time = new Date();
-                                document.getElementById('load_test_log').innerHTML += (end_time - start_time) + 'ms' + '\n';
-                                success_count += 1;
-                                document.getElementById('succeeded').innerHTML = success_count;
-                                document.getElementById('total').innerHTML = success_count + error_count;
+                                decode_structured_array(res, function(records) {
+                                    var end_time = new Date();
+                                    document.getElementById('load_test_log').innerHTML += (end_time - start_time) + 'ms' + '\n';
+                                    success_count += 1;
+                                    document.getElementById('succeeded').innerHTML = success_count;
+                                    document.getElementById('total').innerHTML = success_count + error_count;
+                                });
                             },
                             function (err) {
                                 document.getElementById('load_test_log').innerHTML += "Error:" + JSON.stringify(err) + '\n';
