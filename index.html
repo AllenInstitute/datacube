@@ -94,7 +94,7 @@ JSON.parse(`
 </textarea>
 </form>
 <div><button onclick="send()">send</button></div>
-<p>Elapsed time: <span id="elapsed"></span></p>
+<p>Elapsed time: <span id="elapsed"></span>, Message size: <span id="msg_size"></span></p>
 <p><textarea id="log" style="background-color: #faa; width: 80%;" rows="20" disabled></textarea></p>
 <hr />
 <h4>load test</h4>
@@ -140,17 +140,24 @@ JSON.parse(`
             var start_time = new Date()
             session.call(call, args, kwargs).then(
                 function (res) {
+                    //document.getElementById('msg_size').innerHTML = res.length;
+                    document.getElementById('msg_size').innerHTML = res.data.length;
                     if(kwargs.fields == "indexes_only") {
                         var end_time = new Date();
                         document.getElementById('elapsed').innerHTML = (end_time - start_time) + 'ms';
                         log("Result:" + JSON.stringify(res));
                     } else {
+                        //var zbuf = atob(res);
+                        //var buf = pako.inflate(zbuf);
+                        //var decoder = new TextDecoder('utf-8');
+                        //var str = decoder.decode(buf);
+                        //var records = JSON.parse(str);
+                        var sa = new StructuredArray(res);
+                        var records = sa.get_all();
+                        var end_time = new Date();
+                        document.getElementById('elapsed').innerHTML = (end_time - start_time) + 'ms';
+                        log("Result:" + JSON.stringify(records));
                         //log("Result:" + JSON.stringify(res));
-                        decode_structured_array(res, function(records) {
-                            var end_time = new Date();
-                            document.getElementById('elapsed').innerHTML = (end_time - start_time) + 'ms';
-                            log("Result:" + JSON.stringify(records));
-                        });
                     }
                 },
                 function (err) {

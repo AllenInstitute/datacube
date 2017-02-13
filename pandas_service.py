@@ -7,7 +7,7 @@ from autobahn.wamp.types import RegisterOptions
 import pandas as pd
 #import xarray as xr
 import numpy as np
-import json
+import simplejson
 import base64
 import zlib
 import os
@@ -68,6 +68,8 @@ class PandasServiceComponent(ApplicationSession):
 
 
         def _format_structured_array_response(sa):
+            #records = [{field: sa[i][field].item() for field in sa[i].dtype.names} for i in range(sa.size)]
+            #return base64.b64encode(zlib.compress(simplejson.dumps(records, ignore_nan=True)))
             data = []
             for field in sa.dtype.names:
                 col = sa[field]
