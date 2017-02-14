@@ -58,7 +58,7 @@ class PandasServiceComponent(ApplicationSession):
             r = r[start:stop]
 
             if fields == "indexes_only":
-                return r[r.dtype.names[0]].tolist()
+                return r['index'].tolist()
             else:
                 if r.size > MAX_RECORDS:
                     raise ValueError('Requested would return ' + str(r.size) + ' records; please limit request to ' + str(MAX_RECORDS) + ' records.')
@@ -111,9 +111,9 @@ class PandasServiceComponent(ApplicationSession):
 
 
         def _dataframe_to_structured_array(df):
-            col_data = []
-            col_names = []
-            col_types = []
+            col_data = [df.index]
+            col_names = ['index']
+            col_types = ['i4']
             for name in df.columns:
                 column = df[name]
                 data = np.array(column)
@@ -121,7 +121,7 @@ class PandasServiceComponent(ApplicationSession):
                 if data.dtype.kind == 'O':
                     if all(isinstance(x, basestring) or x is np.nan or x is None for x in data):
                         data[data == np.array([None])] = b''
-                        data[[True if str(x) == 'nan' else False for x in data]] = b''
+                        data[np.array([True if str(x) == 'nan' else False for x in data], dtype=np.dtype)] = b''
                         data = np.array([x + '\0' for x in data], dtype=np.str)
                 col_data.append(data)
                 col_names.append(name)
@@ -145,7 +145,7 @@ class PandasServiceComponent(ApplicationSession):
             print('Loading bogus englarged cell metrics dataset ...')
             if not os.path.isfile(NPY_FILE):
                 if os.path.isfile(CSV_FILE):
-                    cell_specimens_df = pd.read_csv(CSV_FILE)
+                    cell_specimens_df = pd.read_csv(CSV_FILE, index_col='index')
                 else:
                     api = BrainObservatoryApi(base_uri=None)
                     cell_specimens_list = api.get_cell_metrics()
