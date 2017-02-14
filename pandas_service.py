@@ -151,7 +151,7 @@ class PandasServiceComponent(ApplicationSession):
                     cell_specimens_list = api.get_cell_metrics()
                     cell_specimens_df = pd.DataFrame(cell_specimens_list * 7)
                     del cell_specimens_list
-                    cell_specimens_df.to_csv(CSV_FILE)
+                    cell_specimens_df.to_csv(CSV_FILE, index_label='index')
                 cell_specimens_sa = _dataframe_to_structured_array(cell_specimens_df)
                 del cell_specimens_df
                 np.save(NPY_FILE, cell_specimens_sa)
