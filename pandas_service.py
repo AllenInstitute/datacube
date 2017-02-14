@@ -121,7 +121,7 @@ class PandasServiceComponent(ApplicationSession):
                 if data.dtype.kind == 'O':
                     if all(isinstance(x, basestring) or x is np.nan or x is None for x in data):
                         data[data == np.array([None])] = b''
-                        data[np.array([True if str(x) == 'nan' else False for x in data], dtype=np.dtype)] = b''
+                        data[np.array([True if str(x) == 'nan' else False for x in data], dtype=np.bool)] = b''
                         data = np.array([x + '\0' for x in data], dtype=np.str)
                 col_data.append(data)
                 col_names.append(name)
