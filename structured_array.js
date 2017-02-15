@@ -102,7 +102,20 @@ StructuredArray.prototype.get_row = function(row_idx) {
 StructuredArray.prototype.get_all = function() {
     var records = [];
     for(var row_idx = 0; row_idx < this.res.num_rows; ++row_idx) {
+        console.log('get_row ' + row_idx + ', ' + this.res.num_rows);
         records.push(this.get_row(row_idx));
     }
     return records;
+};
+
+StructuredArray.prototype.lazy_get_all = function() {
+    var records_fn = [];
+    for(var row_idx = 0; row_idx < this.res.num_rows; ++row_idx) {
+        let row_idx_let = row_idx;
+        let sa = this;
+        records_fn.push(function() {
+            return sa.get_row(row_idx_let);
+        });
+    }
+    return records_fn;
 };

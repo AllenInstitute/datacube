@@ -166,12 +166,12 @@
                     callback([], range);
                 } else {
                     var indexes = service.indexes.slice(range.start, range.end);
-                    console.log('requesting start: ' + range.start + ' end: ' + range.end);
+                    console.log('requesting ' + (range.end - range.start) + ' records from server: [' + range.start + ', ' + range.end + ')');
                     service.session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [],
                                          {'indexes': indexes}).then(
                         function (res) {
                             var sa = new StructuredArray(res);
-                            var records = sa.get_all();
+                            var records = sa.lazy_get_all();
                             callback(records, range);
                         }
                     );
@@ -182,6 +182,13 @@
                 load_records(load_following, function (following_records, following_range) {
                     service.records = preceding_records.concat(kept_records).concat(following_records);
                     var result_range = Range(preceding_range.start, following_range.end);
+                    for(var record_idx = page_range.start - result_range.start;
+                            record_idx < page_range.end - result_range.start;
+                            ++record_idx) {
+                        if(typeof service.records[record_idx] === "function") {
+                            service.records[record_idx] = service.records[record_idx]();
+                        }
+                    }
                     service.page_data_callback(service.records.slice(page_range.start - result_range.start, page_range.end - result_range.start));
                     service.previous_range = result_range;
                 });
@@ -228,7 +235,7 @@
         };
 
 
-        // poll for scroll events every 250ms instead of acting on every single scroll event
+        // poll for scroll events every 100ms instead of acting on every single scroll event
         var did_scroll = false;
         function scroll() {
             did_scroll = true;
@@ -238,7 +245,7 @@
                 did_scroll = false;
                 update_page();
             }
-        }, 250);
+        }, 100);
 
         function update_page() {
             service.update_page();
