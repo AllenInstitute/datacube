@@ -20,7 +20,7 @@ DATA_DIR = '../data/' # TODO: pass in through crossbar config
 CSV_FILE = DATA_DIR + 'cell_specimens.csv'
 NPY_FILE = DATA_DIR + 'cell_specimens.npy'
 SHM_FILE = '/dev/shm/cell_specimens.npy'
-MAX_RECORDS = 100000
+MAX_RECORDS = 1000
 
 
 
@@ -49,6 +49,13 @@ class PandasServiceComponent(ApplicationSession):
             #print(reactor.getThreadPool()._queue.qsize())
             #r = self.cell_specimens
             r = np.load(SHM_FILE, mmap_mode='r')
+            if not filters and not fields == "indexes_only":
+                if indexes:
+                    num_results = np.array(indexes)[start:stop].size
+                else:
+                    num_results = r['index'][start:stop].size
+                if num_results > MAX_RECORDS:
+                    raise ValueError('Requested would return ' + str(num_results) + ' records; please limit request to ' + str(MAX_RECORDS) + ' records.')
             if indexes:
                 r = r[indexes]
             if filters:

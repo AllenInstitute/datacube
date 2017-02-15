@@ -67,7 +67,7 @@
 <table style="width:87%;">
 <tr>
 <td>
-<textarea id="records" style="width:98%;" rows="20" wrap="off" disabled></textarea>
+<textarea id="records" style="width:98%;resize:none;" rows="20" wrap="off" disabled></textarea>
 </td>
 <td>
 <div id="scrollbar" style="overflow:scroll;overflow:auto;height:20em;width:12px;" onscroll="scroll()">
@@ -83,7 +83,14 @@
 <script type="text/javascript" src="./structured_array.js"></script>
 <script type="text/javascript">
 
-        function BrainObservatoryPandasService(url, realm, get_current_filters, apply_filters_callback, get_current_page_range, page_data_callback) {
+        function BrainObservatoryPandasService(url,
+                                               realm,
+                                               chunk_size,
+                                               preload_margin,
+                                               get_current_filters,
+                                               apply_filters_callback,
+                                               get_current_page_range,
+                                               page_data_callback) {
             this.connection = new autobahn.Connection({
                  url: url,
                  realm: realm
@@ -95,10 +102,16 @@
                 service.apply_filters();
             };
 
+            this.chunk_size = chunk_size;
+            this.preload_margin = preload_margin;
+
             this.get_current_filters = get_current_filters;
             this.apply_filters_callback = apply_filters_callback;
-            this.get_current_page_range = get_current_page_range
+            this.get_current_page_range = get_current_page_range;
             this.page_data_callback = page_data_callback;
+
+            this.previous_range = {"start": 0, "end": 0};
+            this.records = [];
 
             this.connection.open();
         };
@@ -110,6 +123,8 @@
                               {'fields': 'indexes_only', 'filters': filters}).then(
                 function (res) {
                     service.indexes = res;
+                    service.previous_range = {"start": 0, "end": 0};
+                    service.records = [];
                     service.apply_filters_callback(service.indexes.length);
                     service.update_page();
                 }
@@ -118,18 +133,60 @@
         };
 
         BrainObservatoryPandasService.prototype.update_page = function() {
-            var page_range = this.get_current_page_range(this.indexes.length);
-            var indexes = this.indexes.slice(page_range[0], page_range[1]);
             var service = this;
-            this.session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [],
-                              {'indexes': indexes}).then(
-                function (res) {
-                    var sa = new StructuredArray(res);
-                    var records = sa.get_all();
-                    service.page_data_callback(records);
+            var page_range = this.get_current_page_range(this.indexes.length);
+
+            function Range(start, end) {
+                if(start <= end) {
+                    return {"start": Math.min(start, end), "end": Math.max(start, end)};
+                } else {
+                    return {"start": start, "end": start};
                 }
-            );
-        }
+            };
+
+            var preload_range = Range(Math.max(0, page_range.start - this.preload_margin),
+                                      Math.min(this.indexes.length , page_range.end + this.preload_margin));
+            var range = Range(Math.max(0, page_range.start - this.chunk_size),
+                              Math.min(this.indexes.length , page_range.end + this.chunk_size));
+            var keep = Range(Math.max(range.start, Math.min(this.previous_range.start, range.end)),
+                             Math.min(range.end, Math.max(this.previous_range.end, range.start)));
+            var load_preceding = preload_range.start < this.previous_range.start
+                ? Range(range.start, Math.min(this.previous_range.start, range.end))
+                : Range(keep.start, keep.start);
+            var load_following = preload_range.end > this.previous_range.end
+                ? Range(Math.max(this.previous_range.end, range.start), range.end)
+                : Range(keep.end, keep.end);
+
+
+            var kept_records = this.records.slice(keep.start - this.previous_range.start,
+                                                  keep.end - this.previous_range.start);
+
+            function load_records(range, callback) {
+                if(range.end <= range.start) {
+                    callback([], range);
+                } else {
+                    var indexes = service.indexes.slice(range.start, range.end);
+                    console.log('requesting start: ' + range.start + ' end: ' + range.end);
+                    service.session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [],
+                                         {'indexes': indexes}).then(
+                        function (res) {
+                            var sa = new StructuredArray(res);
+                            var records = sa.get_all();
+                            callback(records, range);
+                        }
+                    );
+                }
+            };
+
+            load_records(load_preceding, function (preceding_records, preceding_range) {
+                load_records(load_following, function (following_records, following_range) {
+                    service.records = preceding_records.concat(kept_records).concat(following_records);
+                    var result_range = Range(preceding_range.start, following_range.end);
+                    service.page_data_callback(service.records.slice(page_range.start - result_range.start, page_range.end - result_range.start));
+                    service.previous_range = result_range;
+                });
+            });
+        };
 
         function get_current_filters() {
             return JSON.parse(document.getElementById('filters').value);
@@ -139,7 +196,7 @@
             var scrollbar = document.getElementById('scrollbar');
             var start_idx = Math.round(scrollbar.scrollTop/scrollbar.scrollHeight * sz);
             var end_idx = start_idx + 20;
-            return [start_idx, end_idx]
+            return {"start": start_idx, "end": end_idx}
         };
 
         function process_num_results(sz) {
@@ -158,6 +215,8 @@
 
         var service = new BrainObservatoryPandasService('ws://' + window.location.hostname + ':8081/ws',
                                                         'pandas_service',
+                                                        100,
+                                                        20,
                                                         get_current_filters,
                                                         process_num_results,
                                                         get_current_page_range,
