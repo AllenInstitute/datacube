@@ -83,6 +83,28 @@
 <script type="text/javascript" src="./structured_array.js"></script>
 <script type="text/javascript">
 
+
+        // poll for scroll events every 100ms and prevent concurrent calls to update_page
+        var pending = false;
+        var did_scroll = false;
+        function scroll() {
+            did_scroll = true;
+        }
+        setInterval(function() {
+            if(did_scroll) {
+                did_scroll = false;
+                if(!pending) {
+                    pending = true;
+                    update_page();
+                }
+            }
+        }, 100);
+
+        function finished() {
+            pending = false;
+        }
+
+
         function BrainObservatoryPandasService(url,
                                                realm,
                                                chunk_size,
@@ -90,7 +112,8 @@
                                                get_current_filters,
                                                apply_filters_callback,
                                                get_current_page_range,
-                                               page_data_callback) {
+                                               page_data_callback,
+                                               finished_callback) {
             this.connection = new autobahn.Connection({
                  url: url,
                  realm: realm
@@ -109,6 +132,7 @@
             this.apply_filters_callback = apply_filters_callback;
             this.get_current_page_range = get_current_page_range;
             this.page_data_callback = page_data_callback;
+            this.finished_callback = finished_callback;
 
             this.previous_range = {"start": 0, "end": 0};
             this.records = [];
@@ -166,7 +190,7 @@
                     callback([], range);
                 } else {
                     var indexes = service.indexes.slice(range.start, range.end);
-                    console.log('requesting ' + (range.end - range.start) + ' records from server: [' + range.start + ', ' + range.end + ')');
+                    console.log('==> requesting ' + (range.end - range.start) + ' records from server: [' + range.start + ', ' + range.end + ')');
                     service.session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [],
                                          {'indexes': indexes}).then(
                         function (res) {
@@ -190,7 +214,9 @@
                         }
                     }
                     service.page_data_callback(service.records.slice(page_range.start - result_range.start, page_range.end - result_range.start));
+                    console.log('records currently in memory: [' + result_range.start + ', ' + result_range.end + ')');
                     service.previous_range = result_range;
+                    service.finished_callback();
                 });
             });
         };
@@ -227,25 +253,14 @@
                                                         get_current_filters,
                                                         process_num_results,
                                                         get_current_page_range,
-                                                        process_page);
+                                                        process_page,
+                                                        finished);
 
 
         function apply_filters() {
             service.apply_filters();
         };
 
-
-        // poll for scroll events every 100ms instead of acting on every single scroll event
-        var did_scroll = false;
-        function scroll() {
-            did_scroll = true;
-        }
-        setInterval(function() {
-            if(did_scroll) {
-                did_scroll = false;
-                update_page();
-            }
-        }, 100);
 
         function update_page() {
             service.update_page();
