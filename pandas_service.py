@@ -2,6 +2,7 @@
 from twisted.internet import reactor, threads
 from twisted.internet.defer import inlineCallbacks
 from autobahn.twisted.wamp import ApplicationSession #, ApplicationRunner
+from autobahn.wamp.exception import ApplicationError
 from autobahn.wamp.types import RegisterOptions
 #from wamp import ApplicationSession, ApplicationRunner # copy of stock wamp.py with modified timeouts
 import pandas as pd
@@ -45,33 +46,36 @@ class PandasServiceComponent(ApplicationSession):
                                   stop=None,
                                   indexes=None,
                                   fields=None):
-            #print('_filter_cell_specimens')
-            #print(reactor.getThreadPool()._queue.qsize())
-            #r = self.cell_specimens
-            r = np.load(SHM_FILE, mmap_mode='r')
-            if not filters and not fields == "indexes_only":
+            try:
+                #print('_filter_cell_specimens')
+                #print(reactor.getThreadPool()._queue.qsize())
+                #r = self.cell_specimens
+                r = np.load(SHM_FILE, mmap_mode='r')
+                if not filters and not fields == "indexes_only":
+                    if indexes:
+                        num_results = np.array(indexes)[start:stop].size
+                    else:
+                        num_results = r['index'][start:stop].size
+                    if num_results > MAX_RECORDS:
+                        raise ValueError('Requested would return ' + str(num_results) + ' records; please limit request to ' + str(MAX_RECORDS) + ' records.')
                 if indexes:
-                    num_results = np.array(indexes)[start:stop].size
-                else:
-                    num_results = r['index'][start:stop].size
-                if num_results > MAX_RECORDS:
-                    raise ValueError('Requested would return ' + str(num_results) + ' records; please limit request to ' + str(MAX_RECORDS) + ' records.')
-            if indexes:
-                r = r[indexes]
-            if filters:
-                r = _dataframe_query(r, filters)
-            if fields and type(fields) is list:
-                r = r[fields]
-            r = r[start:stop]
+                    r = r[indexes]
+                if filters:
+                    r = _dataframe_query(r, filters)
+                if fields and type(fields) is list:
+                    r = r[fields]
+                r = r[start:stop]
 
-            if fields == "indexes_only":
-                return r['index'].tolist()
-            else:
-                if r.size > MAX_RECORDS:
-                    raise ValueError('Requested would return ' + str(r.size) + ' records; please limit request to ' + str(MAX_RECORDS) + ' records.')
+                if fields == "indexes_only":
+                    return r['index'].tolist()
                 else:
-                    #return base64.b64encode(zlib.compress(r.tobytes()))
-                    return _format_structured_array_response(r)
+                    if r.size > MAX_RECORDS:
+                        raise ValueError('Requested would return ' + str(r.size) + ' records; please limit request to ' + str(MAX_RECORDS) + ' records.')
+                    else:
+                        #return base64.b64encode(zlib.compress(r.tobytes()))
+                        return _format_structured_array_response(r)
+            except Exception as e:
+                _application_error(e)
 
 
         def _format_structured_array_response(sa):
@@ -89,6 +93,11 @@ class PandasServiceComponent(ApplicationSession):
                     'col_types': [sa[name].dtype.name for name in sa.dtype.names],
                     'item_sizes': [sa[name].dtype.itemsize for name in sa.dtype.names],
                     'data': base64.b64encode(zlib.compress(data))}
+
+
+        def _application_error(e):
+            raise ApplicationError(u'org.alleninstitute.pandas_service.application_error', e.__class__.__name__, e.message, e.args, e.__doc__)
+            
 
         def _dataframe_query(df, filters):
             if not filters:
