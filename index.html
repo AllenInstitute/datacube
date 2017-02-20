@@ -112,6 +112,7 @@ function BrainObservatoryPandasService(url,
                                        chunk_size,
                                        preload_margin,
                                        get_current_filters,
+                                       first_page_callback,
                                        apply_filters_callback,
                                        get_current_page_range,
                                        page_data_callback,
@@ -131,6 +132,7 @@ function BrainObservatoryPandasService(url,
     this.preload_margin = preload_margin;
 
     this.get_current_filters = get_current_filters;
+    this.first_page_callback = first_page_callback;
     this.apply_filters_callback = apply_filters_callback;
     this.get_current_page_range = get_current_page_range;
     this.page_data_callback = page_data_callback;
@@ -146,19 +148,33 @@ BrainObservatoryPandasService.prototype.apply_filters = function() {
     filters = this.get_current_filters();
     var self = this;
     this.session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [],
-                      {'fields': 'indexes_only', 'filters': filters}).then(
+                      {'fields': 'indexes_only', 'filters': filters, 'start': 0, 'stop': 2 * this.chunk_size}).then(
         function (res) {
-            self.indexes = res;
+            self.indexes = res.indexes;
             self.previous_range = {"start": 0, "end": 0};
             self.records = [];
-            self.apply_filters_callback(self.indexes.length);
-            self.update_page();
+            self.first_page_callback(self.indexes.length, res.filtered_total);
+            if(res.indexes.length == res.filtered_total) {
+                self.update_page(function () { self.apply_filters_callback(self.indexes.length); });
+            } else {
+                self.update_page(function () {
+                    self.session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [],
+                                      {'fields': 'indexes_only', 'filters': filters}).then(
+                        function (res) {
+                            self.indexes = res.indexes;
+                            self.previous_range = {"start": 0, "end": 0};
+                            self.records = [];
+                            self.apply_filters_callback(self.indexes.length);
+                            self.update_page();
+                        }
+                    );
+                });
+            }
         }
     );
-            
 };
 
-BrainObservatoryPandasService.prototype.update_page = function() {
+BrainObservatoryPandasService.prototype.update_page = function(after_update) {
     var self = this;
     var page_range = this.get_current_page_range(this.indexes.length);
 
@@ -228,7 +244,9 @@ BrainObservatoryPandasService.prototype.update_page = function() {
             }
             console.log('records currently in memory: [' + result_range.start + ', ' + result_range.end + ')');
             self.previous_range = result_range;
-            self.finished_callback();
+            if(after_update) {
+                after_update();
+            }
         });
     });
 };
@@ -239,13 +257,19 @@ function get_current_filters() {
 
 function get_current_page_range(sz) {
     var scrollbar = document.getElementById('scrollbar');
-    var start_idx = Math.round(scrollbar.scrollTop/scrollbar.scrollHeight * sz);
+    var start_idx = Math.round(scrollbar.scrollTop/(scrollbar.scrollHeight - scrollbar.clientHeight) * (sz - 20));
     var end_idx = start_idx + 20;
     return {"start": start_idx, "end": end_idx}
 };
 
+function first_page_load(sz, total) {
+    document.getElementById('scrollbar').scrollTop = 0; // reset scroll
+    document.getElementById('num_rows').innerHTML = '--';
+    document.getElementById('scroller').rows = sz;
+};
+
 function process_num_results(sz) {
-    document.getElementById.scrollTop = 0; // reset scroll
+    document.getElementById('scrollbar').scrollTop = 0; // reset scroll
     document.getElementById('num_rows').innerHTML = sz;
     document.getElementById('scroller').rows = sz;
 };
@@ -263,10 +287,10 @@ var service = new BrainObservatoryPandasService('ws://' + window.location.hostna
                                                 100,
                                                 25,
                                                 get_current_filters,
+                                                first_page_load,
                                                 process_num_results,
                                                 get_current_page_range,
-                                                process_page,
-                                                finished);
+                                                process_page);
 
 
 function apply_filters() {
@@ -275,7 +299,7 @@ function apply_filters() {
 
 
 function update_page() {
-    service.update_page();
+    service.update_page(finished);
 };
 
 </script>

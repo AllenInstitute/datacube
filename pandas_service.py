@@ -62,12 +62,13 @@ class PandasServiceComponent(ApplicationSession):
                     r = r[indexes]
                 if filters:
                     r = _dataframe_query(r, filters)
+                filtered_total = r.size;
                 if fields and type(fields) is list:
                     r = r[fields]
                 r = r[start:stop]
 
                 if fields == "indexes_only":
-                    return r['index'].tolist()
+                    return {'filtered_total': filtered_total, 'indexes': r['index'].tolist()}
                 else:
                     if r.size > MAX_RECORDS:
                         raise ValueError('Requested would return ' + str(r.size) + ' records; please limit request to ' + str(MAX_RECORDS) + ' records.')
