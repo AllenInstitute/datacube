@@ -81,8 +81,8 @@
 <script type="text/javascript" src="./pako.min.js"></script>
 <script type="text/javascript" src="./encoding.js"></script>
 <script type="text/javascript" src="./structured_array.js"></script>
+<script type="text/javascript" src="./scroll_preloader.js"></script>
 <script type="text/javascript">
-
 
 // poll for scroll events and prevent concurrent calls to update_page
 var pending = false;
@@ -107,153 +107,51 @@ function finished() {
 document.getElementById('scrollbar').onscroll = scroll;
 
 
-function BrainObservatoryPandasService(url,
-                                       realm,
-                                       chunk_size,
-                                       preload_margin,
-                                       get_current_filters,
-                                       first_page_callback,
-                                       apply_filters_callback,
-                                       get_current_page_range,
-                                       page_data_callback,
-                                       finished_callback) {
-    this.connection = new autobahn.Connection({
-         url: url,
-         realm: realm
-    });
-
-    var self = this;
-    this.connection.onopen = function (s) {
-        self.session = s;
-        self.apply_filters();
-    };
-
-    this.chunk_size = chunk_size;
-    this.preload_margin = preload_margin;
-
-    this.get_current_filters = get_current_filters;
-    this.first_page_callback = first_page_callback;
-    this.apply_filters_callback = apply_filters_callback;
-    this.get_current_page_range = get_current_page_range;
-    this.page_data_callback = page_data_callback;
-    this.finished_callback = finished_callback;
-
-    this.previous_range = {"start": 0, "end": 0};
-    this.records = [];
-
-    this.connection.open();
-};
-
-BrainObservatoryPandasService.prototype.apply_filters = function() {
-    filters = this.get_current_filters();
-    var self = this;
-    this.session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [],
-                      {'fields': 'indexes_only', 'filters': filters, 'start': 0, 'stop': 2 * this.chunk_size}).then(
-        function (res) {
-            self.indexes = res.indexes;
-            self.previous_range = {"start": 0, "end": 0};
-            self.records = [];
-            self.first_page_callback(self.indexes.length, res.filtered_total);
-            if(res.indexes.length == res.filtered_total) {
-                self.update_page(function () { self.apply_filters_callback(self.indexes.length); });
-            } else {
-                self.update_page(function () {
-                    self.session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [],
-                                      {'fields': 'indexes_only', 'filters': filters}).then(
-                        function (res) {
-                            self.indexes = res.indexes;
-                            self.previous_range = {"start": 0, "end": 0};
-                            self.records = [];
-                            self.apply_filters_callback(self.indexes.length);
-                            self.update_page();
-                        }
-                    );
-                });
-            }
-        }
-    );
-};
-
-BrainObservatoryPandasService.prototype.update_page = function(after_update) {
-    var self = this;
-    var page_range = this.get_current_page_range(this.indexes.length);
-
-    function Range(start, end) {
-        if(start <= end) {
-            return {"start": Math.min(start, end), "end": Math.max(start, end)};
-        } else {
-            return {"start": start, "end": start};
-        }
-    };
-
-    var preload_range = Range(Math.max(0, page_range.start - this.preload_margin),
-                              Math.min(this.indexes.length , page_range.end + this.preload_margin));
-    var range = Range(Math.max(0, page_range.start - this.chunk_size),
-                      Math.min(this.indexes.length , page_range.end + this.chunk_size));
-    var keep = Range(Math.max(range.start, Math.min(this.previous_range.start, range.end)),
-                     Math.min(range.end, Math.max(this.previous_range.end, range.start)));
-    var load_preceding = preload_range.start < this.previous_range.start
-        ? Range(range.start, Math.min(this.previous_range.start, range.end))
-        : Range(keep.start, keep.start);
-    var load_following = preload_range.end > this.previous_range.end
-        ? Range(Math.max(this.previous_range.end, range.start), range.end)
-        : Range(keep.end, keep.end);
+var url = 'ws://' + window.location.hostname + ':8081/ws';
+var realm = 'pandas_service';
+var connection = new autobahn.Connection({url: url, realm: realm});
+var session = null;
 
 
-    var kept_records = this.records.slice(keep.start - this.previous_range.start,
-                                          keep.end - this.previous_range.start);
-
-    function load_records(range, callback) {
-        if(range.end <= range.start) {
-            callback([], range);
-        } else {
-            var indexes = self.indexes.slice(range.start, range.end);
-            console.log('==> requesting ' + (range.end - range.start) + ' records from server: [' + range.start + ', ' + range.end + ')');
-            self.session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [],
-                                 {'indexes': indexes}).then(
-                function (res) {
-                    var sa = new StructuredArray(res);
-                    var records = sa.lazy_get_all();
-                    callback(records, range);
-                }
-            );
-        }
-    };
-
-    var updated = false;
-    if(page_range.start >= this.previous_range.start && page_range.end <= this.previous_range.end) {
-        setTimeout(function() {
-            self.page_data_callback(self.records.slice(page_range.start - self.previous_range.start, page_range.end - self.previous_range.start));
-        }, 0);
-        updated = true;
+function load_indexes(filters, start, stop, callback) {
+    var kwargs = {};
+    kwargs.fields = 'indexes_only';
+    kwargs.filters = filters;
+    if(start != null) {
+        kwargs.start = start;
     }
-
-    load_records(load_preceding, function (preceding_records, preceding_range) {
-        load_records(load_following, function (following_records, following_range) {
-            self.records = preceding_records.concat(kept_records).concat(following_records);
-            var result_range = Range(preceding_range.start, following_range.end);
-            for(var record_idx = page_range.start - result_range.start;
-                    record_idx < page_range.end - result_range.start;
-                    ++record_idx) {
-                if(typeof self.records[record_idx] === "function") {
-                    self.records[record_idx] = self.records[record_idx]();
-                }
-            }
-            if(!updated) {
-                self.page_data_callback(self.records.slice(page_range.start - result_range.start, page_range.end - result_range.start));
-            }
-            console.log('records currently in memory: [' + result_range.start + ', ' + result_range.end + ')');
-            self.previous_range = result_range;
-            if(after_update) {
-                after_update();
-            }
-        });
-    });
+    if(stop != null) {
+        kwargs.stop = stop;
+    }
+    session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [], kwargs).then(
+        function (res) { callback(res.indexes, res.filtered_total); });
 };
+
+
+function load_records(indexes, range, callback) {
+    if(range.end <= range.start) {
+        callback([], range);
+    } else {
+        var indexes = indexes.slice(range.start, range.end);
+        session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [],
+                         {'indexes': indexes}).then(
+            function (res) {
+                var zbuf = atob(res.data);
+                var buf = pako.inflate(zbuf);
+                res.data = buf;
+                var sa = new StructuredArray(res);
+                var records = sa.lazy_get_all();
+                callback(records, range);
+            }
+        );
+    }
+};
+
 
 function get_current_filters() {
     return JSON.parse(document.getElementById('filters').value);
 };
+
 
 function get_current_page_range(sz) {
     var scrollbar = document.getElementById('scrollbar');
@@ -262,17 +160,20 @@ function get_current_page_range(sz) {
     return {"start": start_idx, "end": end_idx}
 };
 
+
 function first_page_load(sz, total) {
     document.getElementById('scrollbar').scrollTop = 0; // reset scroll
     document.getElementById('num_rows').innerHTML = '--';
     document.getElementById('scroller').rows = sz;
 };
 
+
 function process_num_results(sz) {
     document.getElementById('scrollbar').scrollTop = 0; // reset scroll
     document.getElementById('num_rows').innerHTML = sz;
     document.getElementById('scroller').rows = sz;
 };
+
 
 function process_page(records) {
     var txt = [];
@@ -282,25 +183,36 @@ function process_page(records) {
     document.getElementById('records').innerHTML = txt.join('\n');
 };
 
-var service = new BrainObservatoryPandasService('ws://' + window.location.hostname + ':8081/ws',
-                                                'pandas_service',
-                                                100,
-                                                25,
-                                                get_current_filters,
-                                                first_page_load,
-                                                process_num_results,
-                                                get_current_page_range,
-                                                process_page);
+
+var scroll_preloader = new ScrollPreloader(100,
+                                           25,
+                                           load_indexes,
+                                           load_records,
+                                           get_current_filters,
+                                           first_page_load,
+                                           process_num_results,
+                                           get_current_page_range,
+                                           process_page,
+                                           finished);
 
 
 function apply_filters() {
-    service.apply_filters();
+    scroll_preloader.apply_filters();
 };
 
 
 function update_page() {
-    service.update_page(finished);
+    scroll_preloader.update_page(finished);
 };
+
+
+connection.onopen = function (s) {
+    session = s;
+    scroll_preloader.apply_filters();
+};
+
+
+connection.open();
 
 </script>
 </body>
