@@ -136,7 +136,8 @@ function load_records(indexes, range, callback) {
         session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [],
                          {'indexes': indexes}).then(
             function (res) {
-                var zbuf = atob(res.data);
+                //var zbuf = atob(res.data);
+                var zbuf = res.data;
                 var buf = pako.inflate(zbuf);
                 res.data = buf;
                 var sa = new StructuredArray(res);

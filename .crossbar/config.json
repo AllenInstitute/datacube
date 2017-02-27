@@ -74,7 +74,8 @@
                             "options": {
                                 "auto_ping_interval": 0,
                                 "auto_ping_timeout": 0
-                            }
+                            },
+                            "serializers": ["msgpack"]
                         },
                         "auth_ws": {
                             "type": "websocket",
@@ -96,7 +97,8 @@
                             "options": {
                                 "auto_ping_interval": 0,
                                 "auto_ping_timeout": 0
-                            }
+                            },
+                            "serializers": ["msgpack"]
                         },
                         "call": {
                             "type": "caller",

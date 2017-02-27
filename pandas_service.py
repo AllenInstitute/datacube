@@ -9,7 +9,7 @@ import pandas as pd
 #import xarray as xr
 import numpy as np
 import simplejson
-import base64
+#import base64
 import zlib
 import os
 import sys
@@ -90,10 +90,11 @@ class PandasServiceComponent(ApplicationSession):
                 data.append(col.tobytes())
             data = b''.join(data)
             return {'num_rows': sa.size,
-                    'col_names': list(sa.dtype.names),
-                    'col_types': [sa[name].dtype.name for name in sa.dtype.names],
+                    'col_names': [unicode(name) for name in sa.dtype.names],
+                    'col_types': [unicode(sa[name].dtype.name) for name in sa.dtype.names],
                     'item_sizes': [sa[name].dtype.itemsize for name in sa.dtype.names],
-                    'data': base64.b64encode(zlib.compress(data))}
+                    #'data': base64.b64encode(zlib.compress(data))}
+                    'data': bytes(zlib.compress(data))}
 
 
         def _application_error(e):

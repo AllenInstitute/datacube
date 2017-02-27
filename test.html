@@ -147,11 +147,10 @@ JSON.parse(`
                         document.getElementById('elapsed').innerHTML = (end_time - start_time) + 'ms';
                         log("Result:" + JSON.stringify(res));
                     } else {
-                        //var zbuf = atob(res);
-                        //var buf = pako.inflate(zbuf);
-                        //var decoder = new TextDecoder('utf-8');
-                        //var str = decoder.decode(buf);
-                        //var records = JSON.parse(str);
+                        //var zbuf = atob(res.data);
+                        var zbuf = res.data;
+                        var buf = pako.inflate(zbuf);
+                        res.data = buf;
                         var sa = new StructuredArray(res);
                         var records = sa.get_all();
                         var end_time = new Date();
