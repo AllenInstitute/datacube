@@ -1,13 +1,21 @@
 <!DOCTYPE html>
 <html>
 <head>
+<script type="text/css">
+table, tr, td {
+    margin: 0;
+    padding: 0;
+    border-spacing: 0;
+    border-collapse: separate;
+}
+</script>
 </head>
 <body>
 <h3>pandas service demo page</h3>
 <noscript>You must enable JavaScript</noscript>
 <form>
     <div>filters:</div>
-    <textarea id="filters" style="width: 80%;" rows="15">
+    <textarea id="filters" rows="15" cols="130">
 [
     {
         "field": "p_sg",
@@ -64,14 +72,14 @@
 </form>
 <div><button onclick="apply_filters()">apply filters</button></div>
 <p>Results: <span id="num_rows"></span></p>
-<table style="width:87%;">
+<table style="width:0%;margin:0;padding:0">
 <tr>
 <td>
-<textarea id="records" style="width:98%;resize:none;" rows="20" wrap="off" disabled></textarea>
+<textarea id="records" style="resize:none;color:black;" rows="20" cols="130" wrap="off" disabled></textarea>
 </td>
-<td>
-<div id="scrollbar" style="overflow:scroll;overflow:auto;height:20em;width:12px;">
-<textarea id="scroller" rows="20" cols="1" disabled></textarea>
+<td valign="top">
+<div id="scrollbar" style="overflow-y:scroll;max-width:100%;overflow-x:hidden;width:15px;">
+<textarea id="scroller" rows="20" cols="0" style="visibility:hidden;" disabled></textarea>
 </div>
 </td>
 </tr>
@@ -84,6 +92,14 @@
 <script type="text/javascript" src="./scroll_preloader.js"></script>
 <script type="text/javascript">
 
+var HEIGHT = 40;
+var WIDTH = 130;
+document.getElementById('records').rows = HEIGHT;
+document.getElementById('records').cols = WIDTH;
+document.getElementById('scroller').rows = HEIGHT;
+
+document.getElementById('scrollbar').style.height = (document.getElementById('records').clientHeight - 15).toString() + "px";
+
 // poll for scroll events and prevent concurrent calls to update_page
 var pending = false;
 var did_scroll = false;
@@ -92,8 +108,8 @@ function scroll() {
 }
 setInterval(function() {
     if(did_scroll) {
-        did_scroll = false;
         if(!pending) {
+            did_scroll = false;
             pending = true;
             update_page();
         }
@@ -156,8 +172,8 @@ function get_current_filters() {
 
 function get_current_page_range(sz) {
     var scrollbar = document.getElementById('scrollbar');
-    var start_idx = Math.round(scrollbar.scrollTop/(scrollbar.scrollHeight - scrollbar.clientHeight) * (sz - 20));
-    var end_idx = start_idx + 20;
+    var start_idx = Math.round(scrollbar.scrollTop/Math.max(1.0, scrollbar.scrollHeight - scrollbar.clientHeight) * (sz - HEIGHT));
+    var end_idx = start_idx + HEIGHT;
     return {"start": start_idx, "end": end_idx}
 };
 
