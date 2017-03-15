@@ -8,8 +8,7 @@ function ScrollPreloader(chunk_size,
                          first_page_callback,
                          apply_filters_callback,
                          get_current_page_range,
-                         page_data_callback,
-                         finished_callback) {
+                         page_data_callback) {
 
     this.chunk_size = chunk_size;
     this.preload_margin = preload_margin;
@@ -21,7 +20,6 @@ function ScrollPreloader(chunk_size,
     this.apply_filters_callback = apply_filters_callback;
     this.get_current_page_range = get_current_page_range;
     this.page_data_callback = page_data_callback;
-    this.finished_callback = finished_callback;
 
     this.previous_range = {"start": 0, "end": 0};
     this.records = [];
@@ -29,9 +27,9 @@ function ScrollPreloader(chunk_size,
 
 
 ScrollPreloader.prototype.apply_filters = function() {
-    var filters = this.get_current_filters();
+    var kwargs = this.get_current_filters();
     var self = this;
-    this.load_indexes(filters, 0, 2 * this.chunk_size, function (indexes, total) {
+    this.load_indexes(kwargs, 0, 2 * this.chunk_size, function (indexes, total) {
             self.indexes = indexes;
             self.previous_range = {"start": 0, "end": 0};
             self.records = [];
@@ -40,7 +38,7 @@ ScrollPreloader.prototype.apply_filters = function() {
                 self.update_page(function () { self.apply_filters_callback(self.indexes.length); });
             } else {
                 self.update_page(function () {
-                    self.load_indexes(filters, null, null, function (indexes, total) {
+                    self.load_indexes(kwargs, null, null, function (indexes, total) {
                             self.indexes = indexes;
                             self.previous_range = {"start": 0, "end": 0};
                             self.records = [];

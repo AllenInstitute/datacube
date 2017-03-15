@@ -8,7 +8,8 @@ from autobahn.wamp.types import RegisterOptions
 import pandas as pd
 #import xarray as xr
 import numpy as np
-import simplejson
+from scipy.stats import rankdata
+#import simplejson
 #import base64
 import zlib
 import os
@@ -32,20 +33,24 @@ class PandasServiceComponent(ApplicationSession):
     def onJoin(self, details):
 
         def filter_cell_specimens(filters=None,
+                                  sort=None,
+                                  ascending=None,
                                   start=0,
                                   stop=None,
                                   indexes=None,
                                   fields=None):
             #print('deferToThread')
-            d = threads.deferToThread(_filter_cell_specimens, filters, start, stop, indexes, fields)
+            d = threads.deferToThread(_filter_cell_specimens, filters, sort, ascending, start, stop, indexes, fields)
             return d
 
 
         def _filter_cell_specimens(filters=None,
-                                  start=0,
-                                  stop=None,
-                                  indexes=None,
-                                  fields=None):
+                                   sort=None,
+                                   ascending=None,
+                                   start=0,
+                                   stop=None,
+                                   indexes=None,
+                                   fields=None):
             try:
                 #print('_filter_cell_specimens')
                 #print(reactor.getThreadPool()._queue.qsize())
@@ -63,7 +68,27 @@ class PandasServiceComponent(ApplicationSession):
                 if filters:
                     r = _dataframe_query(r, filters)
                 filtered_total = r.size;
+                if sort:
+                    if not ascending:
+                        ascending = [True] * len(sort)
+                    for field in sort:
+                        if field not in r.dtype.names:
+                            raise ValueError('Requested sort field \'' + str(field) + '\' does not exist. Allowable fields are: ' + str(r.dtype.names))
+                    s = r[sort]
+                    ranks = np.zeros((s.size, len(s.dtype)))
+                    for idx, (field, asc) in enumerate(zip(sort[::-1], ascending[::-1])):
+                        if s[field].dtype.name.startswith('string') or s[field].dtype.name.startswith('unicode'):
+                            blank_count = np.count_nonzero(s[field] == '')
+                        else:
+                            blank_count = np.count_nonzero(np.isnan(s[field]))
+                        ranks[:,idx] = rankdata(s[field], method='dense')
+                        if not asc:
+                            ranks[:,idx] = np.roll(-ranks[:,idx], -blank_count)
+                    r = r[np.lexsort(tuple(ranks[:,idx] for idx in range(ranks.shape[1])))]
                 if fields and type(fields) is list:
+                    for field in fields:
+                        if field not in r.dtype.names:
+                            raise ValueError('Requested field \'' + str(field) + '\' does not exist. Allowable fields are: ' + str(r.dtype.names))
                     r = r[fields]
                 r = r[start:stop]
 
@@ -98,6 +123,7 @@ class PandasServiceComponent(ApplicationSession):
 
 
         def _application_error(e):
+            print(e)
             raise ApplicationError(u'org.alleninstitute.pandas_service.application_error', e.__class__.__name__, e.message, e.args, e.__doc__)
             
 

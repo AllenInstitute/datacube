@@ -14,6 +14,12 @@ table, tr, td {
 <h3>pandas service demo page</h3>
 <noscript>You must enable JavaScript</noscript>
 <form>
+    <div>fields:</div>
+    <textarea id="fields" rows="1" cols="130">["all_stim","p_dg","drifting_grating_large"]</textarea>
+    <div>sort:</div>
+    <textarea id="sort" rows="1" cols="130">["all_stim","p_dg"]</textarea>
+    <div>ascending:</div>
+    <textarea id="ascending" rows="1" cols="130">[false,true]</textarea>
     <div>filters:</div>
     <textarea id="filters" rows="15" cols="130">
 [
@@ -70,7 +76,7 @@ table, tr, td {
 ]
 </textarea>
 </form>
-<div><button onclick="apply_filters()">apply filters</button></div>
+<div><button onclick="apply_filters()">apply</button></div>
 <p>Results: <span id="num_rows"></span></p>
 <table style="width:0%;margin:0;padding:0">
 <tr>
@@ -129,10 +135,12 @@ var connection = new autobahn.Connection({url: url, realm: realm});
 var session = null;
 
 
-function load_indexes(filters, start, stop, callback) {
+function load_indexes(kwargs_in, start, stop, callback) {
     var kwargs = {};
+    kwargs.filters = kwargs_in.filters;
+    kwargs.sort = kwargs_in.sort;
+    kwargs.ascending = kwargs_in.ascending;
     kwargs.fields = 'indexes_only';
-    kwargs.filters = filters;
     if(start != null) {
         kwargs.start = start;
     }
@@ -150,7 +158,7 @@ function load_records(indexes, range, callback) {
     } else {
         var indexes = indexes.slice(range.start, range.end);
         session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [],
-                         {'indexes': indexes}).then(
+                         {'indexes': indexes, 'fields': JSON.parse(document.getElementById('fields').value)}).then(
             function (res) {
                 //var zbuf = atob(res.data);
                 var zbuf = res.data;
@@ -166,7 +174,9 @@ function load_records(indexes, range, callback) {
 
 
 function get_current_filters() {
-    return JSON.parse(document.getElementById('filters').value);
+    return {'filters': JSON.parse(document.getElementById('filters').value),
+            'sort': JSON.parse(document.getElementById('sort').value),
+            'ascending': JSON.parse(document.getElementById('ascending').value)};
 };
 
 
@@ -209,8 +219,7 @@ var scroll_preloader = new ScrollPreloader(100,
                                            first_page_load,
                                            process_num_results,
                                            get_current_page_range,
-                                           process_page,
-                                           finished);
+                                           process_page);
 
 
 function apply_filters() {
