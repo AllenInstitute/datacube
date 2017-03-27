@@ -14,11 +14,13 @@ from scipy.stats import rankdata
 import zlib
 import os
 import sys
+import urllib
 from shutil import copyfile
 
-from allensdk.api.queries.brain_observatory_api import BrainObservatoryApi
+#from allensdk.api.queries.brain_observatory_api import BrainObservatoryApi
 
 DATA_DIR = '../data/' # TODO: pass in through crossbar config
+CSV_URL = 'http://api.brain-map.org/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
 CSV_FILE = DATA_DIR + 'cell_specimens.csv'
 NPY_FILE = DATA_DIR + 'cell_specimens.npy'
 SHM_FILE = '/dev/shm/cell_specimens.npy'
@@ -186,15 +188,13 @@ class PandasServiceComponent(ApplicationSession):
 
 
         def _load_dataframes(): 
-            print('Loading bogus englarged cell metrics dataset ...')
+            print('Loading cell metrics dataset ...')
             if not os.path.isfile(NPY_FILE):
                 if os.path.isfile(CSV_FILE):
                     cell_specimens_df = pd.read_csv(CSV_FILE, index_col='index')
                 else:
-                    api = BrainObservatoryApi(base_uri=None)
-                    cell_specimens_list = api.get_cell_metrics()
-                    cell_specimens_df = pd.DataFrame(cell_specimens_list * 7)
-                    del cell_specimens_list
+                    urllib.urlretrieve(CSV_URL, CSV_FILE)
+                    cell_specimens_df = pd.read_csv(CSV_FILE)
                     cell_specimens_df.to_csv(CSV_FILE, index_label='index')
                 cell_specimens_sa = _dataframe_to_structured_array(cell_specimens_df)
                 del cell_specimens_df
