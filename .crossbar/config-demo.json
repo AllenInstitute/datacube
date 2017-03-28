@@ -1,0 +1,138 @@
+{
+    "version": 2,
+    "workers": [
+        {
+            "type": "router",
+            "realms": [
+                {
+                    "name": "pandas_service",
+                    "roles": [
+                        {
+                            "name": "anonymous",
+                            "permissions": [
+                                {
+                                    "uri": "",
+                                    "match": "prefix",
+                                    "allow": {
+                                        "call": true,
+                                        "register": true,
+                                        "publish": true,
+                                        "subscribe": true
+                                    },
+                                    "disclose": {
+                                        "caller": false,
+                                        "publisher": false
+                                    },
+                                    "cache": true
+                                }
+                            ]
+                        },
+                        {
+                            "name": "authenticated",
+                            "permissions": [
+                                {
+                                    "uri": "",
+                                    "match": "prefix",
+                                    "allow": {
+                                        "call": true,
+                                        "register": true,
+                                        "publish": true,
+                                        "subscribe": true
+                                    },
+                                    "disclose": {
+                                        "caller": false,
+                                        "publisher": false
+                                    },
+                                    "cache": true
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "transports": [
+                {
+                    "type": "web",
+                    "endpoint": {
+                        "type": "tcp",
+                        "port": 8081
+                    },
+                    "paths": {
+                        "/": {
+                            "type": "static",
+                            "directory": "..",
+                            "options": {
+                                "enable_directory_listing": true,
+                                "mime_types": {
+                                    ".md": "text/plain",
+                                    ".py": "text/plain"
+                                }
+                            }
+                        },
+                        "ws": {
+                            "type": "websocket",
+                            "options": {
+                                "auto_ping_interval": 0,
+                                "auto_ping_timeout": 0
+                            },
+                            "serializers": ["msgpack"]
+                        },
+                        "auth_ws": {
+                            "type": "websocket",
+                            "auth": {
+                                "wampcra": {
+                                    "type": "static",
+                                    "users": {
+                                        "username": {
+                                            "secret": "p4ssw0rd",
+                                            "role": "authenticated"
+                                        }
+                                    }
+                                },
+                                "anonymous": {
+                                    "type": "static",
+                                    "role": "anonymous"
+                                }
+                            },
+                            "options": {
+                                "auto_ping_interval": 0,
+                                "auto_ping_timeout": 0
+                            },
+                            "serializers": ["msgpack"]
+                        },
+                        "call": {
+                            "type": "caller",
+                            "realm": "pandas_service",
+                            "role": "anonymous",
+                            "options": {
+                                "debug": true
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "type": "container",
+            "options": {
+                "pythonpath": [".."]
+            },
+            "components": [
+                {
+                    "type": "class",
+                    "classname": "pandas_service.PandasServiceComponent",
+                    "realm": "pandas_service",
+                    "transport": {
+                        "type": "websocket",
+                        "endpoint": {
+                            "type": "tcp",
+                            "host": "127.0.0.1",
+                            "port": 8081
+                        },
+                        "url": "ws://127.0.0.1:8080/ws"
+                    }
+                }
+            ]
+        }
+    ]
+}
