@@ -1,7 +1,7 @@
-#import txaio
+import txaio
 from twisted.internet import reactor, threads
 from twisted.internet.defer import inlineCallbacks
-from autobahn.twisted.wamp import ApplicationSession #, ApplicationRunner
+from autobahn.twisted.wamp import ApplicationSession, ApplicationRunner
 from autobahn.wamp.exception import ApplicationError
 from autobahn.wamp.types import RegisterOptions
 #from wamp import ApplicationSession, ApplicationRunner # copy of stock wamp.py with modified timeouts
@@ -14,27 +14,22 @@ from scipy.stats import rankdata
 import zlib
 import os
 import sys
+import glob
+import re
 import urllib
+import argparse
 from shutil import copyfile
 
 #from allensdk.api.queries.brain_observatory_api import BrainObservatoryApi
 
-DATA_DIR = '../data/' # TODO: pass in through crossbar config
-CSV_URL = 'http://api.brain-map.org/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
-CSV_FILE = DATA_DIR + 'cell_specimens.csv'
-NPY_FILE = DATA_DIR + 'cell_specimens.npy'
-SHM_FILE = '/dev/shm/cell_specimens.npy'
-MAX_RECORDS = 1000
 
-
-
-# Responds to wamp rpc
 class PandasServiceComponent(ApplicationSession):
 
     @inlineCallbacks
     def onJoin(self, details):
 
-        def filter_cell_specimens(filters=None,
+        def filter_cell_specimens(name=None,
+                                  filters=None,
                                   sort=None,
                                   ascending=None,
                                   start=0,
@@ -42,11 +37,12 @@ class PandasServiceComponent(ApplicationSession):
                                   indexes=None,
                                   fields=None):
             #print('deferToThread')
-            d = threads.deferToThread(_filter_cell_specimens, filters, sort, ascending, start, stop, indexes, fields)
+            d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
             return d
 
 
-        def _filter_cell_specimens(filters=None,
+        def _filter_cell_specimens(name=None,
+                                   filters=None,
                                    sort=None,
                                    ascending=None,
                                    start=0,
@@ -57,14 +53,21 @@ class PandasServiceComponent(ApplicationSession):
                 #print('_filter_cell_specimens')
                 #print(reactor.getThreadPool()._queue.qsize())
                 #r = self.cell_specimens
-                r = np.load(SHM_FILE, mmap_mode='r')
+                if not name and len(self.keys) == 1:
+                    name = self.keys[0]
+                if name not in self.keys:
+                    raise ValueError('Requested name \'' + str(name) + '\' does not exist; choose one of (' + ','.join(self.keys) + ').')
+                if args.use_shm:
+                    r = np.load(args.shm_dir + name + '.npy', mmap_mode='r')
+                else:
+                    r = self.data[name]
                 if not filters and not fields == "indexes_only":
                     if indexes:
                         num_results = np.array(indexes)[start:stop].size
                     else:
                         num_results = r['index'][start:stop].size
-                    if num_results > MAX_RECORDS:
-                        raise ValueError('Requested would return ' + str(num_results) + ' records; please limit request to ' + str(MAX_RECORDS) + ' records.')
+                    if num_results > args.max_records:
+                        raise ValueError('Requested would return ' + str(num_results) + ' records; please limit request to ' + str(args.max_records) + ' records.')
                 if indexes:
                     r = r[indexes]
                 if filters:
@@ -97,8 +100,8 @@ class PandasServiceComponent(ApplicationSession):
                 if fields == "indexes_only":
                     return {'filtered_total': filtered_total, 'indexes': r['index'].tolist()}
                 else:
-                    if r.size > MAX_RECORDS:
-                        raise ValueError('Requested would return ' + str(r.size) + ' records; please limit request to ' + str(MAX_RECORDS) + ' records.')
+                    if r.size > args.max_records:
+                        raise ValueError('Requested would return ' + str(r.size) + ' records; please limit request to ' + str(args.max_records) + ' records.')
                     else:
                         #return base64.b64encode(zlib.compress(r.tobytes()))
                         return _format_structured_array_response(r)
@@ -157,9 +160,14 @@ class PandasServiceComponent(ApplicationSession):
 
 
         def _dataframe_to_structured_array(df):
-            col_data = [df.index]
-            col_names = ['index']
-            col_types = ['i4']
+            if 'index' in list(df):
+                col_data = []
+                col_names = []
+                col_types = []
+            else:
+                col_data = [df.index]
+                col_names = ['index']
+                col_types = ['i4']
             for name in df.columns:
                 column = df[name]
                 data = np.array(column)
@@ -188,22 +196,31 @@ class PandasServiceComponent(ApplicationSession):
 
 
         def _load_dataframes(): 
-            print('Loading cell metrics dataset ...')
-            if not os.path.isfile(NPY_FILE):
-                if os.path.isfile(CSV_FILE):
-                    cell_specimens_df = pd.read_csv(CSV_FILE, index_col='index')
+            print('Loading ...')
+            self.keys = []
+            self.data = {}
+            for datafile in glob.glob(args.data_dir + '*.csv') + glob.glob(args.data_dir + '*.npy'):
+                filename = os.path.basename(datafile)
+                
+                if not os.path.isfile(args.cache_dir + filename) \
+                        or os.path.getmtime(args.cache_dir + filename) < os.path.getmtime(datafile):
+                    copyfile(datafile, args.cache_dir + filename)
+                    
+                    if re.match('.*\.csv$', datafile, re.I):
+                        df = pd.read_csv(args.cache_dir + filename)
+                        df.to_csv(args.cache_dir + filename, index=('index' not in list(df)), index_label='index')
+                        sa = _dataframe_to_structured_array(df)
+                        del df
+                        np.save(args.cache_dir + re.sub('\.csv', '.npy', filename, flags=re.I), sa)
+                        del sa
+            for npyfile in glob.glob(args.cache_dir + '*.npy'):
+                name = os.path.splitext(os.path.basename(npyfile))[0]
+                self.keys.append(name)
+                if args.use_shm:
+                    copyfile(npyfile, args.shm_dir + name + '.npy')
                 else:
-                    urllib.urlretrieve(CSV_URL, CSV_FILE)
-                    cell_specimens_df = pd.read_csv(CSV_FILE)
-                    cell_specimens_df.to_csv(CSV_FILE, index_label='index')
-                cell_specimens_sa = _dataframe_to_structured_array(cell_specimens_df)
-                del cell_specimens_df
-                np.save(NPY_FILE, cell_specimens_sa)
-                del cell_specimens_sa
-            copyfile(NPY_FILE, SHM_FILE)
-            #self.cell_specimens = np.load(SHM_FILE, mmap_mode='r')
-            #self.cell_specimens = _structured_array_to_dataset(cell_specimens_shm)
-            print('Done.')
+                    self.data[name] = np.load(npyfile)
+
 
         try:
             yield threads.deferToThread(_load_dataframes)
@@ -213,4 +230,33 @@ class PandasServiceComponent(ApplicationSession):
         except Exception as e:
             print("could not register procedure: {0}".format(e))
 
-        print("Server ready.")
+        print('Server ready.')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Pandas Service')
+    parser.add_argument('router', help='url of WAMP router to connect to e.g. ws://localhost:9000/ws')
+    parser.add_argument('realm', help='WAMP realm name to join')
+    parser.add_argument('data_dir', help='load CSV and NPY files from this directory')
+    parser.add_argument('--cache-dir', default='./data/', help='local data store (default: "%(default)s")')
+    parser.add_argument('--shm-dir', default='/dev/shm/', help='path pointing to a ramdisk; useful when using multiple processes and/or for very fast restart (default: "%(default)s")')
+    parser.add_argument('--no-shm', action='store_false', dest='use_shm', help='don\'t use ramdisk')
+    parser.add_argument('--max-records', default=1000, help='maximum records to serve in a single request (default: %(default)s)')
+    parser.add_argument('--demo', action='store_true', dest='demo', help='load demo dataset')
+    parser.set_defaults(use_shm=True, demo=False)
+    args = parser.parse_args()
+
+    if args.demo:
+        csv_url = 'http://api.brain-map.org/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
+        csv_file = args.data_dir + 'cell_specimens.csv'
+        if not os.path.exists(args.data_dir):
+            os.makedirs(args.data_dir)
+        if not os.path.isfile(csv_file):
+            urllib.urlretrieve(csv_url, csv_file)
+
+    txaio.use_twisted()
+    log = txaio.make_logger()
+    txaio.start_logging()
+
+    runner = ApplicationRunner(unicode(args.router), unicode(args.realm))
+    runner.run(PandasServiceComponent, auto_reconnect=True)

@@ -2,26 +2,16 @@
     "version": 2,
     "workers": [
         {
-            "type": "container",
+            "type": "guest",
+            "executable": "python",
+            "arguments": ["pandas_service.py", "ws://localhost:9000/ws", "aibs", "./demo_data/"],
             "options": {
-                "pythonpath": [".."]
-            },
-            "components": [
-                {
-                    "type": "class",
-                    "classname": "pandas_service.PandasServiceComponent",
-                    "realm": "aibs",
-                    "transport": {
-                        "type": "websocket",
-                        "endpoint": {
-                            "type": "tcp",
-                            "host": "127.0.0.1",
-                            "port": 9000
-                        },
-                        "url": "ws://127.0.0.1:8080/ws"
-                    }
+                "workdir": "..",
+                "watch": {
+                    "directories": ["../demo_data/"],
+                    "action": "restart"
                 }
-            ]
+            }
         }
     ]
 }

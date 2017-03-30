@@ -5,7 +5,7 @@
             "type": "router",
             "realms": [
                 {
-                    "name": "pandas_service",
+                    "name": "aibs",
                     "roles": [
                         {
                             "name": "anonymous",
@@ -102,7 +102,7 @@
                         },
                         "call": {
                             "type": "caller",
-                            "realm": "pandas_service",
+                            "realm": "aibs",
                             "role": "anonymous",
                             "options": {
                                 "debug": true
@@ -113,26 +113,12 @@
             ]
         },
         {
-            "type": "container",
+            "type": "guest",
+            "executable": "python",
+            "arguments": ["pandas_service.py", "--demo", "--no-shm", "ws://localhost:8081/ws", "aibs", "./demo_data/"],
             "options": {
-                "pythonpath": [".."]
-            },
-            "components": [
-                {
-                    "type": "class",
-                    "classname": "pandas_service.PandasServiceComponent",
-                    "realm": "pandas_service",
-                    "transport": {
-                        "type": "websocket",
-                        "endpoint": {
-                            "type": "tcp",
-                            "host": "127.0.0.1",
-                            "port": 8081
-                        },
-                        "url": "ws://127.0.0.1:8080/ws"
-                    }
-                }
-            ]
+                "workdir": ".."
+            }
         }
     ]
 }
