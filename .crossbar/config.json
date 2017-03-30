@@ -3,8 +3,8 @@
     "workers": [
         {
             "type": "guest",
-            "executable": "python",
-            "arguments": ["pandas_service.py", "ws://localhost:9000/ws", "aibs", "./demo_data/"],
+            "executable": "run_service.sh",
+            "arguments": ["ws://localhost:9000/ws", "aibs", "./demo_data/"],
             "options": {
                 "workdir": "..",
                 "watch": {
