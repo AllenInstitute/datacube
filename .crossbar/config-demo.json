@@ -115,7 +115,7 @@
         {
             "type": "guest",
             "executable": "python",
-            "arguments": ["pandas_service.py", "--demo", "--no-shm", "ws://localhost:8081/ws", "aibs", "./demo_data/"],
+            "arguments": ["pandas_service.py", "--demo", "--no-mmap", "ws://localhost:8081/ws", "aibs", "./demo_data/"],
             "options": {
                 "workdir": ".."
             }

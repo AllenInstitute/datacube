@@ -57,8 +57,8 @@ class PandasServiceComponent(ApplicationSession):
                     name = self.keys[0]
                 if name not in self.keys:
                     raise ValueError('Requested name \'' + str(name) + '\' does not exist; choose one of (' + ','.join(self.keys) + ').')
-                if args.use_shm:
-                    r = np.load(args.shm_dir + name + '.npy', mmap_mode='r')
+                if args.use_mmap:
+                    r = np.load(args.mmap_dir + name + '.npy', mmap_mode='r')
                 else:
                     r = self.data[name]
                 if not filters and not fields == "indexes_only":
@@ -216,8 +216,9 @@ class PandasServiceComponent(ApplicationSession):
             for npyfile in glob.glob(args.cache_dir + '*.npy'):
                 name = os.path.splitext(os.path.basename(npyfile))[0]
                 self.keys.append(name)
-                if args.use_shm:
-                    copyfile(npyfile, args.shm_dir + name + '.npy')
+                if args.use_mmap:
+                    if args.cache_dir != args.mmap_dir:
+                        copyfile(npyfile, args.mmap_dir + name + '.npy')
                 else:
                     self.data[name] = np.load(npyfile)
 
@@ -239,11 +240,11 @@ if __name__ == '__main__':
     parser.add_argument('realm', help='WAMP realm name to join')
     parser.add_argument('data_dir', help='load CSV and NPY files from this directory')
     parser.add_argument('--cache-dir', default='./data/', help='local data store (default: "%(default)s")')
-    parser.add_argument('--shm-dir', default='/dev/shm/', help='path pointing to a ramdisk; useful when using multiple processes and/or for very fast restart (default: "%(default)s")')
-    parser.add_argument('--no-shm', action='store_false', dest='use_shm', help='don\'t use ramdisk')
+    parser.add_argument('--mmap-dir', default='/dev/shm/', help='copy files to this directory before memory-mapping them (can be same as --cache-dir to avoid a 2nd copy) (default: "%(default)s")')
+    parser.add_argument('--no-mmap', action='store_false', dest='use_mmap', help='don\'t use memory-mapped files; load the data into memory')
     parser.add_argument('--max-records', default=1000, help='maximum records to serve in a single request (default: %(default)s)')
     parser.add_argument('--demo', action='store_true', dest='demo', help='load demo dataset')
-    parser.set_defaults(use_shm=True, demo=False)
+    parser.set_defaults(use_mmap=True, demo=False)
     args = parser.parse_args()
 
     if args.demo:
