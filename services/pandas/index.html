@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script type="text/css">
+table, tr, td {
+    margin: 0;
+    padding: 0;
+    border-spacing: 0;
+    border-collapse: separate;
+}
+</script>
+</head>
+<body>
+<h3>pandas service demo page</h3>
+<noscript>You must enable JavaScript</noscript>
+<form>
+    <div>fields:</div>
+    <textarea id="fields" rows="1" cols="130">["all_stim","p_dg","drifting_grating_large"]</textarea>
+    <div>sort:</div>
+    <textarea id="sort" rows="1" cols="130">["all_stim","p_dg"]</textarea>
+    <div>ascending:</div>
+    <textarea id="ascending" rows="1" cols="130">[false,true]</textarea>
+    <div>filters:</div>
+    <textarea id="filters" rows="15" cols="130">
+[
+    {
+        "field": "p_sg",
+        "op": "<=",
+        "value": 0.01
+    },
+    {
+        "field": "pref_phase_sg",
+        "op": "=",
+        "value": 0.25
+    },
+    {
+        "field": "pref_sf_sg",
+        "op": "=",
+        "value": 0.02
+    },
+    {
+        "field": "p_dg",
+        "op": "<=",
+        "value": 0.01
+    },
+    {
+        "field": "pref_tf_dg",
+        "op": "=",
+        "value": 1
+    },
+    {
+        "field": "dsi_dg",
+        "op": "between",
+        "value": [
+            0.7,
+            2
+        ]
+    },
+    {
+        "field": "time_to_peak_ns",
+        "op": "between",
+        "value": [
+            0,
+            0.18
+        ]
+    },
+    {
+        "field": "area",
+        "op": "in",
+        "value": [
+            "VISp",
+            "VISal",
+            "VISl"
+        ]
+    }
+]
+</textarea>
+</form>
+<div><button onclick="apply_filters()">apply</button></div>
+<p>Results: <span id="num_rows"></span></p>
+<table style="width:0%;margin:0;padding:0">
+<tr>
+<td>
+<textarea id="records" style="resize:none;color:black;" rows="20" cols="130" wrap="off" disabled></textarea>
+</td>
+<td valign="top">
+<div id="scrollbar" style="overflow-y:scroll;max-width:100%;overflow-x:hidden;width:15px;">
+<textarea id="scroller" rows="20" cols="0" style="visibility:hidden;" disabled></textarea>
+</div>
+</td>
+</tr>
+</table>
+<script type="text/javascript" src="./autobahn.min.js"></script>
+<script type="text/javascript" src="./zlib.min.js"></script>
+<script type="text/javascript" src="./pako.min.js"></script>
+<script type="text/javascript" src="./encoding.js"></script>
+<script type="text/javascript" src="./structured_array.js"></script>
+<script type="text/javascript" src="./scroll_preloader.js"></script>
+<script type="text/javascript">
+
+var HEIGHT = 40;
+var WIDTH = 130;
+document.getElementById('records').rows = HEIGHT;
+document.getElementById('records').cols = WIDTH;
+document.getElementById('scroller').rows = HEIGHT;
+
+document.getElementById('scrollbar').style.height = (document.getElementById('records').clientHeight - 15).toString() + "px";
+
+// poll for scroll events and prevent concurrent calls to update_page
+var pending = false;
+var did_scroll = false;
+function scroll() {
+    did_scroll = true;
+}
+setInterval(function() {
+    if(did_scroll) {
+        if(!pending) {
+            did_scroll = false;
+            pending = true;
+            update_page();
+        }
+    }
+}, 50);
+
+function finished() {
+    pending = false;
+}
+
+document.getElementById('scrollbar').onscroll = scroll;
+
+
+var url = 'ws://' + window.location.hostname + ':8081/ws';
+var realm = 'aibs';
+var connection = new autobahn.Connection({url: url, realm: realm});
+var session = null;
+
+
+function load_indexes(kwargs_in, start, stop, callback) {
+    var kwargs = {};
+    kwargs.filters = kwargs_in.filters;
+    kwargs.sort = kwargs_in.sort;
+    kwargs.ascending = kwargs_in.ascending;
+    kwargs.fields = 'indexes_only';
+    if(start != null) {
+        kwargs.start = start;
+    }
+    if(stop != null) {
+        kwargs.stop = stop;
+    }
+    session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [], kwargs).then(
+        function (res) { callback(res.indexes, res.filtered_total); });
+};
+
+
+function load_records(indexes, range, callback) {
+    if(range.end <= range.start) {
+        callback([], range);
+    } else {
+        var indexes = indexes.slice(range.start, range.end);
+        session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [],
+                         {'indexes': indexes, 'fields': JSON.parse(document.getElementById('fields').value)}).then(
+            function (res) {
+                //var zbuf = atob(res.data);
+                var zbuf = res.data;
+                var buf = pako.inflate(zbuf);
+                res.data = buf;
+                var sa = new StructuredArray(res);
+                var records = sa.lazy_get_all();
+                callback(records, range);
+            }
+        );
+    }
+};
+
+
+function get_current_filters() {
+    return {'filters': JSON.parse(document.getElementById('filters').value),
+            'sort': JSON.parse(document.getElementById('sort').value),
+            'ascending': JSON.parse(document.getElementById('ascending').value)};
+};
+
+
+function get_current_page_range(sz) {
+    var scrollbar = document.getElementById('scrollbar');
+    var start_idx = Math.round(scrollbar.scrollTop/Math.max(1.0, scrollbar.scrollHeight - scrollbar.clientHeight) * (sz - HEIGHT));
+    var end_idx = start_idx + HEIGHT;
+    return {"start": start_idx, "end": end_idx}
+};
+
+
+function first_page_load(sz, total) {
+    document.getElementById('scrollbar').scrollTop = 0; // reset scroll
+    document.getElementById('num_rows').innerHTML = '--';
+    document.getElementById('scroller').rows = sz;
+};
+
+
+function process_num_results(sz) {
+    document.getElementById('scrollbar').scrollTop = 0; // reset scroll
+    document.getElementById('num_rows').innerHTML = sz;
+    document.getElementById('scroller').rows = sz;
+};
+
+
+function process_page(records) {
+    var txt = [];
+    for(var i = 0; i < records.length; ++i) {
+        txt.push(JSON.stringify(records[i]));
+    }
+    document.getElementById('records').innerHTML = txt.join('\n');
+};
+
+
+var scroll_preloader = new ScrollPreloader(100,
+                                           25,
+                                           load_indexes,
+                                           load_records,
+                                           get_current_filters,
+                                           first_page_load,
+                                           process_num_results,
+                                           get_current_page_range,
+                                           process_page);
+
+
+function apply_filters() {
+    scroll_preloader.apply_filters();
+};
+
+
+function update_page() {
+    scroll_preloader.update_page(finished);
+};
+
+
+connection.onopen = function (s) {
+    session = s;
+    scroll_preloader.apply_filters();
+};
+
+
+connection.open();
+
+</script>
+</body>
+</html>

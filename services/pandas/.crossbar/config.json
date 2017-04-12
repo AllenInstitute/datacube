@@ -1,0 +1,17 @@
+{
+    "version": 2,
+    "workers": [
+        {
+            "type": "guest",
+            "executable": "run_service.sh",
+            "arguments": ["ws://localhost:9000/ws", "aibs", "./demo_data/"],
+            "options": {
+                "workdir": "..",
+                "watch": {
+                    "directories": ["../demo_data/"],
+                    "action": "restart"
+                }
+            }
+        }
+    ]
+}
