@@ -103,10 +103,9 @@ JSON.parse(`
 <p>Succeeded: <span id="succeeded">0</span>, Failed: <span id="failed">0</span>, Total: <span id="total">0</span></p>
 <button onclick='load_test();'>execute</button>
 <p><textarea id="load_test_log" style="width: 80%;" rows="20" disabled></textarea></p>
-<script type="text/javascript" src="./autobahn.min.js"></script>
-<script type="text/javascript" src="./zlib.min.js"></script>
-<script type="text/javascript" src="./pako.min.js"></script>
-<script type="text/javascript" src="./encoding.js"></script>
+<script type="text/javascript" src="node_modules/autobahn-js-built/autobahn.min.js"></script>
+<script type="text/javascript" src="node_modules/pako/dist/pako.min.js"></script>
+<script type="text/javascript" src="node_modules/text-encoding/lib/encoding.js"></script>
 <script type="text/javascript" src="./structured_array.js"></script>
 <script type="text/javascript">
         var ellog = null;

@@ -1,0 +1,3 @@
+-r requirements-prod.txt
+allensdk==0.12.4
+h5py

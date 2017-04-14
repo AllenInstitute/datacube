@@ -1,0 +1,124 @@
+{
+    "version": 2,
+    "workers": [
+        {
+            "type": "router",
+            "realms": [
+                {
+                    "name": "aibs",
+                    "roles": [
+                        {
+                            "name": "anonymous",
+                            "permissions": [
+                                {
+                                    "uri": "",
+                                    "match": "prefix",
+                                    "allow": {
+                                        "call": true,
+                                        "register": true,
+                                        "publish": true,
+                                        "subscribe": true
+                                    },
+                                    "disclose": {
+                                        "caller": false,
+                                        "publisher": false
+                                    },
+                                    "cache": true
+                                }
+                            ]
+                        },
+                        {
+                            "name": "authenticated",
+                            "permissions": [
+                                {
+                                    "uri": "",
+                                    "match": "prefix",
+                                    "allow": {
+                                        "call": true,
+                                        "register": true,
+                                        "publish": true,
+                                        "subscribe": true
+                                    },
+                                    "disclose": {
+                                        "caller": false,
+                                        "publisher": false
+                                    },
+                                    "cache": true
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "transports": [
+                {
+                    "type": "web",
+                    "endpoint": {
+                        "type": "tcp",
+                        "port": 8082
+                    },
+                    "paths": {
+                        "/": {
+                            "type": "static",
+                            "directory": "..",
+                            "options": {
+                                "enable_directory_listing": true,
+                                "mime_types": {
+                                    ".md": "text/plain",
+                                    ".py": "text/plain"
+                                }
+                            }
+                        },
+                        "ws": {
+                            "type": "websocket",
+                            "options": {
+                                "auto_ping_interval": 0,
+                                "auto_ping_timeout": 0
+                            },
+                            "serializers": ["msgpack"]
+                        },
+                        "auth_ws": {
+                            "type": "websocket",
+                            "auth": {
+                                "wampcra": {
+                                    "type": "static",
+                                    "users": {
+                                        "username": {
+                                            "secret": "p4ssw0rd",
+                                            "role": "authenticated"
+                                        }
+                                    }
+                                },
+                                "anonymous": {
+                                    "type": "static",
+                                    "role": "anonymous"
+                                }
+                            },
+                            "options": {
+                                "auto_ping_interval": 0,
+                                "auto_ping_timeout": 0
+                            },
+                            "serializers": ["msgpack"]
+                        },
+                        "call": {
+                            "type": "caller",
+                            "realm": "aibs",
+                            "role": "anonymous",
+                            "options": {
+                                "debug": true
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "type": "guest",
+            "executable": "python",
+            "arguments": ["server.py", "--demo"],
+            "options": {
+                "workdir": ".."
+            }
+        }
+    ]
+}

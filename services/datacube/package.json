@@ -1,0 +1,6 @@
+{
+  "dependencies": {},
+  "devDependencies": {
+    "autobahn-js-built": "^0.11.1"
+  }
+}

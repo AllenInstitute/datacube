@@ -1,0 +1,8 @@
+{
+  "dependencies": {},
+  "devDependencies": {
+    "autobahn-js-built": "^0.11.1",
+    "pako": "^1.0.5",
+    "text-encoding": "^0.6.4"
+  }
+}

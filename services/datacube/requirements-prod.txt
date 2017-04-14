@@ -1,0 +1,9 @@
+autobahn==0.17.1
+crossbar==16.10.1
+Twisted==16.6.0
+pg8000
+sqlalchemy
+txaio
+progressbar
+numpy
+scipy

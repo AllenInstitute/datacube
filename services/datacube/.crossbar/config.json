@@ -1,0 +1,13 @@
+{
+    "version": 2,
+    "workers": [
+        {
+            "type": "guest",
+            "executable": "run_service.sh",
+            "arguments": [],
+            "options": {
+                "workdir": ".."
+            }
+        }
+    ]
+}
