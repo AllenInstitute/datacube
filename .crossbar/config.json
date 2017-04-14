@@ -2,117 +2,16 @@
     "version": 2,
     "workers": [
         {
-            "type": "router",
-            "realms": [
-                {
-                    "name": "datacube",
-                    "roles": [
-                        {
-                            "name": "anonymous",
-                            "permissions": [
-                                {
-                                    "uri": "",
-                                    "match": "prefix",
-                                    "allow": {
-                                        "call": true,
-                                        "register": true,
-                                        "publish": true,
-                                        "subscribe": true
-                                    },
-                                    "disclose": {
-                                        "caller": false,
-                                        "publisher": false
-                                    },
-                                    "cache": true
-                                }
-                            ]
-                        },
-                        {
-                            "name": "authenticated",
-                            "permissions": [
-                                {
-                                    "uri": "",
-                                    "match": "prefix",
-                                    "allow": {
-                                        "call": true,
-                                        "register": true,
-                                        "publish": true,
-                                        "subscribe": true
-                                    },
-                                    "disclose": {
-                                        "caller": false,
-                                        "publisher": false
-                                    },
-                                    "cache": true
-                                }
-                            ]
-                        }
-                    ]
+            "type": "guest",
+            "executable": "run_service.sh",
+            "arguments": ["ws://localhost:9000/ws", "aibs", "./demo_data/"],
+            "options": {
+                "workdir": "../services/pandas/",
+                "watch": {
+                    "directories": ["../services/pandas/demo_data/"],
+                    "action": "restart"
                 }
-            ],
-            "transports": [
-                {
-                    "type": "web",
-                    "endpoint": {
-                        "type": "tcp",
-                        "port": 8080
-                    },
-                    "paths": {
-                        "/": {
-                            "type": "static",
-                            "directory": "..",
-                            "options": {
-                                "enable_directory_listing": true,
-                                "mime_types": {
-                                    ".md": "text/plain",
-                                    ".py": "text/plain"
-                                }
-                            }
-                        },
-                        "ws": {
-                            "type": "websocket",
-                            "options": {
-                                "auto_ping_interval": 0,
-                                "auto_ping_timeout": 0
-                            }
-                        },
-                        "auth_ws": {
-                            "type": "websocket",
-                            "auth": {
-                                "wampcra": {
-                                    "type": "static",
-                                    "users": {
-                                        "username": {
-                                            "secret": "p4ssw0rd",
-                                            "role": "authenticated"
-                                        }
-                                    }
-                                },
-                                "anonymous": {
-                                    "type": "static",
-                                    "role": "anonymous"
-                                }
-                            },
-                            "options": {
-                                "auto_ping_interval": 0,
-                                "auto_ping_timeout": 0
-                            }
-                        },
-                        "call": {
-                            "type": "caller",
-                            "realm": "datacube",
-                            "role": "anonymous",
-                            "options": {
-                                "debug": true
-                            }
-                        }
-                    },
-                    "options": {
-                        "auto_ping_interval": 0,
-                        "auto_ping_timeout": 0
-                    }
-                }
-            ]
+            }
         }
     ]
 }

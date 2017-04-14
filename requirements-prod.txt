@@ -1,0 +1,2 @@
+-r services/datacube/requirements-prod.txt
+-r services/pandas/requirements-prod.txt
