@@ -152,9 +152,11 @@ SystemJS.import('./node_modules/datacube-js/lib/systemjs/pandas.js').then(functi
       pending = false;
   }
 
-  
-  var pandas_client = new pandasjs.PandasClient(100,
-                                                25,
+
+  var chunk_size = 100;
+  var preload_margin = 25;
+  var pandas_client = new pandasjs.PandasClient(chunk_size,
+                                                preload_margin,
                                                 get_current_filters,
                                                 first_page_load,
                                                 process_num_results,

@@ -1,9 +1,14 @@
 {
   "name": "datacube-js",
   "version": "0.0.0",
+  "author": "chrisba@alleninstitute.org",
+  "files": ["lib", "dist"],
+  "main": "dist/clients.js",
+  "module": "lib/es2015/all.js",
   "scripts": {
-    "postinstall": "npm run build",
-    "build": "./build.sh"
+    "build": "./build.sh",
+    "clean": "rm -r lib dist",
+    "prepublish": "npm run build"
   },
   "babel": {
     "env": {

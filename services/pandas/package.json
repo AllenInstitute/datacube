@@ -7,6 +7,6 @@
     "text-encoding": "^0.6.4"
   },
   "scripts": {
-    "postinstall": "[[ \"$NODE_ENV\" == production ]] && exit 0; npm link ../../clients/"
+    "postinstall": "[[ \"$NODE_ENV\" == production ]] && exit 0; (cd ../../clients/ && npm run build) && npm link ../../clients/"
   }
 }
