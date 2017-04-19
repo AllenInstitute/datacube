@@ -1,5 +1,7 @@
 'use strict';
 
+import TextDecoder from "text-encoding";
+
 /**
  * sa.data
  * sa.col_names
@@ -7,7 +9,7 @@
  * sa.item_sizes
  * sa.num_rows
  */
-function StructuredArray(sa, little_endian) {
+export function StructuredArray(sa, little_endian) {
     this.little_endian = typeof(little_endian) === 'undefined' ? false : little_endian;
 
     var buf = sa.data;

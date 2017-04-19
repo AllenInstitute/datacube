@@ -1,14 +1,14 @@
 'use strict';
 
-function ScrollPreloader(chunk_size,
-                         preload_margin,
-                         load_indexes,
-                         load_records,
-                         get_current_filters,
-                         first_page_callback,
-                         apply_filters_callback,
-                         get_current_page_range,
-                         page_data_callback) {
+export function ScrollPreloader(chunk_size,
+                                preload_margin,
+                                load_indexes,
+                                load_records,
+                                get_current_filters,
+                                first_page_callback,
+                                apply_filters_callback,
+                                get_current_page_range,
+                                page_data_callback) {
 
     this.chunk_size = chunk_size;
     this.preload_margin = preload_margin;
