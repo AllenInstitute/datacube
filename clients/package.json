@@ -1,14 +1,46 @@
 {
-  "name": "datacube-clients",
+  "name": "datacube-js",
   "version": "0.0.0",
   "scripts": {
     "postinstall": "npm run build",
     "build": "./build.sh"
   },
   "babel": {
-    "presets": [
-      "env"
-    ]
+    "env": {
+      "development": {
+        "presets": [
+          [
+            "env",
+            {
+              "modules": false
+            }
+          ]
+        ]
+      },
+      "test": {
+        "presets": [
+          [
+            "env",
+            {
+              "modules": false
+            }
+          ]
+        ]
+      },
+      "production": {
+        "presets": [
+          [
+            "env",
+            {
+              "modules": false
+            }
+          ]
+        ]
+      },
+      "rollup": {
+        "presets": ["babel-preset-es2015-rollup"]
+      }
+    }
   },
   "dependencies": {
     "autobahn-js-built": "^0.11.1",
@@ -17,10 +49,14 @@
   },
   "devDependencies": {
     "babel-cli": "^6.24.1",
+    "babel-plugin-external-helpers": "^6.22.0",
     "babel-plugin-transform-es2015-modules-amd": "^6.24.1",
     "babel-plugin-transform-es2015-modules-commonjs": "^6.24.1",
     "babel-plugin-transform-es2015-modules-systemjs": "^6.24.1",
     "babel-plugin-transform-es2015-modules-umd": "^6.24.1",
-    "babel-preset-env": "^1.4.0"
+    "babel-preset-env": "^1.4.0",
+    "babel-preset-es2015-rollup": "^3.0.0",
+    "rollup": "^0.41.6",
+    "rollup-plugin-babel": "^2.7.1"
   }
 }

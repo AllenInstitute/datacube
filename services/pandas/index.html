@@ -90,10 +90,25 @@ table, tr, td {
 </td>
 </tr>
 </table>
+
+<!-- if not using a script-loader -->
+<!--
+<script type="text/javascript" src="node_modules/autobahn-js-built/autobahn.min.js"></script>
+<script type="text/javascript" src="node_modules/pako/dist/pako.min.js"></script>
+<script type="text/javascript" src="node_modules/text-encoding/lib/encoding.js"></script>
+<script src="node_modules/datacube-js/dist/clients.js"></script>
+<script>
+// ...
+// var pandas_client = new datacubejs.PandasClient(...)
+// ...
+</script>
+-->
+
+<!-- if using a script-loader (in this case systemjs) -->
 <script src="node_modules/systemjs/dist/system.js"></script>
 <script src="system.config.js"></script>
 <script type="text/javascript">
-SystemJS.import('./node_modules/datacube-clients/lib/systemjs/pandas.js').then(function(pandasjs) {
+SystemJS.import('./node_modules/datacube-js/lib/systemjs/pandas.js').then(function(pandasjs) {
 
   function get_current_filters() {
       return {'filters': JSON.parse(document.getElementById('filters').value),
