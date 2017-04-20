@@ -4,13 +4,51 @@ import {StructuredArray} from "./common/structured_array.js";
 import {ScrollPreloader} from "./common/scroll_preloader.js";
 
 
-var url = 'ws://' + window.location.hostname + ':8081/ws';
-var realm = 'aibs';
-var connection = new autobahn.Connection({url: url, realm: realm});
-var session = null;
+export function PandasClient(wamp_router_url,
+                             wamp_realm,
+                             chunk_size,
+                             preload_margin,
+                             get_current_filters,
+                             first_page_callback,
+                             apply_filters_callback,
+                             get_current_page_range,
+                             page_data_callback,
+                             update_finished) {
+    this.connection = new autobahn.Connection({url: wamp_router_url, realm: wamp_realm});
+    this.session = null;
+
+    this.scroll_preloader = new ScrollPreloader(100,
+                                                25,
+                                                this.load_indexes.bind(this),
+                                                this.load_records.bind(this),
+                                                get_current_filters,
+                                                first_page_callback,
+                                                apply_filters_callback,
+                                                get_current_page_range,
+                                                page_data_callback);
+    this.update_finished = update_finished;
+
+    var self = this;
+    this.connection.onopen = function (s) {
+        self.session = s;
+        self.scroll_preloader.apply_filters();
+    };
+
+    this.connection.open();
+};
 
 
-function load_indexes(kwargs_in, start, stop, callback) {
+PandasClient.prototype.apply_filters = function() {
+    this.scroll_preloader.apply_filters();
+};
+
+
+PandasClient.prototype.update_page = function() {
+    this.scroll_preloader.update_page(this.update_finished);
+};
+
+
+PandasClient.prototype.load_indexes = function(kwargs_in, start, stop, callback) {
     var kwargs = {};
     kwargs.filters = kwargs_in.filters;
     kwargs.sort = kwargs_in.sort;
@@ -22,17 +60,17 @@ function load_indexes(kwargs_in, start, stop, callback) {
     if(stop != null) {
         kwargs.stop = stop;
     }
-    session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [], kwargs).then(
+    this.session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [], kwargs).then(
         function (res) { callback(res.indexes, res.filtered_total); });
 };
 
 
-function load_records(indexes, range, callback) {
+PandasClient.prototype.load_records = function(indexes, range, callback) {
     if(range.end <= range.start) {
         callback([], range);
     } else {
         var indexes = indexes.slice(range.start, range.end);
-        session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [],
+        this.session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [],
                          {'indexes': indexes, 'fields': JSON.parse(document.getElementById('fields').value)}).then(
             function (res) {
                 //var zbuf = atob(res.data);
@@ -48,41 +86,3 @@ function load_records(indexes, range, callback) {
 };
 
 
-export function PandasClient(chunk_size,
-                             preload_margin,
-                             get_current_filters,
-                             first_page_callback,
-                             apply_filters_callback,
-                             get_current_page_range,
-                             page_data_callback,
-                             update_finished) {
-    self.scroll_preloader = new ScrollPreloader(100,
-                                                25,
-                                                load_indexes,
-                                                load_records,
-                                                get_current_filters,
-                                                first_page_callback,
-                                                apply_filters_callback,
-                                                get_current_page_range,
-                                                page_data_callback);
-    self.update_finished = update_finished;
-};
-
-
-PandasClient.prototype.apply_filters = function() {
-    self.scroll_preloader.apply_filters();
-};
-
-
-PandasClient.prototype.update_page = function() {
-    self.scroll_preloader.update_page(self.update_finished);
-};
-
-
-connection.onopen = function (s) {
-    session = s;
-    scroll_preloader.apply_filters();
-};
-
-
-connection.open();
