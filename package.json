@@ -1,3 +1,4 @@
 {
+  "private": true,
   "scripts": { "postinstall": "bash nested-npm-install.sh" }
 }
