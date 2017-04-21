@@ -1,4 +1,5 @@
 {
+  "private": true,
   "dependencies": {},
   "devDependencies": {
     "autobahn-js-built": "^0.11.1",
@@ -7,6 +8,6 @@
     "text-encoding": "^0.6.4"
   },
   "scripts": {
-    "postinstall": "[[ \"$NODE_ENV\" == production ]] && exit 0; (cd ../../clients/ && npm run build) && npm link ../../clients/"
+    "postinstall": "[[ \"$NODE_ENV\" == production ]] && exit 0; npm link ../../clients/"
   }
 }
