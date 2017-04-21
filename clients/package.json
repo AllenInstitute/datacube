@@ -7,8 +7,8 @@
   "module": "lib/es2015/all.js",
   "scripts": {
     "build": "./build.sh",
-    "clean": "rm -r lib dist",
-    "prepublish": "npm run build"
+    "clean": "rm -rf lib dist",
+    "prepublishOnly": "npm run build"
   },
   "babel": {
     "env": {

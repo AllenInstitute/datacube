@@ -3,11 +3,15 @@
   "dependencies": {},
   "devDependencies": {
     "autobahn-js-built": "^0.11.1",
+    "bulk": "^2.0.1",
+    "datacube-js": "../../clients/",
+    "linklocal": "^2.8.0",
     "pako": "^1.0.5",
     "systemjs": "^0.20.12",
     "text-encoding": "^0.6.4"
   },
   "scripts": {
-    "postinstall": "[[ \"$NODE_ENV\" == production ]] && exit 0; npm link ../../clients/"
+    "dev": "linklocal link -r && linklocal list -r | bulk -c 'npm install'",
+    "postinstall": "if [ \"$NODE_ENV\" != \"production\" ]; then npm run dev; (cd ../../clients/ && npm run build); fi"
   }
 }
