@@ -2,3 +2,4 @@
 allensdk==0.12.4
 h5py
 pynrrd
+numba
