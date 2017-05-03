@@ -13,6 +13,7 @@
 <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
 <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
 <script type="text/javascript">
+    $(function() {
         var pending = false;
         var did_scroll = false;
         function scroll() {
@@ -28,28 +29,26 @@
             }
         }, 50);
 
-        $(function() {
-            $('#slider').slider(
-                {
-                    min: 0,
-                    max: 319,
-                    value: 160,
-                    slide: function(event, ui) {
-                        scroll();
-                    }
+        $('#slider').slider(
+            {
+                min: 0,
+                max: 319,
+                value: 160,
+                slide: function(event, ui) {
+                    scroll();
                 }
-            );
-            $('#opacity').slider(
-                {
-                    min: 0,
-                    max: 100,
-                    value: 25,
-                    slide: function(event, ui) {
-                        render();
-                    }
+            }
+        );
+        $('#opacity').slider(
+            {
+                min: 0,
+                max: 100,
+                value: 25,
+                slide: function(event, ui) {
+                    render();
                 }
-            );
-        });
+            }
+        );
 
         var connection = new autobahn.Connection({
              url: 'ws://' + window.location.hostname + (window.location.port ? ':' + window.location.port : '') + '/ws',
@@ -64,8 +63,10 @@
 
         connection.open();
 
-        var image = null; 
-        var overlay = null;
+        var image = document.createElement('img');
+        image.style.display = 'none';
+        var overlay = document.createElement('img');
+        overlay.style.display = 'none';
         var got_image = false;
         var got_overlay = false;
 
@@ -74,15 +75,12 @@
             canvas.width = image.width;
             canvas.height = image.height;
 
-            var canvas = document.getElementById('graph');
             var context = canvas.getContext('2d');
-            var alpha = document.getElementById('alpha');
             context.clearRect(0, 0, canvas.width, canvas.height);
             context.drawImage(overlay, 0, 0, canvas.width, canvas.height);
             context.globalCompositeOperation = 'source-atop';
             context.globalAlpha = 1.0 - $('#opacity').slider("option", "value")/100.0;
             context.drawImage(image, 0, 0, canvas.width, canvas.height);
-
             // if a file or dataUrl is needed
             //canvas.toBlob(function(blob) { console.log(blob); }, 'image/jpeg', 0.4);
             //console.log(canvas.toDataURL('image/jpeg', 0.4));
@@ -108,12 +106,12 @@
             session.call(call, args, kwargs).then(
                 function (res) {
                     if(res.data) {
-                        image = document.createElement('img');
-                        image.style.display = 'none';
+                        image.onload = function() {
+                            console.log('ccf jpeg: ' + res.data.length + ' bytes');
+                            got_image = true;
+                            finish();
+                        };
                         image.src = res.data;
-                        console.log('ccf jpeg: ' + res.data.length + ' bytes');
-                        got_image = true;
-                        finish();
                     }
                 }
             );
@@ -124,17 +122,17 @@
             session.call(call, args, kwargs).then(
                 function (res) {
                     if(res.data) {
-                        overlay = document.createElement('img');
-                        overlay.style.dispaly = 'none';
+                        overlay.onload = function() {
+                            console.log('annotation png: ' + res.data.length + ' bytes');
+                            got_overlay = true;
+                            finish();
+                        };
                         overlay.src = res.data;
-                        console.log('annotation png: ' + res.data.length + ' bytes');
-                        got_overlay = true;
-                        finish();
                     }
                 }
             );
-
         }
+    });
 </script>
 </body>
 </html>
