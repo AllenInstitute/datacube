@@ -37,8 +37,11 @@ class PandasServiceComponent(ApplicationSession):
                                   indexes=None,
                                   fields=None):
             #print('deferToThread')
-            d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
-            return d
+            if args.use_mmap:
+                d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
+                return d
+            else:
+                return _filter_cell_specimens(name, filters, sort, ascending, start, stop, indexes, fields)
 
 
         def _filter_cell_specimens(name=None,
