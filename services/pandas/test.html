@@ -106,14 +106,14 @@ JSON.parse(`
 <script type="text/javascript" src="node_modules/autobahn-js-built/autobahn.min.js"></script>
 <script type="text/javascript" src="node_modules/pako/dist/pako.min.js"></script>
 <script type="text/javascript" src="node_modules/text-encoding/lib/encoding.js"></script>
-<script type="text/javascript" src="./structured_array.js"></script>
+<script type="text/javascript" src="node_modules/datacube-js/lib/umd/common/structured_array.js"></script>
 <script type="text/javascript">
         var ellog = null;
         ellog = document.getElementById('log');
 
         var connection = new autobahn.Connection({
-             url: 'ws://' + window.location.hostname + ':8081/ws',
-             realm: 'pandas_service'
+             url: 'ws://' + window.location.hostname + ':' + window.location.port + '/ws',
+             realm: 'aibs'
         });
 
         var session;
