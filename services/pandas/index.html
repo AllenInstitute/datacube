@@ -138,8 +138,10 @@ SystemJS.import('./node_modules/datacube-js/lib/systemjs/pandas.js').then(functi
       return {"start": start_idx, "end": end_idx}
   };
   
-
+  var time = new Date();
   function process_page(records) {
+      console.log(new Date() - time + ' ms');
+      time = new Date();
       var txt = [];
       for(var i = 0; i < records.length; ++i) {
           txt.push(JSON.stringify(records[i]));

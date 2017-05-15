@@ -20,7 +20,7 @@ function getRandomInt(min, max) {
 var N = 100;
 var indexes = [];
 for(i = 0; i < N; ++i) {
-    indexes.push(getRandomInt(0, 180000));
+    indexes.push(getRandomInt(0, 27123));
 }
 JSON.parse(`
     {
@@ -131,6 +131,15 @@ JSON.parse(`
             ellog.scrollTop = ellog.scrollHeight;
         };
 
+        function decode_structured_array(res, callback) {
+            var zbuf = res.data;
+            var buf = pako.inflate(zbuf);
+            res.data = buf;
+            var sa = new structured_array.StructuredArray(res);
+            var records = sa.get_all();
+            callback(records);
+        };
+
         function send() {
             call = eval(document.getElementById('call').value);
             args = eval(document.getElementById('args').value);
@@ -150,7 +159,7 @@ JSON.parse(`
                         var zbuf = res.data;
                         var buf = pako.inflate(zbuf);
                         res.data = buf;
-                        var sa = new StructuredArray(res);
+                        var sa = new structured_array.StructuredArray(res);
                         var records = sa.get_all();
                         var end_time = new Date();
                         document.getElementById('elapsed').innerHTML = (end_time - start_time) + 'ms';
@@ -164,7 +173,6 @@ JSON.parse(`
             );
         };
 
-
         function load_test() {
             document.getElementById('load_test_log').innerHTML = '';
             var num_repeats = parseInt(document.getElementById('num_repeats').value);
@@ -176,8 +184,8 @@ JSON.parse(`
             connections = [];
             for(var i = 0; i < num_connections; ++i) {
                 var c = new autobahn.Connection({
-                     url: 'ws://' + window.location.hostname + ':8081/ws',
-                     realm: 'pandas_service'
+                     url: 'ws://' + window.location.hostname + ':' + window.location.port + '/ws',
+                     realm: 'aibs'
                 });
 
                 c.onopen = function(s) {
