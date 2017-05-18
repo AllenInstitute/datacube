@@ -209,7 +209,9 @@ if __name__ == '__main__':
                 os.makedirs(args.data_dir)
             df.to_csv(csv_file)
         else:
-            csv_url = 'http://api.brain-map.org/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
+            #csv_url = 'http://testwarehouse:9000/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
+            csv_url = 'http://iwarehouse/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
+            #csv_url = 'http://api.brain-map.org/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
             if not os.path.exists(args.data_dir):
                 os.makedirs(args.data_dir)
             urllib.urlretrieve(csv_url, csv_file)
