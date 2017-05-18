@@ -20,7 +20,7 @@ function getRandomInt(min, max) {
 var N = 100;
 var indexes = [];
 for(i = 0; i < N; ++i) {
-    indexes.push(getRandomInt(0, 180000));
+    indexes.push(getRandomInt(0, 27123));
 }
 JSON.parse(`
     {
@@ -100,20 +100,20 @@ JSON.parse(`
 <h4>load test</h4>
 <p>Execute the above query N times from M different websocket connections (be aware of browser websocket connection limits). Does not close websocket connections-- reload to free up old connections.</p>
 <p>N: <input id="num_repeats" value="1" />, M: <input id="num_connections" value="1" /></p>
-<p>Succeeded: <span id="succeeded">0</span>, Failed: <span id="failed">0</span>, Total: <span id="total">0</span></p>
+<p>Succeeded: <span id="succeeded">0</span>, Failed: <span id="failed">0</span>, Total: <span id="total">0</span>, Avg. Time: <span id="avg_time">0</span></p>
 <button onclick='load_test();'>execute</button>
 <p><textarea id="load_test_log" style="width: 80%;" rows="20" disabled></textarea></p>
 <script type="text/javascript" src="node_modules/autobahn-js-built/autobahn.min.js"></script>
 <script type="text/javascript" src="node_modules/pako/dist/pako.min.js"></script>
 <script type="text/javascript" src="node_modules/text-encoding/lib/encoding.js"></script>
-<script type="text/javascript" src="./structured_array.js"></script>
+<script type="text/javascript" src="node_modules/datacube-js/lib/umd/common/structured_array.js"></script>
 <script type="text/javascript">
         var ellog = null;
         ellog = document.getElementById('log');
 
         var connection = new autobahn.Connection({
-             url: 'ws://' + window.location.hostname + ':8081/ws',
-             realm: 'pandas_service'
+             url: 'ws://' + window.location.hostname + ':' + window.location.port + '/ws',
+             realm: 'aibs'
         });
 
         var session;
@@ -129,6 +129,15 @@ JSON.parse(`
             }
             ellog.innerHTML += m + '\n';
             ellog.scrollTop = ellog.scrollHeight;
+        };
+
+        function decode_structured_array(res, callback) {
+            var zbuf = res.data;
+            var buf = pako.inflate(zbuf);
+            res.data = buf;
+            var sa = new structured_array.StructuredArray(res);
+            var records = sa.get_all();
+            callback(records);
         };
 
         function send() {
@@ -150,7 +159,7 @@ JSON.parse(`
                         var zbuf = res.data;
                         var buf = pako.inflate(zbuf);
                         res.data = buf;
-                        var sa = new StructuredArray(res);
+                        var sa = new structured_array.StructuredArray(res);
                         var records = sa.get_all();
                         var end_time = new Date();
                         document.getElementById('elapsed').innerHTML = (end_time - start_time) + 'ms';
@@ -164,50 +173,67 @@ JSON.parse(`
             );
         };
 
-
         function load_test() {
             document.getElementById('load_test_log').innerHTML = '';
             var num_repeats = parseInt(document.getElementById('num_repeats').value);
             var num_connections = parseInt(document.getElementById('num_connections').value);
 
             var success_count = 0;
+            var avg_time = 0;
             var error_count = 0;
 
-            connections = [];
+            var connections = [];
             for(var i = 0; i < num_connections; ++i) {
-                var c = new autobahn.Connection({
-                     url: 'ws://' + window.location.hostname + ':8081/ws',
-                     realm: 'pandas_service'
-                });
+                (function() {
+                    var c = new autobahn.Connection({
+                         url: 'ws://' + window.location.hostname + ':' + window.location.port + '/ws',
+                         realm: 'aibs'
+                    });
 
-                c.onopen = function(s) {
-                    for(var j = 0; j < num_repeats; ++j) {
-                        var start_time = new Date()
-                        call = eval(document.getElementById('call').value);
-                        args = eval(document.getElementById('args').value);
-                        kwargs = eval(document.getElementById('kwargs').value);
+                    c.onopen = function(s) {
+                        var in_progress = false;
+                        var repeat = 0;
+                        setInterval(function() {
+                            if(!in_progress) {
+                                if(repeat < num_repeats) {
+                                    ++repeat;
+                                    var start_time = new Date()
+                                    call = eval(document.getElementById('call').value);
+                                    args = eval(document.getElementById('args').value);
+                                    kwargs = eval(document.getElementById('kwargs').value);
 
-                        s.call(call, args, kwargs).then(
-                            function (res) {
-                                decode_structured_array(res, function(records) {
-                                    var end_time = new Date();
-                                    document.getElementById('load_test_log').innerHTML += (end_time - start_time) + 'ms' + '\n';
-                                    success_count += 1;
-                                    document.getElementById('succeeded').innerHTML = success_count;
-                                    document.getElementById('total').innerHTML = success_count + error_count;
-                                });
-                            },
-                            function (err) {
-                                document.getElementById('load_test_log').innerHTML += "Error:" + JSON.stringify(err) + '\n';
-                                error_count += 1;
-                                document.getElementById('failed').innerHTML = error_count;
-                                document.getElementById('total').innerHTML = success_count + error_count;
+                                    in_progress = true;
+                                    s.call(call, args, kwargs).then(
+                                        function (res) {
+                                            decode_structured_array(res, function(records) {
+                                                var end_time = new Date();
+                                                avg_time = ((avg_time * success_count) + (end_time - start_time)) / (success_count + 1);
+                                                document.getElementById('avg_time').innerHTML = avg_time + ' ms';
+                                                document.getElementById('load_test_log').innerHTML += (end_time - start_time) + 'ms' + '\n';
+                                                success_count += 1;
+                                                document.getElementById('succeeded').innerHTML = success_count;
+                                                document.getElementById('total').innerHTML = success_count + error_count;
+                                                in_progress = false;
+                                            });
+                                        },
+                                        function (err) {
+                                            document.getElementById('load_test_log').innerHTML += "Error:" + JSON.stringify(err) + '\n';
+                                            error_count += 1;
+                                            document.getElementById('failed').innerHTML = error_count;
+                                            document.getElementById('total').innerHTML = success_count + error_count;
+                                            in_progress = false;
+                                        }
+                                    );
+                                } else if(repeat == num_repeats) {
+                                    ++repeat;
+                                    c.close();
+                                }
                             }
-                        );
-                    }
-                };
+                        }, 100);
+                    };
 
-                connections.push(c);
+                    connections.push(c);
+                })();
             }
             for(var i = 0; i < num_connections; ++i) {
                 connections[i].open();

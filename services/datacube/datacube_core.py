@@ -265,11 +265,14 @@ class DatacubeCore:
         self.observed = observed
 
         # precompute and store some statistics on the datacube
-        self.mean = []
-        self.std = []
-        for axis in range(0, self.ndim):
-            self.mean.append(np.nanmean(self.data, axis, keepdims=True))
-            self.std.append(np.nanstd(self.data, axis, keepdims=True))
+        # todo: cache these to files in data directory
+        self.max = np.nanmax(data)
+        self.min = np.nanmin(data)
+        #self.mean = []
+        #self.std = []
+        #for axis in range(0, self.ndim):
+        #    self.mean.append(np.nanmean(self.data, axis, keepdims=True))
+        #    self.std.append(np.nanstd(self.data, axis, keepdims=True))
 
         # set up for distributed computations
         self.distributed = distributed

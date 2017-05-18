@@ -7,3 +7,4 @@ txaio
 progressbar
 numpy
 scipy
+Pillow

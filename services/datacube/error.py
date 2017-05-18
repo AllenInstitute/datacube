@@ -20,6 +20,14 @@ class ServiceError(RuntimeError):
 class RequestNotValidJSON(RuntimeError):
     pass
 
+@wamp.error(u"org.alleninstitute.datacube.error.non2d_image")
+class Non2dImageError(RuntimeError):
+    pass
+
+@wamp.error(u"org.alleninstitute.datacube.error.image_format")
+class InvalidOrUnsupportedImageFormat(RuntimeError):
+    pass
+
 @wamp.error(u"org.alleninstitute.datacube.error.datacube_name")
 class DatacubeNameError(RuntimeError):
     def __init__(self, cube_name):
