@@ -1,10 +1,10 @@
 import txaio
 from twisted.internet import reactor, threads
 from twisted.internet.defer import inlineCallbacks
-from autobahn.twisted.wamp import ApplicationSession, ApplicationRunner
+#from autobahn.twisted.wamp import ApplicationSession, ApplicationRunner
 from autobahn.wamp.exception import ApplicationError
 from autobahn.wamp.types import RegisterOptions
-#from wamp import ApplicationSession, ApplicationRunner # copy of stock wamp.py with modified timeouts
+from wamp import ApplicationSession, ApplicationRunner # copy of stock wamp.py with modified timeouts
 import pandas as pd
 #import xarray as xr
 import numpy as np
@@ -37,7 +37,7 @@ class PandasServiceComponent(ApplicationSession):
                                   indexes=None,
                                   fields=None):
             #print('deferToThread')
-            if args.use_mmap:
+            if args.use_mmap and args.use_threads:
                 d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
                 return d
             else:
@@ -61,7 +61,7 @@ class PandasServiceComponent(ApplicationSession):
                 if name not in self.keys:
                     raise ValueError('Requested name \'' + str(name) + '\' does not exist; choose one of (' + ','.join(self.keys) + ').')
                 if args.use_mmap:
-                    r = np.load(args.mmap_dir + name + '.npy', mmap_mode='r')
+                    r = np.load(args.data_dir + name + '.npy', mmap_mode='r')
                 else:
                     r = self.data[name]
                 if not filters and not fields == "indexes_only":
@@ -99,7 +99,6 @@ class PandasServiceComponent(ApplicationSession):
                             raise ValueError('Requested field \'' + str(field) + '\' does not exist. Allowable fields are: ' + str(r.dtype.names))
                     r = r[fields]
                 r = r[start:stop]
-
                 if fields == "indexes_only":
                     return {'filtered_total': filtered_total, 'indexes': r['index'].tolist()}
                 else:
@@ -162,6 +161,62 @@ class PandasServiceComponent(ApplicationSession):
                 return df[cond]
 
 
+        def _load_dataframes(): 
+            print('Loading ...')
+            self.keys = []
+            self.data = {}
+            for npyfile in glob.glob(args.cache_dir + '*.npy'):
+                name = os.path.splitext(os.path.basename(npyfile))[0]
+                self.keys.append(name)
+                if not args.use_mmap:
+                    self.data[name] = np.load(npyfile)
+
+
+        try:
+            yield threads.deferToThread(_load_dataframes)
+            yield self.register(filter_cell_specimens,
+                                u'org.alleninstitute.pandas_service.filter_cell_specimens',
+                                options=RegisterOptions(invoke=u'roundrobin'))
+        except Exception as e:
+            print("could not register procedure: {0}".format(e))
+
+        print('Server ready.')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Pandas Service')
+    parser.add_argument('router', help='url of WAMP router to connect to e.g. ws://localhost:9000/ws')
+    parser.add_argument('realm', help='WAMP realm name to join')
+    parser.add_argument('data_dir', help='load CSV and NPY files from this directory')
+    parser.add_argument('--no-mmap', action='store_false', dest='use_mmap', help='don\'t use memory-mapped files; load the data into memory')
+    parser.add_argument('--single-thread', action='store_false', dest='use_threads', help='don\'t use multi-threading; run in a single thread. has no effect if --no-mmap is set.')
+    parser.add_argument('--max-records', default=1000, help='maximum records to serve in a single request (default: %(default)s)')
+    parser.add_argument('--demo', action='store_true', dest='demo', help='load demo dataset, placing files into data_dir')
+    parser.set_defaults(use_mmap=True, use_threads=True, use_cache=False, demo=False)
+    args = parser.parse_args()
+
+    if not args.use_cache:
+        args.cache_dir = args.data_dir
+
+    if args.demo:
+        csv_file = args.data_dir + 'cell_specimens.csv'
+        if False:
+            import sqlalchemy as sa
+            sql = 'select * from api_cam_cell_metrics'
+            con = sa.create_engine('postgresql://postgres:postgres@testwarehouse/warehouse-R193')
+            df = pd.read_sql(sql, con)
+            if not os.path.exists(args.data_dir):
+                os.makedirs(args.data_dir)
+            df.to_csv(csv_file)
+        else:
+            csv_url = 'http://api.brain-map.org/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
+            if not os.path.exists(args.data_dir):
+                os.makedirs(args.data_dir)
+            urllib.urlretrieve(csv_url, csv_file)
+            df = pd.read_csv(csv_file, true_values=['t'], false_values=['f'])
+            df.to_csv(csv_file)
+
+        
         def _dataframe_to_structured_array(df):
             if 'index' in list(df):
                 col_data = []
@@ -198,78 +253,15 @@ class PandasServiceComponent(ApplicationSession):
         #    return xr.Dataset({field: ('dim_0', sa[field]) for field in sa.dtype.names})
 
 
-        def _load_dataframes(): 
-            print('Loading ...')
-            self.keys = []
-            self.data = {}
-            for datafile in glob.glob(args.data_dir + '*.csv') + glob.glob(args.data_dir + '*.npy'):
-                filename = os.path.basename(datafile)
-                
-                if not os.path.isfile(args.cache_dir + filename) \
-                        or os.path.getmtime(args.cache_dir + filename) < os.path.getmtime(datafile):
-                    copyfile(datafile, args.cache_dir + filename)
-                    
-                    if re.match('.*\.csv$', datafile, re.I):
-                        df = pd.read_csv(args.cache_dir + filename)
-                        df.to_csv(args.cache_dir + filename, index=('index' not in list(df)), index_label='index')
-                        sa = _dataframe_to_structured_array(df)
-                        del df
-                        np.save(args.cache_dir + re.sub('\.csv', '.npy', filename, flags=re.I), sa)
-                        del sa
-            for npyfile in glob.glob(args.cache_dir + '*.npy'):
-                name = os.path.splitext(os.path.basename(npyfile))[0]
-                self.keys.append(name)
-                if args.use_mmap:
-                    if args.cache_dir != args.mmap_dir:
-                        copyfile(npyfile, args.mmap_dir + name + '.npy')
-                else:
-                    self.data[name] = np.load(npyfile)
-
-
-        try:
-            yield threads.deferToThread(_load_dataframes)
-            yield self.register(filter_cell_specimens,
-                                u'org.alleninstitute.pandas_service.filter_cell_specimens',
-                                options=RegisterOptions(invoke=u'roundrobin'))
-        except Exception as e:
-            print("could not register procedure: {0}".format(e))
-
-        print('Server ready.')
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Pandas Service')
-    parser.add_argument('router', help='url of WAMP router to connect to e.g. ws://localhost:9000/ws')
-    parser.add_argument('realm', help='WAMP realm name to join')
-    parser.add_argument('data_dir', help='load CSV and NPY files from this directory')
-    parser.add_argument('--cache-dir', default='./data/', help='local data store (default: "%(default)s")')
-    parser.add_argument('--mmap-dir', default='/dev/shm/', help='copy files to this directory before memory-mapping them (can be same as --cache-dir to avoid a 2nd copy) (default: "%(default)s")')
-    parser.add_argument('--no-mmap', action='store_false', dest='use_mmap', help='don\'t use memory-mapped files; load the data into memory')
-    parser.add_argument('--max-records', default=1000, help='maximum records to serve in a single request (default: %(default)s)')
-    parser.add_argument('--demo', action='store_true', dest='demo', help='load demo dataset')
-    parser.set_defaults(use_mmap=True, demo=False)
-    args = parser.parse_args()
-
-    if args.demo:
-        if False:
-            import sqlalchemy as sa
-            sql = 'select * from api_cam_cell_metrics'
-            con = sa.create_engine('postgresql://postgres:postgres@testwarehouse/warehouse-R193')
-            df = pd.read_sql(sql, con)
-            csv_file = args.data_dir + 'cell_specimens.csv'
-            if not os.path.exists(args.data_dir):
-                os.makedirs(args.data_dir)
-            if not os.path.isfile(csv_file):
-                df.to_csv(csv_file)
-        else:
-            csv_url = 'http://api.brain-map.org/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
-            csv_file = args.data_dir + 'cell_specimens.csv'
-            if not os.path.exists(args.data_dir):
-                os.makedirs(args.data_dir)
-            if not os.path.isfile(csv_file):
-                urllib.urlretrieve(csv_url, csv_file)
-                df = pd.read_csv(csv_file, true_values=['t'], false_values=['f'])
-                df.to_csv(csv_file)
+        npyfile = re.sub('\.csv', '.npy', csv_file, flags=re.I)
+        df = pd.read_csv(csv_file)
+        df.to_csv(csv_file, index=('index' not in list(df)), index_label='index')
+        sa = _dataframe_to_structured_array(df)
+        del df
+        np.save(npyfile, sa)
+        del sa
+        print('Demo data created in data_dir. Please run the server again without the --demo flag.')
+        exit(0)
 
     txaio.use_twisted()
     log = txaio.make_logger()
