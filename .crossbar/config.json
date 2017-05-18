@@ -104,13 +104,9 @@
         {
             "type": "guest",
             "executable": "run_service.sh",
-            "arguments": ["--demo", "ws://localhost:9000/ws", "aibs", "./demo_data/"],
+            "arguments": ["ws://localhost:9000/ws", "aibs", "./demo_data/"],
             "options": {
-                "workdir": "../services/pandas/",
-                "watch": {
-                    "directories": ["../services/pandas/demo_data/"],
-                    "action": "restart"
-                }
+                "workdir": "../services/pandas/"
             }
         }
     ]
