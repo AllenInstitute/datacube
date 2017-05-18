@@ -37,8 +37,11 @@ class PandasServiceComponent(ApplicationSession):
                                   indexes=None,
                                   fields=None):
             #print('deferToThread')
-            d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
-            return d
+            if args.use_mmap:
+                d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
+                return d
+            else:
+                return _filter_cell_specimens(name, filters, sort, ascending, start, stop, indexes, fields)
 
 
         def _filter_cell_specimens(name=None,
@@ -248,12 +251,25 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.demo:
-        csv_url = 'http://api.brain-map.org/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
-        csv_file = args.data_dir + 'cell_specimens.csv'
-        if not os.path.exists(args.data_dir):
-            os.makedirs(args.data_dir)
-        if not os.path.isfile(csv_file):
-            urllib.urlretrieve(csv_url, csv_file)
+        if False:
+            import sqlalchemy as sa
+            sql = 'select * from api_cam_cell_metrics'
+            con = sa.create_engine('postgresql://postgres:postgres@testwarehouse/warehouse-R193')
+            df = pd.read_sql(sql, con)
+            csv_file = args.data_dir + 'cell_specimens.csv'
+            if not os.path.exists(args.data_dir):
+                os.makedirs(args.data_dir)
+            if not os.path.isfile(csv_file):
+                df.to_csv(csv_file)
+        else:
+            csv_url = 'http://api.brain-map.org/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
+            csv_file = args.data_dir + 'cell_specimens.csv'
+            if not os.path.exists(args.data_dir):
+                os.makedirs(args.data_dir)
+            if not os.path.isfile(csv_file):
+                urllib.urlretrieve(csv_url, csv_file)
+                df = pd.read_csv(csv_file, true_values=['t'], false_values=['f'])
+                df.to_csv(csv_file)
 
     txaio.use_twisted()
     log = txaio.make_logger()

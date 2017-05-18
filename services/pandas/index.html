@@ -138,8 +138,10 @@ SystemJS.import('./node_modules/datacube-js/lib/systemjs/pandas.js').then(functi
       return {"start": start_idx, "end": end_idx}
   };
   
-
+  var time = new Date();
   function process_page(records) {
+      console.log(new Date() - time + ' ms');
+      time = new Date();
       var txt = [];
       for(var i = 0; i < records.length; ++i) {
           txt.push(JSON.stringify(records[i]));
@@ -153,7 +155,7 @@ SystemJS.import('./node_modules/datacube-js/lib/systemjs/pandas.js').then(functi
   }
 
 
-  var wamp_router_url = 'ws://' + window.location.hostname + ':8081/ws';
+  var wamp_router_url = 'ws://' + window.location.hostname + ':' + window.location.port + '/ws';
   var wamp_realm = 'aibs';
   var chunk_size = 100;
   var preload_margin = 25;

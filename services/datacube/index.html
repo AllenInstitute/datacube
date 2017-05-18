@@ -1,92 +1,138 @@
 <!DOCTYPE html>
 <html>
 <head>
+<link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
 </head>
-<body>
-<h3>datacube test page</h3>
+<body bgcolor="gray">
+<h3>datacube reference space test page</h3>
 <noscript>You must enable JavaScript</noscript>
+<p>slice:<div id="slider"></div></p>
+<p>opacity:<div id="opacity"></div></p>
 <canvas id="graph"  width="300" height="150"></canvas>
-<form>
-    <div>call:</div>
-    <textarea id="call" cols="80">org.alleninstitute.datacube.raw</textarea>
-    <div>args:</div>
-    <textarea id="args" cols="80">[]</textarea>
-    <div>kwargs:</div>
-    <textarea id="kwargs" cols="80" rows="15">
-{
-    "cube": "cell_types",
-    "select": [{"start": 0, "stop": 150}, {"start": 0, "stop": 1000}]
-}
-    </textarea>
-</form>
-<div><button onclick='send();'>send</button></div>
-<p><textarea id="log" style="background-color: #faa; width: 80%;" rows="20" disabled></textarea></div></p>
 <script type="text/javascript" src="node_modules/autobahn-js-built/autobahn.min.js"></script>
+<script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+<script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
 <script type="text/javascript">
-        var ellog = null;
-        ellog = document.getElementById('log');
+    $(function() {
+        var pending = false;
+        var did_scroll = false;
+        function scroll() {
+            did_scroll = true;
+        }
+        setInterval(function() {
+            if(did_scroll) {
+                if(!pending) {
+                    did_scroll = false;
+                    pending = true;
+                    send($('#slider').slider("option", "value"));
+                }
+            }
+        }, 50);
+
+        $('#slider').slider(
+            {
+                min: 0,
+                max: 319,
+                value: 160,
+                slide: function(event, ui) {
+                    scroll();
+                }
+            }
+        );
+        $('#opacity').slider(
+            {
+                min: 0,
+                max: 100,
+                value: 25,
+                slide: function(event, ui) {
+                    render();
+                }
+            }
+        );
 
         var connection = new autobahn.Connection({
-             url: 'ws://devdatacube:8080/ws',
-             realm: 'datacube'
+             url: 'ws://' + window.location.hostname + (window.location.port ? ':' + window.location.port : '') + '/ws',
+             realm: 'aibs'
         });
 
         var session;
         connection.onopen = function (s) {
             session = s;
+            scroll();
         };
 
         connection.open();
 
-        function log(m) {
-            if(m.length > 5000) {
-                m = m.substr(0, 5000) + " ... (truncated)";
-            }
-            ellog.innerHTML += m + '\n';
-            ellog.scrollTop = ellog.scrollHeight;
+        var image = document.createElement('img');
+        image.style.display = 'none';
+        var overlay = document.createElement('img');
+        overlay.style.display = 'none';
+        var got_image = false;
+        var got_overlay = false;
+
+        function render() {
+            var canvas = document.getElementById('graph');
+            canvas.width = image.width;
+            canvas.height = image.height;
+
+            var context = canvas.getContext('2d');
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            context.drawImage(overlay, 0, 0, canvas.width, canvas.height);
+            context.globalCompositeOperation = 'source-atop';
+            context.globalAlpha = 1.0 - $('#opacity').slider("option", "value")/100.0;
+            context.drawImage(image, 0, 0, canvas.width, canvas.height);
+            // if a file or dataUrl is needed
+            //canvas.toBlob(function(blob) { console.log(blob); }, 'image/jpeg', 0.4);
+            //console.log(canvas.toDataURL('image/jpeg', 0.4));
         };
 
-        function send() {
-            call = document.getElementById('call').value;
-            args = JSON.parse(document.getElementById('args').value);
-            kwargs = JSON.parse(document.getElementById('kwargs').value);
+        function send(idx) {
+            select = [null,[idx],null];
+            var start = new Date();
+            got_image = false;
+            got_overlay = false;
+
+            function finish() {
+                if(pending && got_image && got_overlay) {
+                    render();
+                    pending = false;
+                    console.log('finished in ' + (new Date() - start) + ' ms');
+                }
+            }
+
+            var call = 'org.alleninstitute.datacube.image';
+            var args = [];
+            var kwargs = {'cube': 'ccf', 'image_format': 'jpeg', 'select': select};
             session.call(call, args, kwargs).then(
                 function (res) {
-                    log("Result:" + JSON.stringify(res));
                     if(res.data) {
-                        float_data = window.atob(res.data);
-                        draw(res.shape[1], res.shape[0], float_data);
+                        image.onload = function() {
+                            console.log('ccf jpeg: ' + res.data.length + ' bytes');
+                            got_image = true;
+                            finish();
+                        };
+                        image.src = res.data;
+                    }
+                }
+            );
+
+            call = 'org.alleninstitute.datacube.image';
+            args = [];
+            kwargs = {'cube': 'ccf_anno_color', 'image_format': 'png', 'select': select.concat([null])};
+            session.call(call, args, kwargs).then(
+                function (res) {
+                    if(res.data) {
+                        overlay.onload = function() {
+                            console.log('annotation png: ' + res.data.length + ' bytes');
+                            got_overlay = true;
+                            finish();
+                        };
+                        overlay.src = res.data;
                     }
                 }
             );
         }
-
-        function draw(width, height, float_data) {
-            /*
-            header = new DataView(data, 0, 4 * 3);
-            response_code = header.getInt32(0, false);
-            log("Response code: " + response_code);
-            height = header.getInt32(4, false);
-            width = header.getInt32(8, false);
-            float_data = new Float32Array(data, 4 * 3);
-            */
-
-            var canvas = document.getElementById('graph');
-            canvas.width = width;
-            canvas.height = height;
-
-            var context = canvas.getContext("2d");
-            var imageData = context.createImageData(width, height);
-
-            for (var i = 0; i < float_data.length; ++i) {
-                var scaled = Math.round(Math.min(Math.max((float_data[i] + 2.0) / 4.0 * 255.0, 0.0), 255.0))
-                imageData.data[i * 4] = Math.min(255, scaled * -2 + 256);
-                imageData.data[i * 4 + 1] = Math.max(0, scaled * 2 - 256);
-                imageData.data[i * 4 + 2] = 0;
-                imageData.data[i * 4 + 3] = 255;
-            }
-            context.putImageData(imageData, 0, 0);
-        }
+    });
 </script>
 </body>
 </html>
