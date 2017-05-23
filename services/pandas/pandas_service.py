@@ -4,6 +4,7 @@ from twisted.internet.defer import inlineCallbacks
 #from autobahn.twisted.wamp import ApplicationSession, ApplicationRunner
 from autobahn.wamp.exception import ApplicationError
 from autobahn.wamp.types import RegisterOptions
+from autobahn.wamp.auth import compute_wcs
 from wamp import ApplicationSession, ApplicationRunner # copy of stock wamp.py with modified timeouts
 import pandas as pd
 #import xarray as xr
@@ -25,6 +26,16 @@ from shutil import copyfile
 
 class PandasServiceComponent(ApplicationSession):
 
+    def onConnect(self):
+        self.join(unicode(args.realm), [u'wampcra'], unicode(args.username))
+
+    def onChallenge(self, challenge):
+        if challenge.method == u'wampcra':
+            signature = compute_wcs(unicode(args.password).encode('utf8'), challenge.extra['challenge'].encode('utf8'))
+            return signature.decode('ascii')
+        else:
+            raise Exception("don't know how to handle authmethod {}".format(challenge.method))
+
     @inlineCallbacks
     def onJoin(self, details):
 
@@ -36,6 +47,8 @@ class PandasServiceComponent(ApplicationSession):
                                   stop=None,
                                   indexes=None,
                                   fields=None):
+            #import json
+            #print(json.dumps({k: v for k,v in zip(['name', 'filters', 'sort', 'ascending', 'start', 'stop', 'indexes', 'fields'], [name, filters, sort, ascending, start, stop, indexes, fields]) if v is not None}))
             #print('deferToThread')
             if args.use_mmap and args.use_threads:
                 d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
@@ -187,6 +200,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Pandas Service')
     parser.add_argument('router', help='url of WAMP router to connect to e.g. ws://localhost:9000/ws')
     parser.add_argument('realm', help='WAMP realm name to join')
+    parser.add_argument('username', help='WAMP-CRA username')
+    parser.add_argument('password', help='WAMP-CRA secret')
     parser.add_argument('data_dir', help='load CSV and NPY files from this directory')
     parser.add_argument('--no-mmap', action='store_false', dest='use_mmap', help='don\'t use memory-mapped files; load the data into memory')
     parser.add_argument('--single-thread', action='store_false', dest='use_threads', help='don\'t use multi-threading; run in a single thread. has no effect if --no-mmap is set.')
@@ -209,8 +224,8 @@ if __name__ == '__main__':
                 os.makedirs(args.data_dir)
             df.to_csv(csv_file)
         else:
-            #csv_url = 'http://testwarehouse:9000/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
-            csv_url = 'http://iwarehouse/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
+            csv_url = 'http://testwarehouse:9000/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
+            #csv_url = 'http://iwarehouse/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
             #csv_url = 'http://api.brain-map.org/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
             if not os.path.exists(args.data_dir):
                 os.makedirs(args.data_dir)
