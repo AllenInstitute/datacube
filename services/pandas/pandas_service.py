@@ -96,15 +96,19 @@ class PandasServiceComponent(ApplicationSession):
                         if field not in r.dtype.names:
                             raise ValueError('Requested sort field \'' + str(field) + '\' does not exist. Allowable fields are: ' + str(r.dtype.names))
                     s = r[sort]
-                    ranks = np.zeros((s.size, len(s.dtype)))
+                    ranks = np.zeros((s.size, len(s.dtype)), dtype=np.int)
                     for idx, (field, asc) in enumerate(zip(sort[::-1], ascending[::-1])):
                         if s[field].dtype.name.startswith('string') or s[field].dtype.name.startswith('unicode'):
                             blank_count = np.count_nonzero(s[field] == '')
                         else:
                             blank_count = np.count_nonzero(np.isnan(s[field]))
                         ranks[:,idx] = rankdata(s[field], method='dense')
+                        maxrank = np.max(ranks[:,idx])
                         if not asc:
-                            ranks[:,idx] = np.roll(-ranks[:,idx], -blank_count)
+                            ranks[:,idx] = maxrank - (ranks[:,idx] - 1) - blank_count
+                            ranks[:,idx][ranks[:,idx]<=0] = maxrank - blank_count + 1
+                        else:
+                            ranks[:,idx] = np.clip(ranks[:,idx], 0, maxrank - blank_count + 1)
                     r = r[np.lexsort(tuple(ranks[:,idx] for idx in range(ranks.shape[1])))]
                 if fields and type(fields) is list:
                     for field in fields:
