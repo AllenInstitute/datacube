@@ -182,7 +182,7 @@ class PandasServiceComponent(ApplicationSession):
             print('Loading ...')
             self.keys = []
             self.data = {}
-            for npyfile in glob.glob(args.cache_dir + '*.npy'):
+            for npyfile in glob.glob(args.data_dir + '*.npy'):
                 name = os.path.splitext(os.path.basename(npyfile))[0]
                 self.keys.append(name)
                 if not args.use_mmap:
