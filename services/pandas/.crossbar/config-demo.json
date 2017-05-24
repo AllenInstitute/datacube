@@ -15,8 +15,8 @@
                                     "match": "prefix",
                                     "allow": {
                                         "call": true,
-                                        "register": true,
-                                        "publish": true,
+                                        "register": false,
+                                        "publish": false,
                                         "subscribe": true
                                     },
                                     "disclose": {
@@ -83,7 +83,7 @@
                                 "wampcra": {
                                     "type": "static",
                                     "users": {
-                                        "username": {
+                                        "pandas_service": {
                                             "secret": "p4ssw0rd",
                                             "role": "authenticated"
                                         }
@@ -115,7 +115,7 @@
         {
             "type": "guest",
             "executable": "python",
-            "arguments": ["pandas_service.py", "ws://localhost:8081/ws", "aibs", "./demo_data/"],
+            "arguments": ["pandas_service.py", "ws://localhost:8081/auth_ws", "aibs", "pandas_service", "p4ssw0rd", "./demo_data/"],
             "options": {
                 "workdir": ".."
             }
