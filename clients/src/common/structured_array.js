@@ -1,5 +1,6 @@
 'use strict';
 
+import "babel-polyfill/lib/index.js";
 import TextDecoder from "text-encoding";
 
 /**
