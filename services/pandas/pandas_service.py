@@ -89,7 +89,7 @@ class PandasServiceComponent(ApplicationSession):
                 if filters:
                     r = _dataframe_query(r, filters)
                 filtered_total = r.size;
-                if sort:
+                if sort and r.size > 0:
                     if not ascending:
                         ascending = [True] * len(sort)
                     for field in sort:
