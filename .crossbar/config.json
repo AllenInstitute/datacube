@@ -55,14 +55,14 @@
                     "type": "web",
                     "endpoint": {
                         "type": "tcp",
-                        "port": 80
+                        "port": 8080
                     },
                     "paths": {
                         "ws": {
                             "type": "websocket",
                             "options": {
-                                "auto_ping_interval": 10,
-                                "auto_ping_timeout": 60
+                                "auto_ping_interval": 10000,
+                                "auto_ping_timeout": 60000
                             },
                             "serializers": ["msgpack"]
                         },
@@ -84,8 +84,8 @@
                                 }
                             },
                             "options": {
-                                "auto_ping_interval": 10,
-                                "auto_ping_timeout": 60
+                                "auto_ping_interval": 10000,
+                                "auto_ping_timeout": 60000
                             },
                             "serializers": ["msgpack"]
                         },
@@ -104,7 +104,7 @@
         {
             "type": "guest",
             "executable": "run_service.sh",
-            "arguments": ["ws://localhost:80/auth_ws", "aibs", "pandas_service", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "./data/"],
+            "arguments": ["ws://localhost:8080/auth_ws", "aibs", "pandas_service", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "./data/"],
             "options": {
                 "workdir": "../services/pandas/"
             }
