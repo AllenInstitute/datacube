@@ -61,8 +61,8 @@
                         "ws": {
                             "type": "websocket",
                             "options": {
-                                "auto_ping_interval": 0,
-                                "auto_ping_timeout": 0
+                                "auto_ping_interval": 10,
+                                "auto_ping_timeout": 60
                             },
                             "serializers": ["msgpack"]
                         },
@@ -84,8 +84,8 @@
                                 }
                             },
                             "options": {
-                                "auto_ping_interval": 0,
-                                "auto_ping_timeout": 0
+                                "auto_ping_interval": 10,
+                                "auto_ping_timeout": 60
                             },
                             "serializers": ["msgpack"]
                         },
