@@ -1,8 +1,11 @@
 {
   "name": "datacube-js",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "chrisba@alleninstitute.org",
-  "files": ["lib", "dist"],
+  "files": [
+    "lib",
+    "dist"
+  ],
   "main": "dist/clients.js",
   "module": "lib/es2015/all.js",
   "scripts": {
@@ -43,12 +46,15 @@
         ]
       },
       "rollup": {
-        "presets": ["babel-preset-es2015-rollup"]
+        "presets": [
+          "babel-preset-es2015-rollup"
+        ]
       }
     }
   },
   "dependencies": {
     "autobahn-js-built": "^0.11.1",
+    "babel-polyfill": "^6.23.0",
     "pako": "^1.0.5",
     "text-encoding": "^0.6.4"
   },

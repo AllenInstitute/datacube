@@ -1,0 +1,2 @@
+git remote add -f datacube-js http://chrisba@stash.corp.alleninstitute.org/scm/~chrisba/datacube-js.git
+git subtree push --prefix=clients/ datacube-js master

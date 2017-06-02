@@ -55,7 +55,7 @@
                     "type": "web",
                     "endpoint": {
                         "type": "tcp",
-                        "port": 8081
+                        "port": 9000
                     },
                     "paths": {
                         "/": {
@@ -115,7 +115,7 @@
         {
             "type": "guest",
             "executable": "python",
-            "arguments": ["pandas_service.py", "ws://localhost:8081/auth_ws", "aibs", "pandas_service", "p4ssw0rd", "./demo_data/"],
+            "arguments": ["pandas_service.py", "ws://localhost:9000/auth_ws", "aibs", "pandas_service", "p4ssw0rd", "./demo_data/"],
             "options": {
                 "workdir": ".."
             }
