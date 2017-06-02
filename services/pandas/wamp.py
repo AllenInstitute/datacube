@@ -216,8 +216,8 @@ class ApplicationRunner(object):
                                                  openHandshakeTimeout=2.5,
                                                  closeHandshakeTimeout=1.,
                                                  tcpNoDelay=True,
-                                                 autoPingInterval=5.,
-                                                 autoPingTimeout=30.,
+                                                 autoPingInterval=0.,
+                                                 autoPingTimeout=0.,
                                                  autoPingSize=4,
                                                  perMessageCompressionOffers=offers,
                                                  perMessageCompressionAccept=accept)

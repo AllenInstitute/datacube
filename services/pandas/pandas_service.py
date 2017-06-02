@@ -47,8 +47,8 @@ class PandasServiceComponent(ApplicationSession):
                                   stop=None,
                                   indexes=None,
                                   fields=None):
-            #import json
-            #print(json.dumps({k: v for k,v in zip(['name', 'filters', 'sort', 'ascending', 'start', 'stop', 'indexes', 'fields'], [name, filters, sort, ascending, start, stop, indexes, fields]) if v is not None}))
+            import json
+            print(json.dumps({k: v for k,v in zip(['name', 'filters', 'sort', 'ascending', 'start', 'stop', 'indexes', 'fields'], [name, filters, sort, ascending, start, stop, indexes, fields]) if v is not None}))
             #print('deferToThread')
             if args.use_mmap and args.use_threads:
                 d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
@@ -286,6 +286,9 @@ if __name__ == '__main__':
     txaio.use_twisted()
     log = txaio.make_logger()
     txaio.start_logging()
+
+    if args.use_threads:
+        reactor.suggestThreadPoolSize(1)
 
     runner = ApplicationRunner(unicode(args.router), unicode(args.realm))
     runner.run(PandasServiceComponent, auto_reconnect=True)
