@@ -3,6 +3,7 @@
   "dependencies": {},
   "devDependencies": {
     "autobahn-js-built": "^0.11.1",
+    "bluebird": "^3.5.0",
     "bulk": "^2.0.1",
     "datacube-js": "../../clients/",
     "linklocal": "^2.8.0",

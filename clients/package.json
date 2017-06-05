@@ -54,7 +54,7 @@
   },
   "dependencies": {
     "autobahn-js-built": "^0.11.1",
-    "babel-polyfill": "^6.23.0",
+    "core-js": "^2.4.1",
     "pako": "^1.0.5",
     "text-encoding": "^0.6.4"
   },
