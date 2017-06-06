@@ -211,7 +211,7 @@ class PandasServiceComponent(ApplicationSession):
             yield threads.deferToThread(_load_dataframes)
             yield self.register(filter_cell_specimens,
                                 u'org.alleninstitute.pandas_service.filter_cell_specimens',
-                                options=RegisterOptions(invoke=u'roundrobin', concurrency=1))
+                                options=RegisterOptions(invoke=u'roundrobin', concurrency=4))
             yield self.register(get_cell_specimens,
                                 u'org.alleninstitute.pandas_service.get_cell_specimens',
                                 options=RegisterOptions(invoke=u'roundrobin', concurrency=100))
