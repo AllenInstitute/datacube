@@ -37,5 +37,5 @@ class MyComponent(ApplicationSession):
             
 
 if __name__ == "__main__":
-    runner = ApplicationRunner(url=u"ws://ibs-chrisba-ux1:8080/ws", realm=u"aibs")
+    runner = ApplicationRunner(url=u"ws://datacube.brain-map.org/ws", realm=u"aibs")
     runner.run(MyComponent)
