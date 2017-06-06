@@ -27,7 +27,10 @@ class MyComponent(ApplicationSession):
                 @inlineCallbacks
                 def time_request(request):
                     start = time.time()
-                    yield self.call('org.alleninstitute.pandas_service.filter_cell_specimens', **request)
+                    if request.get('sort', []) or request.get('filters', []):
+                        yield self.call('org.alleninstitute.pandas_service.filter_cell_specimens', **request)
+                    else:
+                        yield self.call('org.alleninstitute.pandas_service.get_cell_specimens', **request)
                     print(time.time() - start)
 
                 #reactor.callLater(elapsed, self.call, 'org.alleninstitute.pandas_service.filter_cell_specimens', **request)
@@ -37,5 +40,5 @@ class MyComponent(ApplicationSession):
             
 
 if __name__ == "__main__":
-    runner = ApplicationRunner(url=u"ws://datacube.brain-map.org/ws", realm=u"aibs")
+    runner = ApplicationRunner(url=unicode(sys.argv[2]), realm=u"aibs")
     runner.run(MyComponent)
