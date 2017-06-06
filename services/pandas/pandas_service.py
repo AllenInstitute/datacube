@@ -39,6 +39,24 @@ class PandasServiceComponent(ApplicationSession):
     @inlineCallbacks
     def onJoin(self, details):
 
+        def get_cell_specimens(name=None,
+                               filters=None,
+                               sort=None,
+                               ascending=None,
+                               start=0,
+                               stop=None,
+                               indexes=None,
+                               fields=None):
+            #import json
+            #print('get: ' + json.dumps({k: v for k,v in zip(['name', 'filters', 'sort', 'ascending', 'start', 'stop', 'indexes', 'fields'], [name, filters, sort, ascending, start, stop, indexes, fields]) if v is not None}))
+            #print('deferToThread')
+            if args.use_mmap and args.use_threads:
+                d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
+                return d
+            else:
+                return _filter_cell_specimens(name, filters, sort, ascending, start, stop, indexes, fields)
+
+
         def filter_cell_specimens(name=None,
                                   filters=None,
                                   sort=None,
@@ -47,8 +65,8 @@ class PandasServiceComponent(ApplicationSession):
                                   stop=None,
                                   indexes=None,
                                   fields=None):
-            import json
-            print(json.dumps({k: v for k,v in zip(['name', 'filters', 'sort', 'ascending', 'start', 'stop', 'indexes', 'fields'], [name, filters, sort, ascending, start, stop, indexes, fields]) if v is not None}))
+            #import json
+            #print('filter: ' + json.dumps({k: v for k,v in zip(['name', 'filters', 'sort', 'ascending', 'start', 'stop', 'indexes', 'fields'], [name, filters, sort, ascending, start, stop, indexes, fields]) if v is not None}))
             #print('deferToThread')
             if args.use_mmap and args.use_threads:
                 d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
@@ -193,7 +211,10 @@ class PandasServiceComponent(ApplicationSession):
             yield threads.deferToThread(_load_dataframes)
             yield self.register(filter_cell_specimens,
                                 u'org.alleninstitute.pandas_service.filter_cell_specimens',
-                                options=RegisterOptions(invoke=u'roundrobin'))
+                                options=RegisterOptions(invoke=u'roundrobin', concurrency=4))
+            yield self.register(get_cell_specimens,
+                                u'org.alleninstitute.pandas_service.get_cell_specimens',
+                                options=RegisterOptions(invoke=u'roundrobin', concurrency=100))
         except Exception as e:
             print("could not register procedure: {0}".format(e))
 
