@@ -54,7 +54,7 @@
                             {
                                 "uri": "org.alleninstitute.pandas_service.filter_cell_specimens",
                                 "match": "exact",
-                                "limit": 10
+                                "limit": 1000
                             },
                             {
                                 "uri": "org.alleninstitute.pandas_service.get_cell_specimens",
