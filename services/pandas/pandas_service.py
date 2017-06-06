@@ -21,8 +21,6 @@ import urllib
 import argparse
 from shutil import copyfile
 
-#from allensdk.api.queries.brain_observatory_api import BrainObservatoryApi
-
 
 class PandasServiceComponent(ApplicationSession):
 
@@ -210,78 +208,8 @@ if __name__ == '__main__':
     parser.add_argument('--no-mmap', action='store_false', dest='use_mmap', help='don\'t use memory-mapped files; load the data into memory')
     parser.add_argument('--single-thread', action='store_false', dest='use_threads', help='don\'t use multi-threading; run in a single thread. has no effect if --no-mmap is set.')
     parser.add_argument('--max-records', default=1000, help='maximum records to serve in a single request (default: %(default)s)')
-    parser.add_argument('--generate', action='store_true', help='load data, placing files into data_dir')
-    parser.add_argument('--data-src', default='http://testwarehouse:9000/', help='base RMA url from which to load data')
     parser.set_defaults(use_mmap=True, use_threads=True, generate=False)
     args = parser.parse_args()
-
-    if args.generate:
-        csv_file = args.data_dir + 'cell_specimens.csv'
-        if False:
-            import sqlalchemy as sa
-            sql = 'select * from api_cam_cell_metrics'
-            con = sa.create_engine('postgresql://postgres:postgres@testwarehouse/warehouse-R193')
-            df = pd.read_sql(sql, con)
-            if not os.path.exists(args.data_dir):
-                os.makedirs(args.data_dir)
-            df.to_csv(csv_file)
-        else:
-            csv_url = args.data_src + '/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
-            #csv_url = 'http://testwarehouse:9000/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
-            #csv_url = 'http://iwarehouse/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
-            #csv_url = 'http://api.brain-map.org/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
-            if not os.path.exists(args.data_dir):
-                os.makedirs(args.data_dir)
-            urllib.urlretrieve(csv_url, csv_file)
-            df = pd.read_csv(csv_file, true_values=['t'], false_values=['f'])
-            df.to_csv(csv_file)
-
-        
-        def _dataframe_to_structured_array(df):
-            if 'index' in list(df):
-                col_data = []
-                col_names = []
-                col_types = []
-            else:
-                col_data = [df.index]
-                col_names = ['index']
-                col_types = ['i4']
-            for name in df.columns:
-                column = df[name]
-                data = np.array(column)
-
-                if data.dtype.kind == 'O':
-                    if all(isinstance(x, basestring) or x is np.nan or x is None for x in data):
-                        data[data == np.array([None])] = b''
-                        data[np.array([True if str(x) == 'nan' else False for x in data], dtype=np.bool)] = b''
-                        data = np.array([x + '\0' for x in data], dtype=np.str)
-                col_data.append(data)
-                col_names.append(name)
-                # javascript cannot natively handle longs
-                if str(data.dtype) == 'int64':
-                    col_types.append('i4')
-                elif str(data.dtype) == 'uint64':
-                    col_types.append('u4')
-                else:
-                    col_types.append(data.dtype.str)
-            out = np.array([tuple(data[j] for data in col_data) for j in range(len(df.index))],
-                          dtype=[(str(col_names[i]), col_types[i]) for i in range(len(col_names))])
-            return out
-
-
-        #def _structured_array_to_dataset(sa):
-        #    return xr.Dataset({field: ('dim_0', sa[field]) for field in sa.dtype.names})
-
-
-        npyfile = re.sub('\.csv', '.npy', csv_file, flags=re.I)
-        df = pd.read_csv(csv_file)
-        df.to_csv(csv_file, index=('index' not in list(df)), index_label='index')
-        sa = _dataframe_to_structured_array(df)
-        del df
-        np.save(npyfile, sa)
-        del sa
-        print('Data created in data_dir. Please run the server again without the --generate flag.')
-        exit(0)
 
     txaio.use_twisted()
     log = txaio.make_logger()
