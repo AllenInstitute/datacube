@@ -1,3 +1,1 @@
-for i in $(seq $(nproc --a)); do
-    $PWD/../dist/load_test $PWD/../trace.txt &
-done
+$PWD/../dist/load_test $PWD/../trace.txt ws://ibs-chrisba-ux1:8080/ws
