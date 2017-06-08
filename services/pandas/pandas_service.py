@@ -140,7 +140,7 @@ class PandasServiceComponent(ApplicationSession):
                         num_results = r['index'][start:stop].size
                     if num_results > args.max_records:
                         raise ValueError('Requested would return ' + str(num_results) + ' records; please limit request to ' + str(args.max_records) + ' records.')
-                inds = None
+                inds = np.array(range(r.size), dtype=np.int)
                 if filters is not None:
                     inds = _dataframe_query(r, filters, memoize=True, name=name)
                 if indexes is not None:
