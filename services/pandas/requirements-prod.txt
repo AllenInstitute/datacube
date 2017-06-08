@@ -4,3 +4,4 @@ Twisted==16.6.0
 pandas
 numpy
 scipy
+cachetools

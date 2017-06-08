@@ -27,10 +27,11 @@ class MyComponent(ApplicationSession):
                 @inlineCallbacks
                 def time_request(request):
                     start = time.time()
-                    if request.get('sort', []) or request.get('filters', []):
-                        yield self.call('org.alleninstitute.pandas_service.filter_cell_specimens', **request)
+                    if True: #request.get('sort', []) or request.get('filters', []):
+                        res = yield self.call('org.alleninstitute.pandas_service.filter_cell_specimens', **request)
                     else:
-                        yield self.call('org.alleninstitute.pandas_service.get_cell_specimens', **request)
+                        res = yield self.call('org.alleninstitute.pandas_service.get_cell_specimens', **request)
+                    #print(request, res)
                     print(time.time() - start)
 
                 #reactor.callLater(elapsed, self.call, 'org.alleninstitute.pandas_service.filter_cell_specimens', **request)
