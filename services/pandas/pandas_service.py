@@ -200,7 +200,7 @@ class PandasServiceComponent(ApplicationSession):
 
         def _dataframe_query(df, filters, memoize=False, name=None):
             if not filters:
-                return df
+                return np.array(range(df.size), dtype=np.int)
             else:
                 def _apply_op(op, field, value):
                     if op == '=' or op == 'is':
