@@ -9,6 +9,7 @@ from wamp import ApplicationSession, ApplicationRunner # copy of stock wamp.py w
 from cachetools import cached, LRUCache
 from cachetools.keys import hashkey
 from threading import RLock
+import multiprocessing
 import pandas as pd
 #import xarray as xr
 import numpy as np
@@ -43,10 +44,6 @@ class PandasServiceComponent(ApplicationSession):
 
     @inlineCallbacks
     def onJoin(self, details):
-        sort_cache = LRUCache(maxsize=1000)
-        sort_cache_lock = RLock()
-        filter_cache = LRUCache(maxsize=1000)
-        filter_cache_lock = RLock()
 
         def get_cell_specimens(name=None,
                                filters=None,
@@ -84,6 +81,11 @@ class PandasServiceComponent(ApplicationSession):
                 return _filter_cell_specimens(name, filters, sort, ascending, start, stop, indexes, fields)
 
 
+        def _request_cache_keyfunc(*args):
+            return hashkey(json.dumps(list(args)))
+
+
+        @cached(request_cache, key=_request_cache_keyfunc, lock=request_cache_lock)
         def _filter_cell_specimens(name=None,
                                    filters=None,
                                    sort=None,
@@ -96,7 +98,6 @@ class PandasServiceComponent(ApplicationSession):
                 #print('_filter_cell_specimens')
                 #print(reactor.getThreadPool()._queue.qsize())
                 #r = self.cell_specimens
-
                 def keyfunc(*args):
                     return hashkey(json.dumps(list(args)+[name]))
 
@@ -140,10 +141,11 @@ class PandasServiceComponent(ApplicationSession):
                         num_results = r['index'][start:stop].size
                     if num_results > args.max_records:
                         raise ValueError('Requested would return ' + str(num_results) + ' records; please limit request to ' + str(args.max_records) + ' records.')
-                inds = np.array(range(r.size), dtype=np.int)
+                inds = None
                 if filters is not None:
                     inds = _dataframe_query(r, filters, memoize=True, name=name)
                 if indexes is not None:
+                    inds = np.array(range(r.size), dtype=np.int)
                     indexes = [x for x in indexes if x != None]
                     if inds is not None:
                         inds = inds[np.in1d(inds, indexes)]
@@ -202,7 +204,8 @@ class PandasServiceComponent(ApplicationSession):
             if not filters:
                 return df
             else:
-                def _apply_op(op, field, value):
+                def _apply_op(op, field, value, recurse=None):
+                    recurse = recurse or _apply_op
                     if op == '=' or op == 'is':
                         return (df[field] == value)
                     elif op == '<':
@@ -216,7 +219,8 @@ class PandasServiceComponent(ApplicationSession):
                     elif op == 'between':
                         return ((df[field] >= value[0]) & (df[field] <= value[1]))
                     elif op == 'in':
-                        return np.any(df[field][:,np.newaxis] == np.array([value]), axis=1)
+                        #return np.any(df[field][:,np.newaxis] == np.array([value]), axis=1)
+                        return reduce(np.logical_or, [recurse('is', field, v) for v in value])
 
 
                 def keyfunc(*args):
@@ -225,7 +229,7 @@ class PandasServiceComponent(ApplicationSession):
 
                 @cached(filter_cache, key=keyfunc, lock=filter_cache_lock)
                 def _apply_op_memoized(op, field, value):
-                    return _apply_op(op, field, value)
+                    return _apply_op(op, field, value, recurse=_apply_op_memoized)
 
 
                 if memoize:
@@ -348,12 +352,23 @@ if __name__ == '__main__':
         print('Data created in data_dir. Please run the server again without the --generate flag.')
         exit(0)
 
+    request_cache = LRUCache(maxsize=128)
+    request_cache_lock = RLock()
+    sort_cache = LRUCache(maxsize=1000)
+    sort_cache_lock = RLock()
+    filter_cache = LRUCache(maxsize=1000)
+    filter_cache_lock = RLock()
+
+    for i in range(multiprocessing.cpu_count()-1):
+        if 0 == os.fork():
+            break
+
     txaio.use_twisted()
     log = txaio.make_logger()
     txaio.start_logging()
 
-    #if args.use_threads:
-    #    reactor.suggestThreadPoolSize(1)
+    if args.use_threads:
+        reactor.suggestThreadPoolSize(4)
 
     runner = ApplicationRunner(unicode(args.router), unicode(args.realm))
     runner.run(PandasServiceComponent, auto_reconnect=True)
