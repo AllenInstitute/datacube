@@ -56,7 +56,7 @@ class PandasServiceComponent(ApplicationSession):
             #import json
             #print('get: ' + json.dumps({k: v for k,v in zip(['name', 'filters', 'sort', 'ascending', 'start', 'stop', 'indexes', 'fields'], [name, filters, sort, ascending, start, stop, indexes, fields]) if v is not None}))
             #print('deferToThread')
-            if args.use_mmap and args.use_threads:
+            if args.use_mmap and args.nproc>1:
                 d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
                 return d
             else:
@@ -74,7 +74,7 @@ class PandasServiceComponent(ApplicationSession):
             #import json
             #print('filter: ' + json.dumps({k: v for k,v in zip(['name', 'filters', 'sort', 'ascending', 'start', 'stop', 'indexes', 'fields'], [name, filters, sort, ascending, start, stop, indexes, fields]) if v is not None}))
             #print('deferToThread')
-            if args.use_mmap and args.use_threads:
+            if args.use_mmap and args.nproc>1:
                 d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
                 return d
             else:
@@ -276,11 +276,11 @@ if __name__ == '__main__':
     parser.add_argument('password', help='WAMP-CRA secret')
     parser.add_argument('data_dir', help='load CSV and NPY files from this directory')
     parser.add_argument('--no-mmap', action='store_false', dest='use_mmap', help='don\'t use memory-mapped files; load the data into memory')
-    parser.add_argument('--single-thread', action='store_false', dest='use_threads', help='don\'t use multi-threading; run in a single thread. has no effect if --no-mmap is set.')
+    parser.add_argument('--nproc', type=int, default=multiprocessing.cpu_count(), help='specify number of processes to use. gets overriden with 1 if --no-mmap is set.')
     parser.add_argument('--max-records', default=1000, help='maximum records to serve in a single request (default: %(default)s)')
     parser.add_argument('--generate', action='store_true', help='load data, placing files into data_dir')
     parser.add_argument('--data-src', default='http://testwarehouse:9000/', help='base RMA url from which to load data')
-    parser.set_defaults(use_mmap=True, use_threads=True, generate=False)
+    parser.set_defaults(use_mmap=True, generate=False)
     args = parser.parse_args()
 
     if args.generate:
@@ -358,7 +358,7 @@ if __name__ == '__main__':
     filter_cache = LRUCache(maxsize=1000)
     filter_cache_lock = RLock()
 
-    for i in range(multiprocessing.cpu_count()-1):
+    for i in range(args.nproc-1):
         if 0 == os.fork():
             break
 
@@ -366,8 +366,7 @@ if __name__ == '__main__':
     log = txaio.make_logger()
     txaio.start_logging()
 
-    if args.use_threads:
-        reactor.suggestThreadPoolSize(4)
+    reactor.suggestThreadPoolSize(4)
 
     runner = ApplicationRunner(unicode(args.router), unicode(args.realm))
     runner.run(PandasServiceComponent, auto_reconnect=True)
