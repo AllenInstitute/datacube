@@ -79,9 +79,6 @@ class PandasServiceComponent(ApplicationSession):
             #print('deferToThread')
             if args.use_mmap and args.use_threads:
                 d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
-                def handle_error(failure):
-                    return {'error': failure.getErrorMessage()}
-                d.addErrback(handle_error)
                 return d
             else:
                 return _filter_cell_specimens(name, filters, sort, ascending, start, stop, indexes, fields)
@@ -259,7 +256,7 @@ class PandasServiceComponent(ApplicationSession):
             yield threads.deferToThread(_load_dataframes)
             yield self.register(filter_cell_specimens,
                                 u'org.alleninstitute.pandas_service.filter_cell_specimens',
-                                options=RegisterOptions(invoke=u'roundrobin', concurrency=16))
+                                options=RegisterOptions(invoke=u'roundrobin'))
             #yield self.register(get_cell_specimens,
             #                    u'org.alleninstitute.pandas_service.get_cell_specimens',
             #                    options=RegisterOptions(invoke=u'roundrobin', concurrency=100))
