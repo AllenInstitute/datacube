@@ -77,7 +77,7 @@ class PandasServiceComponent(ApplicationSession):
             if args.use_mmap and args.nproc>1:
                 d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
                 def handle_error(failure):
-                    return failure.getErrorMessage()
+                    return {'error': failure.getErrorMessage()}
                 d.addErrback(handle_error)
                 return d
             else:
