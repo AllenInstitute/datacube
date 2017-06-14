@@ -79,6 +79,9 @@ class PandasServiceComponent(ApplicationSession):
             #print('deferToThread')
             if args.use_mmap and args.use_threads:
                 d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
+                def handle_error(failure):
+                    return failure.getErrorMessage()
+                d.addErrback(handle_error)
                 return d
             else:
                 return _filter_cell_specimens(name, filters, sort, ascending, start, stop, indexes, fields)
@@ -172,6 +175,7 @@ class PandasServiceComponent(ApplicationSession):
                     #return base64.b64encode(zlib.compress(r.tobytes()))
                     return _format_structured_array_response(res)
             except Exception as e:
+                print({'name': name, 'filters': filters, 'sort': sort, 'ascending': ascending, 'start': start, 'stop': stop, 'indexes': indexes, 'fields': fields})
                 _application_error(e)
 
 
@@ -200,7 +204,7 @@ class PandasServiceComponent(ApplicationSession):
 
         def _dataframe_query(df, filters, memoize=False, name=None):
             if not filters:
-                return df
+                return np.array(range(df.size), dtype=np.int)
             else:
                 def _apply_op(op, field, value):
                     if op == '=' or op == 'is':
