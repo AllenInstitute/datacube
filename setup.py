@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 import datacubesdk
 
 setup(name='datacubesdk',
@@ -7,7 +7,7 @@ setup(name='datacubesdk',
     url='https://github.com/AllenInstitute/DatacubeSDK.git',
     author='Chris Barber',
     author_email='chrisba@alleninstitute.org',
-    packages=['datacubesdk'],
+    packages=find_packages(),
     install_requires=[
         'allensdk'
     ])
