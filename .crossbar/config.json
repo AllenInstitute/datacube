@@ -47,17 +47,7 @@
                                 }
                             ]
                         }
-                    ],
-                    "store": {
-                        "type": "memory",
-                        "call-queue": [
-                            {
-                                "uri": "org.alleninstitute.pandas_service.filter_cell_specimens",
-                                "match": "exact",
-                                "limit": 100
-                            }
-                        ]
-                    }
+                    ]
                 }
             ],
             "transports": [
