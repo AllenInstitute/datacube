@@ -149,7 +149,9 @@ JSON.parse(`
             session.call(call, args, kwargs).then(
                 function (res) {
                     //document.getElementById('msg_size').innerHTML = res.length;
-                    document.getElementById('msg_size').innerHTML = res.data.length;
+                    if(res.data) {
+                        document.getElementById('msg_size').innerHTML = res.data.length;
+                    }
                     if(kwargs.fields == "indexes_only") {
                         var end_time = new Date();
                         document.getElementById('elapsed').innerHTML = (end_time - start_time) + 'ms';

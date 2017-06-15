@@ -6,6 +6,10 @@ from autobahn.wamp.exception import ApplicationError
 from autobahn.wamp.types import RegisterOptions
 from autobahn.wamp.auth import compute_wcs
 from wamp import ApplicationSession, ApplicationRunner # copy of stock wamp.py with modified timeouts
+from cachetools import cached, LRUCache
+from cachetools.keys import hashkey
+from threading import RLock
+import multiprocessing
 import pandas as pd
 #import xarray as xr
 import numpy as np
@@ -17,9 +21,11 @@ import os
 import sys
 import glob
 import re
+import json
 import urllib
 import argparse
 from shutil import copyfile
+import traceback
 
 
 class PandasServiceComponent(ApplicationSession):
@@ -37,6 +43,24 @@ class PandasServiceComponent(ApplicationSession):
     @inlineCallbacks
     def onJoin(self, details):
 
+        def get_cell_specimens(name=None,
+                               filters=None,
+                               sort=None,
+                               ascending=None,
+                               start=0,
+                               stop=None,
+                               indexes=None,
+                               fields=None):
+            #import json
+            #print('get: ' + json.dumps({k: v for k,v in zip(['name', 'filters', 'sort', 'ascending', 'start', 'stop', 'indexes', 'fields'], [name, filters, sort, ascending, start, stop, indexes, fields]) if v is not None}))
+            #print('deferToThread')
+            if args.use_mmap and args.nproc>1:
+                d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
+                return d
+            else:
+                return _filter_cell_specimens(name, filters, sort, ascending, start, stop, indexes, fields)
+
+
         def filter_cell_specimens(name=None,
                                   filters=None,
                                   sort=None,
@@ -45,16 +69,21 @@ class PandasServiceComponent(ApplicationSession):
                                   stop=None,
                                   indexes=None,
                                   fields=None):
-            import json
-            print(json.dumps({k: v for k,v in zip(['name', 'filters', 'sort', 'ascending', 'start', 'stop', 'indexes', 'fields'], [name, filters, sort, ascending, start, stop, indexes, fields]) if v is not None}))
+            #import json
+            #print('filter: ' + json.dumps({k: v for k,v in zip(['name', 'filters', 'sort', 'ascending', 'start', 'stop', 'indexes', 'fields'], [name, filters, sort, ascending, start, stop, indexes, fields]) if v is not None}))
             #print('deferToThread')
-            if args.use_mmap and args.use_threads:
+            if args.use_mmap and args.nproc>1:
                 d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
                 return d
             else:
                 return _filter_cell_specimens(name, filters, sort, ascending, start, stop, indexes, fields)
 
 
+        def _request_cache_keyfunc(*args):
+            return hashkey(json.dumps(list(args)))
+
+
+        @cached(request_cache, key=_request_cache_keyfunc, lock=request_cache_lock)
         def _filter_cell_specimens(name=None,
                                    filters=None,
                                    sort=None,
@@ -67,27 +96,12 @@ class PandasServiceComponent(ApplicationSession):
                 #print('_filter_cell_specimens')
                 #print(reactor.getThreadPool()._queue.qsize())
                 #r = self.cell_specimens
-                if not name and len(self.keys) == 1:
-                    name = self.keys[0]
-                if name not in self.keys:
-                    raise ValueError('Requested name \'' + str(name) + '\' does not exist; choose one of (' + ','.join(self.keys) + ').')
-                if args.use_mmap:
-                    r = np.load(args.data_dir + name + '.npy', mmap_mode='r')
-                else:
-                    r = self.data[name]
-                if not filters and not fields == "indexes_only":
-                    if indexes:
-                        num_results = np.array(indexes)[start:stop].size
-                    else:
-                        num_results = r['index'][start:stop].size
-                    if num_results > args.max_records:
-                        raise ValueError('Requested would return ' + str(num_results) + ' records; please limit request to ' + str(args.max_records) + ' records.')
-                if indexes:
-                    r = r[indexes]
-                if filters:
-                    r = _dataframe_query(r, filters)
-                filtered_total = r.size;
-                if sort and r.size > 0:
+                def keyfunc(*args):
+                    return hashkey(json.dumps(list(args)+[name]))
+
+
+                @cached(sort_cache, key=keyfunc, lock=sort_cache_lock)
+                def _sort(sort, ascending):
                     if not ascending:
                         ascending = [True] * len(sort)
                     for field in sort:
@@ -107,22 +121,57 @@ class PandasServiceComponent(ApplicationSession):
                             ranks[:,idx][ranks[:,idx]<=0] = maxrank - blank_count + 1
                         else:
                             ranks[:,idx] = np.clip(ranks[:,idx], 0, maxrank - blank_count + 1)
-                    r = r[np.lexsort(tuple(ranks[:,idx] for idx in range(ranks.shape[1])))]
-                if fields and type(fields) is list:
-                    for field in fields:
-                        if field not in r.dtype.names:
-                            raise ValueError('Requested field \'' + str(field) + '\' does not exist. Allowable fields are: ' + str(r.dtype.names))
-                    r = r[fields]
-                r = r[start:stop]
-                if fields == "indexes_only":
-                    return {'filtered_total': filtered_total, 'indexes': r['index'].tolist()}
+                    return np.lexsort(tuple(ranks[:,idx] for idx in range(ranks.shape[1])))
+
+
+                if not name and len(self.keys) == 1:
+                    name = self.keys[0]
+                if name not in self.keys:
+                    raise ValueError('Requested name \'' + str(name) + '\' does not exist; choose one of (' + ','.join(self.keys) + ').')
+                if args.use_mmap:
+                    r = np.load(args.data_dir + name + '.npy', mmap_mode='r')
                 else:
-                    if r.size > args.max_records:
-                        raise ValueError('Requested would return ' + str(r.size) + ' records; please limit request to ' + str(args.max_records) + ' records.')
+                    r = self.data[name]
+                if not filters and not fields == "indexes_only":
+                    if indexes:
+                        num_results = np.array(indexes)[start:stop].size
                     else:
-                        #return base64.b64encode(zlib.compress(r.tobytes()))
-                        return _format_structured_array_response(r)
+                        num_results = r['index'][start:stop].size
+                    if num_results > args.max_records:
+                        raise ValueError('Requested would return ' + str(num_results) + ' records; please limit request to ' + str(args.max_records) + ' records.')
+                inds = np.array(range(r.size), dtype=np.int)
+                if filters is not None:
+                    inds = _dataframe_query(r, filters, memoize=True, name=name)
+                if indexes is not None:
+                    indexes = [x for x in indexes if x != None]
+                    if inds is not None:
+                        inds = inds[np.in1d(inds, indexes)]
+                    else:
+                        inds = np.array(indexes, dtype=np.int)
+                if sort and r.size > 0:
+                    sorted_inds = _sort(sort, ascending)
+                    if inds is not None:
+                        inds = sorted_inds[np.in1d(sorted_inds, inds)]
+                    else:
+                        inds = sorted_inds
+                filtered_total = inds.size;
+                inds = inds[start:stop]
+                if fields == "indexes_only":
+                    return {'filtered_total': filtered_total, 'indexes': inds.tolist()}
+                else:
+                    if filtered_total > args.max_records:
+                        raise ValueError('Requested would return ' + str(filtered_total) + ' records; please limit request to ' + str(args.max_records) + ' records.')
+                    if fields and type(fields) is list:
+                        for field in fields:
+                            if field not in r.dtype.names:
+                                raise ValueError('Requested field \'' + str(field) + '\' does not exist. Allowable fields are: ' + str(r.dtype.names))
+                        res = np.copy(r[inds][fields])
+                    else:
+                        res = np.copy(r[inds])
+                    #return base64.b64encode(zlib.compress(r.tobytes()))
+                    return _format_structured_array_response(res)
             except Exception as e:
+                print({'name': name, 'filters': filters, 'sort': sort, 'ascending': ascending, 'start': start, 'stop': stop, 'indexes': indexes, 'fields': fields})
                 _application_error(e)
 
 
@@ -145,15 +194,16 @@ class PandasServiceComponent(ApplicationSession):
 
 
         def _application_error(e):
-            print(e)
+            traceback.print_exc()
             raise ApplicationError(u'org.alleninstitute.pandas_service.application_error', e.__class__.__name__, e.message, e.args, e.__doc__)
             
 
-        def _dataframe_query(df, filters):
+        def _dataframe_query(df, filters, memoize=False, name=None):
             if not filters:
-                return df
+                return np.array(range(df.size), dtype=np.int)
             else:
-                def _apply_op(op, field, value):
+                def _apply_op(op, field, value, recurse=None):
+                    recurse = recurse or _apply_op
                     if op == '=' or op == 'is':
                         return (df[field] == value)
                     elif op == '<':
@@ -167,13 +217,29 @@ class PandasServiceComponent(ApplicationSession):
                     elif op == 'between':
                         return ((df[field] >= value[0]) & (df[field] <= value[1]))
                     elif op == 'in':
-                        return np.any(df[field][:,np.newaxis] == np.array([value]), axis=1)
+                        #return np.any(df[field][:,np.newaxis] == np.array([value]), axis=1)
+                        return reduce(np.logical_or, [recurse('is', field, v) for v in value])
 
-                cond = _apply_op(filters[0]['op'], filters[0]['field'], filters[0]['value'])
+
+                def keyfunc(*args):
+                    return hashkey(json.dumps(list(args)+[name]))
+
+
+                @cached(filter_cache, key=keyfunc, lock=filter_cache_lock)
+                def _apply_op_memoized(op, field, value):
+                    return _apply_op(op, field, value, recurse=_apply_op_memoized)
+
+
+                if memoize:
+                    apply_op_func = _apply_op_memoized
+                else:
+                    apply_op_func = _apply_op
+
+                cond = np.copy(apply_op_func(filters[0]['op'], filters[0]['field'], filters[0]['value']))
                 for f in filters[1:]:
-                    cond &= _apply_op(f['op'], f['field'], f['value'])
+                    cond &= apply_op_func(f['op'], f['field'], f['value'])
 
-                return df[cond]
+                return np.flatnonzero(cond)
 
 
         def _load_dataframes(): 
@@ -192,6 +258,9 @@ class PandasServiceComponent(ApplicationSession):
             yield self.register(filter_cell_specimens,
                                 u'org.alleninstitute.pandas_service.filter_cell_specimens',
                                 options=RegisterOptions(invoke=u'roundrobin'))
+            #yield self.register(get_cell_specimens,
+            #                    u'org.alleninstitute.pandas_service.get_cell_specimens',
+            #                    options=RegisterOptions(invoke=u'roundrobin', concurrency=100))
         except Exception as e:
             print("could not register procedure: {0}".format(e))
 
@@ -206,17 +275,27 @@ if __name__ == '__main__':
     parser.add_argument('password', help='WAMP-CRA secret')
     parser.add_argument('data_dir', help='load CSV and NPY files from this directory')
     parser.add_argument('--no-mmap', action='store_false', dest='use_mmap', help='don\'t use memory-mapped files; load the data into memory')
-    parser.add_argument('--single-thread', action='store_false', dest='use_threads', help='don\'t use multi-threading; run in a single thread. has no effect if --no-mmap is set.')
+    parser.add_argument('--nproc', type=int, default=multiprocessing.cpu_count(), help='specify number of processes to use. gets overriden with 1 if --no-mmap is set.')
     parser.add_argument('--max-records', default=1000, help='maximum records to serve in a single request (default: %(default)s)')
     parser.set_defaults(use_mmap=True, use_threads=True, generate=False)
     args = parser.parse_args()
+
+    request_cache = LRUCache(maxsize=128)
+    request_cache_lock = RLock()
+    sort_cache = LRUCache(maxsize=1000)
+    sort_cache_lock = RLock()
+    filter_cache = LRUCache(maxsize=1000)
+    filter_cache_lock = RLock()
+
+    for i in range(args.nproc-1):
+        if 0 == os.fork():
+            break
 
     txaio.use_twisted()
     log = txaio.make_logger()
     txaio.start_logging()
 
-    if args.use_threads:
-        reactor.suggestThreadPoolSize(1)
+    #reactor.suggestThreadPoolSize(4)
 
     runner = ApplicationRunner(unicode(args.router), unicode(args.realm))
     runner.run(PandasServiceComponent, auto_reconnect=True)
