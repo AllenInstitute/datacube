@@ -1,0 +1,4 @@
+gcc
+openssl-devel
+libffi-devel
+redis
