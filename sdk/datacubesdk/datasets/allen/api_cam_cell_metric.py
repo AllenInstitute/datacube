@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import pandas as pd
 import numpy as np
 import os
@@ -6,6 +8,7 @@ import urllib
 import argparse
 from util.convert import pd_dataframe_to_np_structured_array
 from allensdk.api.queries.brain_observatory_api import BrainObservatoryApi
+
 
 def main():
     parser = argparse.ArgumentParser(description='ApiCamCellMetric pandas data generator script')
