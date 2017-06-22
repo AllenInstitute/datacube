@@ -9,6 +9,7 @@ from wamp import ApplicationSession, ApplicationRunner # copy of stock wamp.py w
 from cachetools import cached, LRUCache
 from cachetools.keys import hashkey
 from threading import RLock
+import multiprocessing
 import pandas as pd
 #import xarray as xr
 import numpy as np
@@ -26,8 +27,6 @@ import argparse
 from shutil import copyfile
 import traceback
 
-#from allensdk.api.queries.brain_observatory_api import BrainObservatoryApi
-
 
 class PandasServiceComponent(ApplicationSession):
 
@@ -43,10 +42,6 @@ class PandasServiceComponent(ApplicationSession):
 
     @inlineCallbacks
     def onJoin(self, details):
-        sort_cache = LRUCache(maxsize=1000)
-        sort_cache_lock = RLock()
-        filter_cache = LRUCache(maxsize=1000)
-        filter_cache_lock = RLock()
 
         def get_cell_specimens(name=None,
                                filters=None,
@@ -59,7 +54,7 @@ class PandasServiceComponent(ApplicationSession):
             #import json
             #print('get: ' + json.dumps({k: v for k,v in zip(['name', 'filters', 'sort', 'ascending', 'start', 'stop', 'indexes', 'fields'], [name, filters, sort, ascending, start, stop, indexes, fields]) if v is not None}))
             #print('deferToThread')
-            if args.use_mmap and args.use_threads:
+            if args.use_mmap and args.nproc>1:
                 d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
                 return d
             else:
@@ -77,13 +72,18 @@ class PandasServiceComponent(ApplicationSession):
             #import json
             #print('filter: ' + json.dumps({k: v for k,v in zip(['name', 'filters', 'sort', 'ascending', 'start', 'stop', 'indexes', 'fields'], [name, filters, sort, ascending, start, stop, indexes, fields]) if v is not None}))
             #print('deferToThread')
-            if args.use_mmap and args.use_threads:
+            if args.use_mmap and args.nproc>1:
                 d = threads.deferToThread(_filter_cell_specimens, name, filters, sort, ascending, start, stop, indexes, fields)
                 return d
             else:
                 return _filter_cell_specimens(name, filters, sort, ascending, start, stop, indexes, fields)
 
 
+        def _request_cache_keyfunc(*args):
+            return hashkey(json.dumps(list(args)))
+
+
+        @cached(request_cache, key=_request_cache_keyfunc, lock=request_cache_lock)
         def _filter_cell_specimens(name=None,
                                    filters=None,
                                    sort=None,
@@ -96,7 +96,6 @@ class PandasServiceComponent(ApplicationSession):
                 #print('_filter_cell_specimens')
                 #print(reactor.getThreadPool()._queue.qsize())
                 #r = self.cell_specimens
-
                 def keyfunc(*args):
                     return hashkey(json.dumps(list(args)+[name]))
 
@@ -149,7 +148,7 @@ class PandasServiceComponent(ApplicationSession):
                         inds = inds[np.in1d(inds, indexes)]
                     else:
                         inds = np.array(indexes, dtype=np.int)
-                if sort is not None and r.size > 0:
+                if sort and r.size > 0:
                     sorted_inds = _sort(sort, ascending)
                     if inds is not None:
                         inds = sorted_inds[np.in1d(sorted_inds, inds)]
@@ -203,7 +202,8 @@ class PandasServiceComponent(ApplicationSession):
             if not filters:
                 return np.array(range(df.size), dtype=np.int)
             else:
-                def _apply_op(op, field, value):
+                def _apply_op(op, field, value, recurse=None):
+                    recurse = recurse or _apply_op
                     if op == '=' or op == 'is':
                         return (df[field] == value)
                     elif op == '<':
@@ -217,7 +217,8 @@ class PandasServiceComponent(ApplicationSession):
                     elif op == 'between':
                         return ((df[field] >= value[0]) & (df[field] <= value[1]))
                     elif op == 'in':
-                        return np.any(df[field][:,np.newaxis] == np.array([value]), axis=1)
+                        #return np.any(df[field][:,np.newaxis] == np.array([value]), axis=1)
+                        return reduce(np.logical_or, [recurse('is', field, v) for v in value])
 
 
                 def keyfunc(*args):
@@ -226,7 +227,7 @@ class PandasServiceComponent(ApplicationSession):
 
                 @cached(filter_cache, key=keyfunc, lock=filter_cache_lock)
                 def _apply_op_memoized(op, field, value):
-                    return _apply_op(op, field, value)
+                    return _apply_op(op, field, value, recurse=_apply_op_memoized)
 
 
                 if memoize:
@@ -274,87 +275,27 @@ if __name__ == '__main__':
     parser.add_argument('password', help='WAMP-CRA secret')
     parser.add_argument('data_dir', help='load CSV and NPY files from this directory')
     parser.add_argument('--no-mmap', action='store_false', dest='use_mmap', help='don\'t use memory-mapped files; load the data into memory')
-    parser.add_argument('--single-thread', action='store_false', dest='use_threads', help='don\'t use multi-threading; run in a single thread. has no effect if --no-mmap is set.')
+    parser.add_argument('--nproc', type=int, default=multiprocessing.cpu_count(), help='specify number of processes to use. gets overriden with 1 if --no-mmap is set.')
     parser.add_argument('--max-records', default=1000, help='maximum records to serve in a single request (default: %(default)s)')
-    parser.add_argument('--generate', action='store_true', help='load data, placing files into data_dir')
-    parser.add_argument('--data-src', default='http://testwarehouse:9000/', help='base RMA url from which to load data')
     parser.set_defaults(use_mmap=True, use_threads=True, generate=False)
     args = parser.parse_args()
 
-    if args.generate:
-        csv_file = args.data_dir + 'cell_specimens.csv'
-        if False:
-            import sqlalchemy as sa
-            sql = 'select * from api_cam_cell_metrics'
-            con = sa.create_engine('postgresql://postgres:postgres@testwarehouse/warehouse-R193')
-            df = pd.read_sql(sql, con)
-            if not os.path.exists(args.data_dir):
-                os.makedirs(args.data_dir)
-            df.to_csv(csv_file)
-        else:
-            csv_url = args.data_src + '/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
-            #csv_url = 'http://testwarehouse:9000/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
-            #csv_url = 'http://iwarehouse/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
-            #csv_url = 'http://api.brain-map.org/api/v2/data/ApiCamCellMetric/query.csv?num_rows=all'
-            if not os.path.exists(args.data_dir):
-                os.makedirs(args.data_dir)
-            urllib.urlretrieve(csv_url, csv_file)
-            df = pd.read_csv(csv_file, true_values=['t'], false_values=['f'])
-            df.to_csv(csv_file)
+    request_cache = LRUCache(maxsize=128)
+    request_cache_lock = RLock()
+    sort_cache = LRUCache(maxsize=1000)
+    sort_cache_lock = RLock()
+    filter_cache = LRUCache(maxsize=1000)
+    filter_cache_lock = RLock()
 
-        
-        def _dataframe_to_structured_array(df):
-            if 'index' in list(df):
-                col_data = []
-                col_names = []
-                col_types = []
-            else:
-                col_data = [df.index]
-                col_names = ['index']
-                col_types = ['i4']
-            for name in df.columns:
-                column = df[name]
-                data = np.array(column)
-
-                if data.dtype.kind == 'O':
-                    if all(isinstance(x, basestring) or x is np.nan or x is None for x in data):
-                        data[data == np.array([None])] = b''
-                        data[np.array([True if str(x) == 'nan' else False for x in data], dtype=np.bool)] = b''
-                        data = np.array([x + '\0' for x in data], dtype=np.str)
-                col_data.append(data)
-                col_names.append(name)
-                # javascript cannot natively handle longs
-                if str(data.dtype) == 'int64':
-                    col_types.append('i4')
-                elif str(data.dtype) == 'uint64':
-                    col_types.append('u4')
-                else:
-                    col_types.append(data.dtype.str)
-            out = np.array([tuple(data[j] for data in col_data) for j in range(len(df.index))],
-                          dtype=[(str(col_names[i]), col_types[i]) for i in range(len(col_names))])
-            return out
-
-
-        #def _structured_array_to_dataset(sa):
-        #    return xr.Dataset({field: ('dim_0', sa[field]) for field in sa.dtype.names})
-
-
-        npyfile = re.sub('\.csv', '.npy', csv_file, flags=re.I)
-        df = pd.read_csv(csv_file)
-        df.to_csv(csv_file, index=('index' not in list(df)), index_label='index')
-        sa = _dataframe_to_structured_array(df)
-        del df
-        np.save(npyfile, sa)
-        del sa
-        print('Data created in data_dir. Please run the server again without the --generate flag.')
-        exit(0)
+    for i in range(args.nproc-1):
+        if 0 == os.fork():
+            break
 
     txaio.use_twisted()
     log = txaio.make_logger()
     txaio.start_logging()
 
-    #if args.use_threads:
-    #    reactor.suggestThreadPoolSize(1)
+    #reactor.suggestThreadPoolSize(4)
 
     runner = ApplicationRunner(unicode(args.router), unicode(args.realm))
     runner.run(PandasServiceComponent, auto_reconnect=True)

@@ -1,4 +1,3 @@
-import "babel-polyfill/lib/index.js";
 import autobahn from "autobahn";
 import pako from "pako";
 import {StructuredArray} from "./common/structured_array.js";

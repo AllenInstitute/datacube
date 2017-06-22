@@ -1,6 +1,7 @@
 'use strict';
 
-import "babel-polyfill/lib/index.js";
+import 'core-js/fn/string/starts-with';
+import 'core-js/fn/typed/uint8-array';
 import TextDecoder from "text-encoding";
 
 /**
