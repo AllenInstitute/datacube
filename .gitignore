@@ -6,6 +6,7 @@
 clients/dist/
 clients/lib/
 node_modules/
+_trial_temp/
 data/
 dump.rdb
 etc/

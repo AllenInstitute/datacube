@@ -3,6 +3,8 @@ from scipy.stats import rankdata
 import json
 import pickle
 import redis
+#import txredisapi
+#from twisted.internet import reactor
 
 #todo: use xr.Dataset instead of np structured array?
 #import xarray as xr
@@ -14,8 +16,12 @@ class Datacube:
 
 
     def __init__(self, npy_file=None):
-        self.redis_client = redis.StrictRedis('localhost', 6379)
         if npy_file: self.load(npy_file)
+        #todo: would be nice to find a way to swap these out
+        #if reactor.running:
+        #    self.redis_client = txredisapi.Connection('localhost', 6379)
+        #else:
+        self.redis_client = redis.StrictRedis('localhost', 6379)
 
 
     def load(self, npy_file):
@@ -79,6 +85,7 @@ class Datacube:
     def _sort(self, sort, ascending):
         df = self.df
         redis_client = self.redis_client
+        #todo: possibly should reincorporate caching
         if not ascending:
             ascending = [True] * len(sort)
         for field in sort:
@@ -201,28 +208,3 @@ class Datacube:
             res = _unpack(res, df.size)
             res = np.flatnonzero(res)
             return res
-
-
-#d = Datacube()
-#
-#
-#def init(npy_file):
-#    d.load(npy_file)
-#
-#
-#def select(filters=None,
-#           sort=None,
-#           ascending=None,
-#           start=0,
-#           stop=None,
-#           indexes=None,
-#           fields=None,
-#           options={}):
-#    return d.select(filters,
-#                    sort,
-#                    ascending,
-#                    start,
-#                    stop,
-#                    indexes,
-#                    fields,
-#                    options)

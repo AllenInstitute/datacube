@@ -37,6 +37,8 @@ class PandasServiceComponent(ApplicationSession):
         else:
             raise Exception("don't know how to handle authmethod {}".format(challenge.method))
 
+    def test(self):
+        return 1
 
     @inlineCallbacks
     def onJoin(self, details):
@@ -67,7 +69,7 @@ class PandasServiceComponent(ApplicationSession):
                                                           fields,
                                                           options={'max_records': args.max_records})
 
-                    #res = yield pool.apply_async('datacube.filter',
+                    #res = yield pool.apply_async('datacube.select',
                     #                             (filters,
                     #                             sort,
                     #                             ascending,
@@ -157,7 +159,7 @@ if __name__ == '__main__':
 
     #todo: get logging from processes working
     #txpool.pool.WorkerProtocol.MAX_LENGTH = sys.maxsize
-    #process_pool = txpool.Pool(size=4, log=logging, init_call='datacube_worker.load', init_args=(args.data_dir + 'cell_specimens.npy',))
+    #process_pool = txpool.Pool(size=4, log=logging, init_call='datacube.worker.instance.load', init_args=(args.data_dir + 'cell_specimens.npy',))
 
     runner = ApplicationRunner(unicode(args.router), unicode(args.realm))
     runner.run(PandasServiceComponent, auto_reconnect=True)
