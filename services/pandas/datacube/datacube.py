@@ -17,7 +17,8 @@ class Datacube:
 
     def __init__(self, npy_file=None):
         if npy_file: self.load(npy_file)
-        #todo: would be nice to find a way to swap these out
+        #todo: would be nice to find a way to swap these out,
+        # and also to be able to run without redis (numpy-only)
         #if reactor.running:
         #    self.redis_client = txredisapi.Connection('localhost', 6379)
         #else:

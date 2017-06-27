@@ -18,7 +18,7 @@ import zlib
 import argparse
 import pickle
 #import redis
-from txredis.client import RedisClient
+import txredisapi
 
 from datacube import Datacube
 
@@ -54,7 +54,7 @@ class PandasServiceComponent(ApplicationSession):
                    fields=None):
             try:
                 request_cache_key = json.dumps(['request', filters, sort, ascending, start, stop, indexes, fields])
-                cached = yield txredis_client.get(request_cache_key)
+                cached = yield redis.get(request_cache_key)
                 if not cached:
                     #res = yield threads.deferToThreadPool(reactor,
                     #                                      thread_pool,
@@ -78,7 +78,7 @@ class PandasServiceComponent(ApplicationSession):
                     #                             indexes,
                     #                             fields),
                     #                             {'options': {'max_records': args.max_records}})
-                    #yield txredis_client.setnx(request_cache_key, pickle.dumps(res))
+                    yield redis.setnx(request_cache_key, pickle.dumps(res))
                 else:
                     res = pickle.loads(cached)
                 if fields == "indexes_only":
@@ -115,8 +115,9 @@ class PandasServiceComponent(ApplicationSession):
             #todo: not working for some reason
             #thread_pool = ThreadPool()
 
-            clientCreator = protocol.ClientCreator(reactor, RedisClient)
-            txredis_client = yield clientCreator.connectTCP('localhost', 6379)
+            #clientCreator = protocol.ClientCreator(reactor, RedisClient)
+            #txredis_client = yield clientCreator.connectTCP('localhost', 6379)
+            redis = yield txredisapi.ConnectionPool()
 
             #yield pool.on_ready(timeout=30)
 
