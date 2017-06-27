@@ -7,10 +7,10 @@ import redis
 #from twisted.internet import reactor
 
 #todo: use xr.Dataset instead of np structured array?
-#import xarray as xr
+import xarray as xr
 #
-#def np_structured_array_to_xr_dataset(sa):
-#    return xr.Dataset({field: ('dim_0', sa[field]) for field in sa.dtype.names})
+def np_structured_array_to_xr_dataset(sa):
+    return xr.Dataset({field: ('dim_0', sa[field]) for field in sa.dtype.names})
 
 class Datacube:
 
@@ -28,13 +28,14 @@ class Datacube:
     def load(self, npy_file):
         #todo: rename df
         #todo: argsorts need to be cached to a file
-        self.df = np.load(npy_file, mmap_mode='r')
+        self.df = np_structured_array_to_xr_dataset(np.load(npy_file, mmap_mode='r'))
         self.argsorts = {}
-        for field in self.df.dtype.names:
-            self.argsorts[field] = np.argsort(self.df[field])
+        for field in self.df.keys():
+            self.argsorts[field] = np.argsort(self.df[field].values)
 
 
     def select(self,
+               dim=None,
                filters=None,
                sort=None,
                ascending=None,
@@ -44,25 +45,27 @@ class Datacube:
                fields=None,
                options={}):
         r = self.df
+        if dim is None:
+            dim = list(r.dims)[0]
         redis_client = self.redis_client
         if not filters and not fields == "indexes_only":
             if indexes:
                 num_results = np.array(indexes)[start:stop].size
             else:
-                num_results = r['index'][start:stop].size
+                num_results = r[dim][start:stop].size
             if options.get('max_records') and num_results > options.get('max_records'):
                 raise ValueError('Requested would return ' + str(num_results) + ' records; please limit request to ' + str(options['max_records']) + ' records.')
-        inds = np.array(range(r.size), dtype=np.int)
+        inds = np.array(range(r.dims[dim]), dtype=np.int)
         if filters is not None:
-            inds = self._query(filters)
+            inds = self._query(dim, filters)
         if indexes is not None:
             indexes = [x for x in indexes if x != None]
             if inds is not None:
                 inds = inds[np.in1d(inds, indexes)]
             else:
                 inds = np.array(indexes, dtype=np.int)
-        if sort is not None and r.size > 0:
-            sorted_inds = self._sort(sort, ascending)
+        if sort and r[dim].size > 0:
+            sorted_inds = self._sort(dim, sort, ascending)
             if inds is not None:
                 inds = sorted_inds[np.in1d(sorted_inds, inds)]
             else:
@@ -75,25 +78,25 @@ class Datacube:
                 raise ValueError('Requested would return ' + str(inds.size) + ' records; please limit request to ' + str(options['max_records']) + ' records.')
             if fields and type(fields) is list:
                 for field in fields:
-                    if field not in r.dtype.names:
-                        raise ValueError('Requested field \'' + str(field) + '\' does not exist. Allowable fields are: ' + str(r.dtype.names))
-                res = r[inds][fields]
+                    if field not in r.keys():
+                        raise ValueError('Requested field \'' + str(field) + '\' does not exist. Allowable fields are: ' + str(r.keys()))
+                res = r[{dim: inds}][fields]
             else:
-                res = r[inds]
+                res = r[{dim: inds}]
             return res
 
 
-    def _sort(self, sort, ascending):
+    def _sort(self, dim, sort, ascending):
         df = self.df
         redis_client = self.redis_client
         #todo: possibly should reincorporate caching
         if not ascending:
             ascending = [True] * len(sort)
         for field in sort:
-            if field not in df.dtype.names:
-                raise ValueError('Requested sort field \'' + str(field) + '\' does not exist. Allowable fields are: ' + str(df.dtype.names))
+            if field not in df.keys():
+                raise ValueError('Requested sort field \'' + str(field) + '\' does not exist. Allowable fields are: ' + str(df.keys()))
         s = df[sort]
-        ranks = np.zeros((s.size, len(s.dtype)), dtype=np.int)
+        ranks = np.zeros((s.dims[dim], len(s.keys())), dtype=np.int)
         for idx, (field, asc) in enumerate(zip(sort[::-1], ascending[::-1])):
             if s[field].dtype.name.startswith('string') or s[field].dtype.name.startswith('unicode'):
                 blank_count = np.count_nonzero(s[field] == '')
@@ -110,7 +113,7 @@ class Datacube:
         return res
 
 
-    def _query(self, filters):
+    def _query(self, dim, filters):
         df = self.df
         redis_client = self.redis_client
         column_argsort = self.argsorts
@@ -206,6 +209,6 @@ class Datacube:
             '''
             eval_keys = (and_cache_key,)+tuple(and_keys)
             res = redis_client.eval(lua, len(eval_keys), *eval_keys)
-            res = _unpack(res, df.size)
+            res = _unpack(res, df.dims[dim])
             res = np.flatnonzero(res)
             return res

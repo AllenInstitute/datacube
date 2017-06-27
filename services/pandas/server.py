@@ -60,6 +60,7 @@ class PandasServiceComponent(ApplicationSession):
                     #                                      thread_pool,
                     res = yield threads.deferToThread(
                                                           datacube.select,
+                                                          'dim_0',
                                                           filters,
                                                           sort,
                                                           ascending,
@@ -84,25 +85,26 @@ class PandasServiceComponent(ApplicationSession):
                 if fields == "indexes_only":
                     returnValue({'filtered_total': res.size, 'indexes': res.tolist()})
                 else:
-                    ret = yield threads.deferToThread(_format_structured_array_response, res)
+                    ret = yield threads.deferToThread(_format_xr_dataset_response, res)
                     returnValue(ret)
             except Exception as e:
                 print({'filters': filters, 'sort': sort, 'ascending': ascending, 'start': start, 'stop': stop, 'indexes': indexes, 'fields': fields})
                 _application_error(e)
 
 
-        def _format_structured_array_response(sa):
+        #todo: support arbitrary dims
+        def _format_xr_dataset_response(x):
             data = []
-            for field in sa.dtype.names:
-                col = sa[field]
+            for field in x.keys():
+                col = x[field].values
                 # ensure network byte order
                 col = col.astype(col.dtype.str.replace('<', '>').replace('=', '>'))
                 data.append(col.tobytes())
             data = b''.join(data)
-            return {'num_rows': sa.size,
-                    'col_names': [unicode(name) for name in sa.dtype.names],
-                    'col_types': [unicode(sa[name].dtype.name) for name in sa.dtype.names],
-                    'item_sizes': [sa[name].dtype.itemsize for name in sa.dtype.names],
+            return {'num_rows': x.dims['dim_0'],
+                    'col_names': [unicode(name) for name in x.keys()],
+                    'col_types': [unicode(x[name].dtype.name) for name in x.keys()],
+                    'item_sizes': [x[name].dtype.itemsize for name in x.keys()],
                     'data': bytes(zlib.compress(data))}
 
 
