@@ -248,63 +248,91 @@ if __name__ == '__main__':
 
         #datacube['cam'] = Datacube(data, distributed=args.distributed, observed=~np.isnan(data))
 
-        # MNI demo
+        # MNI demo (CCF)
+
+        #import nrrd
+        #import urllib2
+        #from numba import jit
+
+        #if not os.path.exists(DATA_DIR + 'ccf.npy'):
+        #    print('Loading CCF atlas volume from informatics directory')
+        #    ccf = nrrd.read('/projects/0378/vol1/informatics/model/P56/atlasVolume/average_template_25.nrrd')[0]
+        #    ccf = (ccf.astype(np.float32)/516.0*255.0).astype(np.uint8)
+        #    np.save(DATA_DIR + 'ccf.npy', ccf)
+        #    del ccf
+
+        #if not os.path.exists(DATA_DIR + 'ccf_anno.npy') or not os.path.exists(DATA_DIR + 'ccf_anno_color.npy'):
+        #    print('Loading CCF annotation volume from informatics directory')
+        #    ccf_anno = nrrd.read('/projects/0378/vol1/informatics/model/P56/atlases/MouseCCF2016/annotation_25.nrrd')[0]
+        #    np.save(DATA_DIR + 'ccf_anno.npy', ccf_anno)
+
+        #    print('Generating colorized annotation volume')
+        #    def get_structure_colors(ccf_anno):
+        #        annotated_structures = np.unique(ccf_anno)
+        #        structure_colors = dict()
+        #        structure_colors[0] = np.array([0, 0, 0, 0], dtype=np.uint8)
+        #        for structure_id in annotated_structures:
+        #            if structure_id:
+        #                STRUCTURE_API = 'http' + '://' + 'api.brain-map.org/api/v2/data/Structure/query.json?id=' # todo
+        #                color_hex_triplet = json.load(urllib2.urlopen(STRUCTURE_API + str(structure_id)))['msg'][0]['color_hex_triplet']
+        #                structure_colors[int(structure_id)] = np.concatenate([np.array(bytearray(color_hex_triplet.decode("hex"))), [255]]).astype(np.uint8)
+        #        return structure_colors
+        #                
+        #    structure_colors = get_structure_colors(ccf_anno)
+
+        #    ccf_anno_color = np.zeros(ccf_anno.shape+(4,), dtype=np.uint8)
+
+        #    @jit(nopython=True)
+        #    def colorize(ccf_anno, ids, colors, ccf_anno_color):
+        #        for i in range(ccf_anno.shape[0]):
+        #            for j in range(ccf_anno.shape[1]):
+        #                for k in range(ccf_anno.shape[2]):
+        #                    color_idx = np.searchsorted(ids, ccf_anno[i,j,k])
+        #                    ccf_anno_color[i,j,k,:] = colors[color_idx]
+
+        #    sorted_colors = sorted(structure_colors.items(), key=lambda x: x[0])
+        #    ids = map(lambda x: x[0], sorted_colors)
+        #    colors = np.stack(map(lambda x: x[1], sorted_colors), axis=0)
+        #    colorize(ccf_anno, ids, colors, ccf_anno_color)
+        #    np.save(DATA_DIR + 'ccf_anno_color.npy', ccf_anno_color)
+
+        #    del ccf_anno
+        #    del ccf_anno_color
+
+        #ccf = np.load(DATA_DIR + 'ccf.npy', mmap_mode='r')
+        #datacube['ccf'] = Datacube(ccf, distributed=args.distributed)
+        #ccf_anno = np.load(DATA_DIR + 'ccf_anno.npy', mmap_mode='r')
+        #datacube['ccf_anno'] = Datacube(ccf_anno, distributed=args.distributed)
+        #ccf_anno_color = np.load(DATA_DIR + 'ccf_anno_color.npy', mmap_mode='r')
+        #datacube['ccf_anno_color'] = Datacube(ccf_anno_color, distributed=args.distributed)
+
+        # MNI demo (actual MNI data)
 
         import nrrd
-        import urllib2
-        from numba import jit
 
-        if not os.path.exists(DATA_DIR + 'ccf.npy'):
-            print('Loading CCF atlas volume from informatics directory')
-            ccf = nrrd.read('/projects/0378/vol1/informatics/model/P56/atlasVolume/average_template_25.nrrd')[0]
-            ccf = (ccf.astype(np.float32)/516.0*255.0).astype(np.uint8)
-            np.save(DATA_DIR + 'ccf.npy', ccf)
-            del ccf
+        if not os.path.exists(DATA_DIR + 'mni.npy'):
+            mni,_ = nrrd.read('/data/mat/NileG/informatics/data/june_2017/human_ccf/mni_icbm152_t2_tal_nlin_sym_09b_hires.nrrd')
+            np.save(DATA_DIR + 'mni.npy', mni)
+            del mni
+        mni = np.load(DATA_DIR + 'mni.npy', mmap_mode='r')
+        datacube['mni'] = Datacube(mni, distributed=args.distributed)
 
-        if not os.path.exists(DATA_DIR + 'ccf_anno.npy') or not os.path.exists(DATA_DIR + 'ccf_anno_color.npy'):
-            print('Loading CCF annotation volume from informatics directory')
-            ccf_anno = nrrd.read('/projects/0378/vol1/informatics/model/P56/atlases/MouseCCF2016/annotation_25.nrrd')[0]
-            np.save(DATA_DIR + 'ccf_anno.npy', ccf_anno)
+        if not os.path.exists(DATA_DIR + 'mni_anno.npy'):
+            mni_anno,_ = nrrd.read('/data/mat/NileG/informatics/data/june_2017/human_ccf/mirrored_human_annotation.nrrd')
+            np.save(DATA_DIR + 'mni_anno.npy', mni_anno)
+            del mni_anno
+        mni_anno = np.load(DATA_DIR + 'mni_anno.npy', mmap_mode='r')
+        datacube['mni_anno'] = Datacube(mni_anno, distributed=args.distributed)
 
-            print('Generating colorized annotation volume')
-            def get_structure_colors(ccf_anno):
-                annotated_structures = np.unique(ccf_anno)
-                structure_colors = dict()
-                structure_colors[0] = np.array([0, 0, 0, 0], dtype=np.uint8)
-                for structure_id in annotated_structures:
-                    if structure_id:
-                        STRUCTURE_API = 'http' + '://' + 'api.brain-map.org/api/v2/data/Structure/query.json?id=' # todo
-                        color_hex_triplet = json.load(urllib2.urlopen(STRUCTURE_API + str(structure_id)))['msg'][0]['color_hex_triplet']
-                        structure_colors[int(structure_id)] = np.concatenate([np.array(bytearray(color_hex_triplet.decode("hex"))), [255]]).astype(np.uint8)
-                return structure_colors
-                        
-            structure_colors = get_structure_colors(ccf_anno)
+        if not os.path.exists(DATA_DIR + 'mni_anno_color.npy'):
+            mni_anno_color,_ = nrrd.read('/data/mat/NileG/informatics/data/june_2017/human_ccf/colored_annotation.nrrd')
+            mni_anno_color = np.moveaxis(mni_anno_color, 0, 3)
+            mni_anno_color = np.concatenate((mni_anno_color, (255*np.any(mni_anno_color>0, axis=3, keepdims=True)).astype(np.uint8)), axis=3)
+            np.save(DATA_DIR + 'mni_anno_color.npy', mni_anno_color)
+            del mni_anno_color
+        mni_anno_color = np.load(DATA_DIR + 'mni_anno_color.npy', mmap_mode='r')
+        datacube['mni_anno_color'] = Datacube(mni_anno_color, distributed=args.distributed)
 
-            ccf_anno_color = np.zeros(ccf_anno.shape+(4,), dtype=np.uint8)
-
-            @jit(nopython=True)
-            def colorize(ccf_anno, ids, colors, ccf_anno_color):
-                for i in range(ccf_anno.shape[0]):
-                    for j in range(ccf_anno.shape[1]):
-                        for k in range(ccf_anno.shape[2]):
-                            color_idx = np.searchsorted(ids, ccf_anno[i,j,k])
-                            ccf_anno_color[i,j,k,:] = colors[color_idx]
-
-            sorted_colors = sorted(structure_colors.items(), key=lambda x: x[0])
-            ids = map(lambda x: x[0], sorted_colors)
-            colors = np.stack(map(lambda x: x[1], sorted_colors), axis=0)
-            colorize(ccf_anno, ids, colors, ccf_anno_color)
-            np.save(DATA_DIR + 'ccf_anno_color.npy', ccf_anno_color)
-
-            del ccf_anno
-            del ccf_anno_color
-
-        ccf = np.load(DATA_DIR + 'ccf.npy', mmap_mode='r')
-        datacube['ccf'] = Datacube(ccf, distributed=args.distributed)
-        ccf_anno = np.load(DATA_DIR + 'ccf_anno.npy', mmap_mode='r')
-        datacube['ccf_anno'] = Datacube(ccf_anno, distributed=args.distributed)
-        ccf_anno_color = np.load(DATA_DIR + 'ccf_anno_color.npy', mmap_mode='r')
-        datacube['ccf_anno_color'] = Datacube(ccf_anno_color, distributed=args.distributed)
     else:
         print('TODO: implement non-demo mode (load files from data-dir specified on command line)')
         exit(0)

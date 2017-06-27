@@ -32,8 +32,8 @@
         $('#slider').slider(
             {
                 min: 0,
-                max: 319,
-                value: 160,
+                max: 378,
+                value: 194,
                 slide: function(event, ui) {
                     scroll();
                 }
@@ -77,17 +77,17 @@
 
             var context = canvas.getContext('2d');
             context.clearRect(0, 0, canvas.width, canvas.height);
-            context.drawImage(overlay, 0, 0, canvas.width, canvas.height);
-            context.globalCompositeOperation = 'source-atop';
-            context.globalAlpha = 1.0 - $('#opacity').slider("option", "value")/100.0;
             context.drawImage(image, 0, 0, canvas.width, canvas.height);
+            context.globalCompositeOperation = 'source-over';
+            context.globalAlpha = $('#opacity').slider("option", "value")/100.0;
+            context.drawImage(overlay, 0, 0, canvas.width, canvas.height);
             // if a file or dataUrl is needed
             //canvas.toBlob(function(blob) { console.log(blob); }, 'image/jpeg', 0.4);
             //console.log(canvas.toDataURL('image/jpeg', 0.4));
         };
 
         function send(idx) {
-            select = [null,[idx],null];
+            select = [null,null,[idx]];
             var start = new Date();
             got_image = false;
             got_overlay = false;
@@ -102,12 +102,12 @@
 
             var call = 'org.alleninstitute.datacube.image';
             var args = [];
-            var kwargs = {'cube': 'ccf', 'image_format': 'jpeg', 'select': select};
+            var kwargs = {'cube': 'mni', 'image_format': 'jpeg', 'select': select};
             session.call(call, args, kwargs).then(
                 function (res) {
                     if(res.data) {
                         image.onload = function() {
-                            console.log('ccf jpeg: ' + res.data.length + ' bytes');
+                            console.log('mni jpeg: ' + res.data.length + ' bytes');
                             got_image = true;
                             finish();
                         };
@@ -118,7 +118,7 @@
 
             call = 'org.alleninstitute.datacube.image';
             args = [];
-            kwargs = {'cube': 'ccf_anno_color', 'image_format': 'png', 'select': select.concat([null])};
+            kwargs = {'cube': 'mni_anno_color', 'image_format': 'png', 'select': select.concat([null])};
             session.call(call, args, kwargs).then(
                 function (res) {
                     if(res.data) {
