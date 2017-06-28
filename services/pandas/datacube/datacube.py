@@ -89,28 +89,33 @@ class Datacube:
     def _sort(self, dim, sort, ascending):
         df = self.df
         redis_client = self.redis_client
-        #todo: possibly should reincorporate caching
-        if not ascending:
-            ascending = [True] * len(sort)
-        for field in sort:
-            if field not in df.keys():
-                raise ValueError('Requested sort field \'' + str(field) + '\' does not exist. Allowable fields are: ' + str(df.keys()))
-        s = df[sort]
-        ranks = np.zeros((s.dims[dim], len(s.keys())), dtype=np.int)
-        for idx, (field, asc) in enumerate(zip(sort[::-1], ascending[::-1])):
-            if s[field].dtype.name.startswith('string') or s[field].dtype.name.startswith('unicode'):
-                blank_count = np.count_nonzero(s[field] == '')
-            else:
-                blank_count = np.count_nonzero(np.isnan(s[field]))
-            ranks[:,idx] = rankdata(s[field], method='dense')
-            maxrank = np.max(ranks[:,idx])
-            if not asc:
-                ranks[:,idx] = maxrank - (ranks[:,idx] - 1) - blank_count
-                ranks[:,idx][ranks[:,idx]<=0] = maxrank - blank_count + 1
-            else:
-                ranks[:,idx] = np.clip(ranks[:,idx], 0, maxrank - blank_count + 1)
-        res = np.lexsort(tuple(ranks[:,idx] for idx in range(ranks.shape[1])))
-        return res
+        sort_cache_key = json.dumps(['sort', dim, sort, ascending])
+        cached = redis_client.get(sort_cache_key)
+        if not cached:
+            if not ascending:
+                ascending = [True] * len(sort)
+            for field in sort:
+                if field not in df.keys():
+                    raise ValueError('Requested sort field \'' + str(field) + '\' does not exist. Allowable fields are: ' + str(df.keys()))
+            s = df[sort]
+            ranks = np.zeros((s.dims[dim], len(s.keys())), dtype=np.int)
+            for idx, (field, asc) in enumerate(zip(sort[::-1], ascending[::-1])):
+                if s[field].dtype.name.startswith('string') or s[field].dtype.name.startswith('unicode'):
+                    blank_count = np.count_nonzero(s[field] == '')
+                else:
+                    blank_count = np.count_nonzero(np.isnan(s[field]))
+                ranks[:,idx] = rankdata(s[field], method='dense')
+                maxrank = np.max(ranks[:,idx])
+                if not asc:
+                    ranks[:,idx] = maxrank - (ranks[:,idx] - 1) - blank_count
+                    ranks[:,idx][ranks[:,idx]<=0] = maxrank - blank_count + 1
+                else:
+                    ranks[:,idx] = np.clip(ranks[:,idx], 0, maxrank - blank_count + 1)
+            res = np.lexsort(tuple(ranks[:,idx] for idx in range(ranks.shape[1])))
+            redis_client.setnx(sort_cache_key, pickle.dumps(res))
+            return res
+        else:
+            return pickle.loads(cached)
 
 
     def _query(self, dim, filters):
@@ -118,7 +123,7 @@ class Datacube:
         redis_client = self.redis_client
         column_argsort = self.argsorts
         if not filters:
-            return np.array(range(df.size), dtype=np.int)
+            return np.array(range(df.dims[dim]), dtype=np.int)
         else:
             # todo: add name to datacube object and include in cache keys
 
@@ -159,7 +164,7 @@ class Datacube:
                     expanded_filters.append(f)
 
             def _filter_cache_key(f):
-                return json.dumps(['filter', f['op'], f['field'], f['value']])
+                return json.dumps(['filter', dim, f['op'], f['field'], f['value']])
 
             def _pack(bool_array):
                 return str(np.packbits(bool_array).tobytes())
@@ -184,7 +189,7 @@ class Datacube:
                     for o in f:
                         key = _cache_filter(o)
                         or_keys.append(key)
-                    or_cache_key = json.dumps(['filter_or', or_keys])
+                    or_cache_key = json.dumps(['filter_or', dim, or_keys])
                     lua = '''
                         local exists=redis.call('EXISTS', KEYS[1])
                         if 0 == exists then
@@ -199,7 +204,7 @@ class Datacube:
                     key = _cache_filter(f)
                     and_keys.append(key)
 
-            and_cache_key = json.dumps(['filter_and', and_keys])
+            and_cache_key = json.dumps(['filter_and', dim, and_keys])
             lua = '''
                 local exists=redis.call('EXISTS', KEYS[1])
                 if 0 == exists then
