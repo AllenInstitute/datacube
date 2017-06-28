@@ -1,0 +1,9 @@
+[
+    {
+        "name": "cell_specimens",
+        "script": "./datasets/api_cam_cell_metric.py",
+        "data-dir": "../../data/",
+        "files": ["cell_specimens.npy", "cell_specimens.csv"],
+        "arguments": ["--data-src", "http://testwarehouse:9000/", "--data-dir", "../../data/"]
+    }
+]

@@ -6,7 +6,7 @@ import os
 import re
 import urllib
 import argparse
-from util.convert import pd_dataframe_to_np_structured_array
+from util import pd_dataframe_to_np_structured_array
 from allensdk.api.queries.brain_observatory_api import BrainObservatoryApi
 
 
@@ -14,14 +14,15 @@ def main():
     parser = argparse.ArgumentParser(description='ApiCamCellMetric pandas data generator script')
     parser.add_argument('--data-src', default='http://api.brain-map.org/', help='base RMA url from which to load data')
     parser.add_argument('--data-dir', default='./', help='load CSV and NPY files from this directory')
+    parser.add_argument('--data-name', default='cell_specimens', help="base name with which to create files")
     args = parser.parse_args()
 
-    generate(args.data_src, args.data_dir)
+    generate(args.data_src, args.data_dir, args.data_name)
 
 
-def generate(data_src=None, data_dir='./'):
+def generate(data_src=None, data_dir='./', data_name='cell_specimens'):
     print('Generating...')
-    csv_file = data_dir + 'cell_specimens.csv'
+    csv_file = data_dir + data_name + '.csv'
 
     # download directly over SQL
     #import sqlalchemy as sa

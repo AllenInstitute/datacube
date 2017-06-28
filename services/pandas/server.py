@@ -19,6 +19,8 @@ import argparse
 import pickle
 #import redis
 import txredisapi
+import subprocess
+import os.path
 
 from datacube import Datacube
 
@@ -45,7 +47,8 @@ class PandasServiceComponent(ApplicationSession):
 
 
         @inlineCallbacks
-        def select(filters=None,
+        def select(name=None,
+                   filters=None,
                    sort=None,
                    ascending=None,
                    start=0,
@@ -53,13 +56,16 @@ class PandasServiceComponent(ApplicationSession):
                    indexes=None,
                    fields=None):
             try:
-                request_cache_key = json.dumps(['request', filters, sort, ascending, start, stop, indexes, fields])
+                if name is None:
+                    if 1==len(datacubes):
+                        name = datacubes.keys()[0]
+                request_cache_key = json.dumps(['request', name, filters, sort, ascending, start, stop, indexes, fields])
                 cached = yield redis.get(request_cache_key)
                 if not cached:
                     #res = yield threads.deferToThreadPool(reactor,
                     #                                      thread_pool,
                     res = yield threads.deferToThread(
-                                                          datacube.select,
+                                                          datacubes[name].select,
                                                           'dim_0',
                                                           filters,
                                                           sort,
@@ -123,9 +129,6 @@ class PandasServiceComponent(ApplicationSession):
 
             #yield pool.on_ready(timeout=30)
 
-            #todo: make filename configurable
-            datacube = yield threads.deferToThread(Datacube, args.data_dir + 'cell_specimens.npy')
-
             yield self.register(select,
                                 u'org.brain-map.api.datacube.select',
                                 options=RegisterOptions(invoke=u'roundrobin'))
@@ -140,6 +143,7 @@ class PandasServiceComponent(ApplicationSession):
                 thread_pool.dumpStats()
             stats_loop = LoopingCall(_print_stats)
             stats_loop.start(10*60.)
+
         except Exception as e:
             print("could not register procedure: {0}".format(e))
 
@@ -152,8 +156,9 @@ if __name__ == '__main__':
     parser.add_argument('realm', help='WAMP realm name to join')
     parser.add_argument('username', help='WAMP-CRA username')
     parser.add_argument('password', help='WAMP-CRA secret')
-    parser.add_argument('data_dir', help='load CSV and NPY files from this directory')
+    parser.add_argument('dataset_manifest', help='JSON dataset manifest')
     parser.add_argument('--max-records', default=1000, help='maximum records to serve in a single request (default: %(default)s)')
+    parser.add_argument('--recache', action='store_true', help='overwrite existing data files')
     args = parser.parse_args()
 
     txaio.use_twisted()
@@ -163,6 +168,20 @@ if __name__ == '__main__':
     #todo: get logging from processes working
     #txpool.pool.WorkerProtocol.MAX_LENGTH = sys.maxsize
     #process_pool = txpool.Pool(size=4, log=logging, init_call='datacube.worker.instance.load', init_args=(args.data_dir + 'cell_specimens.npy',))
+
+    datacubes={}
+    with open(args.dataset_manifest, 'r') as datasets_json:
+        datasets = json.load(datasets_json)
+        for dataset in datasets:
+            existing = [os.path.isfile(dataset['data-dir'] + filename) for filename in dataset['files']]
+            if args.recache or sum(existing) == 0:
+                print([dataset['script']] + dataset['arguments'])
+                subprocess.call([dataset['script']] + dataset['arguments'])
+            else:
+                if sum(existing) < len(dataset['files']):
+                    raise RuntimeError('Refusing to run with ' + str(sum(existing)) + ' files when expecting ' + str(len(dataset['files'])) + ', for dataset "' + dataset['name'] + '". Specify --recache option to generate files (will overwrite existing files).')
+                    exit(1)
+            datacubes[dataset['name']] = Datacube(next(dataset['data-dir'] + f for f in dataset['files'] if '.npy' in f))
 
     runner = ApplicationRunner(unicode(args.router), unicode(args.realm))
     runner.run(PandasServiceComponent, auto_reconnect=True)
