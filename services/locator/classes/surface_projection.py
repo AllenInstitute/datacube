@@ -15,7 +15,7 @@ class SurfacePoint ():
     def get (self, seedPoint):
 
         if not os.path.exists(path) or not os.path.getsize(path) > 0:
-            raise FileNotFoundError("could not find surface_coords_10.h5")
+            raise IOError("could not find surface_coords_10.h5")
         
         f = h5py.File(filePath + file)
 

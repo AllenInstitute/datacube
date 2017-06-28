@@ -42,8 +42,8 @@ class LocatorServiceComponent(ApplicationSession):
                 projector = SurfacePoint()
                 results.setdefault("coordinate", projector.get(seedPoint))
                 results['success'] = True
-                
-            except Exception as e:
+
+            except IOError as e:
                 results.setdefault("message", e.message)
 
             return json.dumps(results)
@@ -63,7 +63,7 @@ class LocatorServiceComponent(ApplicationSession):
                 results.setdefault("coordinate", projector.get(path, pixel))
                 results["success"] = True
 
-            except (FileNotFoundError, ValueError) as e:
+            except (IOError, ValueError) as e:
                 results.setdefault("message", e.message)
 
            
