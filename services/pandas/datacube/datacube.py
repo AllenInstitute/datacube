@@ -7,6 +7,12 @@ import redis
 #from twisted.internet import reactor
 import xarray as xr
 import dask
+from PIL import Image
+from io import BytesIO
+import base64
+
+from six import iteritems
+from builtins import int
 
 
 class Datacube:
@@ -29,6 +35,96 @@ class Datacube:
         self.argsorts = {}
         for field in self.df.keys():
             self.argsorts[field] = np.argsort(self.df[field].values)
+
+
+    def _validate_select(self, select):
+        assert(all(f in list(self.df.keys()) for f in select.keys()))
+
+        for axis, selector in iteritems(select):
+            if isinstance(selector, list):
+                if any(type(x) != type(selector[0]) for x in selector):
+                    raise RuntimeError('All elements of selector for axis {0} do not have the same type.'.format(axis))
+                if not isinstance(selector[0], int) and not isinstance(selector[0], bool):
+                    raise RuntimeError('Elements of list selector for axis {0} must be of type int or bool.'.format(axis))
+                if isinstance(selector[0], bool) and len(selector) != self.df.dims[axis]:
+                    raise RuntimeError('Boolean list selector for axis {0} must have length {1} to match the size of the datacube.'.format(axis, self.df.dims[axis]))
+            elif isinstance(selector, dict):
+                keys = ['start', 'stop', 'step']
+                for key in keys:
+                    if key in selector and selector[key] is not None and not isinstance(selector[key], int):
+                        raise RuntimeError('Slice selector for axis {0} must have ''{1}'' of type int.'.format(axis, key))
+
+
+    # convert dict selectors into slice objects,
+    # index and bool ndarrays
+    def _parse_select(self, select_element):
+        select = {axis: slice(None,None,None) for axis in self.df.dims.keys()}
+        for axis, selector in iteritems(select_element):
+            if isinstance(selector, list):
+                if len(selector) == 0:
+                    select[axis] = np.array([], dtype=np.int)
+                elif all(type(x) == bool for x in selector):
+                    select[axis] = np.array(selector, dtype=np.bool)
+                elif all(isinstance(x, int) for x in selector):
+                    select[axis] = np.array(selector, dtype=np.int)
+                else:
+                    raise RuntimeError('All elements of selector for axis {0} do not have the same type.'.format(axis))
+            elif isinstance(selector, dict):
+                select[axis] = slice(selector.get('start'), selector.get('stop'), selector.get('step'))
+        return select
+
+
+    # parse and convert all request selectors into index arrays
+    def _get_subscripts_from_select(self, select_element):
+        subscripts = self._parse_select(select_element)
+        for axis, subs in iteritems(subscripts):
+            if isinstance(subs, np.ndarray) and subs.dtype == np.bool:
+                subscripts[axis] = subs.nonzero()[0]
+            elif isinstance(subs, slice):
+                subscripts[axis] = np.array(range(*subs.indices(self.df.dims[axis])), dtype=np.int)
+        #subscripts = np.ix_(*subscripts)
+        return subscripts
+
+
+    def get_data(self, subscripts, fields):
+        return self.df[subscripts][fields]
+
+
+    def raw(self, select, fields):
+        assert(all(f in list(self.df.keys()) for f in fields))
+        self._validate_select(select)
+        subscripts = self._get_subscripts_from_select(select)
+        return self.get_data(subscripts, fields)
+
+
+    #todo: add dims argument so e.g. ['y', 'x'] would give transposed image of ['x', 'y']
+    def image(self, select, field, image_format='jpeg'):
+        data = self.raw(select, [field])
+        dims = list(data.dims.keys())
+        if 'RGBA' in dims:
+            dims.remove('RGBA')
+            dims.append('RGBA')
+            data = data.transpose(*dims)
+        data = data[field].values
+        data = np.squeeze(data)
+
+        if data.ndim != 2 and not (data.ndim == 3 and data.shape[2] == 4):
+            raise RuntimeError('Non 2-d region selected when requesting image')
+
+        if data.ndim == 2 and data.dtype != np.uint8:
+            #todo: precompute min, max for each numeric field on the datacube
+            data = ((data / np.max(data)) * 255.0).astype(np.uint8)
+
+        image = Image.fromarray(data)
+        buf = BytesIO()
+        if image_format.lower() == 'jpeg':
+            image.save(buf, format='JPEG', quality=40)
+        elif image_format.lower() == 'png':
+            image.save(buf, format='PNG')
+        else:
+            raise RuntimeError('Invalid or unsupported image format')
+        #return {'data': bytes(buf.getvalue())}
+        return {'data': 'data:image/' + image_format.lower() + ';base64,' + base64.b64encode(buf.getvalue()).decode()}
 
 
     def select(self,

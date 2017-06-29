@@ -51,6 +51,19 @@ class PandasServiceComponent(ApplicationSession):
 
 
         @inlineCallbacks
+        def image(field, select, image_format='jpeg', name=None):
+            try:
+                if name is None:
+                    if 1==len(datacubes):
+                        name = list(datacubes.keys())[0]
+                res = yield threads.deferToThread(datacubes[name].image, select, field, image_format)
+                returnValue(res)
+            except Exception as e:
+                print({'field': field, 'select': select, 'image_format': image_format, 'name': name})
+                _application_error(e)
+
+
+        @inlineCallbacks
         def select(name=None,
                    filters=None,
                    sort=None,
@@ -135,6 +148,9 @@ class PandasServiceComponent(ApplicationSession):
 
             yield self.register(select,
                                 u'org.brain-map.api.datacube.select',
+                                options=RegisterOptions(invoke=u'roundrobin'))
+            yield self.register(image,
+                                u'org.brain-map.api.datacube.image',
                                 options=RegisterOptions(invoke=u'roundrobin'))
             # legacy
             yield self.register(select,

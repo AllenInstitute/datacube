@@ -13,3 +13,4 @@ txredisapi
 redis
 six
 allensdk
+Pillow
