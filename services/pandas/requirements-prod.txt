@@ -1,6 +1,6 @@
-autobahn==0.17.1
-crossbar==16.10.1
-Twisted==16.6.0
+autobahn
+crossbar
+Twisted
 pandas
 numpy
 scipy
@@ -9,3 +9,6 @@ xarray
 netCDF4
 dask
 toolz
+txredisapi
+redis
+six

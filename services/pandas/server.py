@@ -4,7 +4,7 @@ from twisted.internet import reactor, threads, protocol
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.internet.task import LoopingCall
 from twisted.python.threadpool import ThreadPool
-import txpool
+#import txpool
 import sys
 from autobahn.wamp.exception import ApplicationError
 from autobahn.wamp.types import RegisterOptions
@@ -23,6 +23,8 @@ import subprocess
 import os.path
 import re
 
+from six import text_type as str
+
 from datacube import Datacube
 
 
@@ -30,12 +32,12 @@ class PandasServiceComponent(ApplicationSession):
 
 
     def onConnect(self):
-        self.join(unicode(args.realm), [u'wampcra'], unicode(args.username))
+        self.join(str(args.realm), [u'wampcra'], str(args.username))
 
 
     def onChallenge(self, challenge):
         if challenge.method == u'wampcra':
-            signature = compute_wcs(unicode(args.password).encode('utf8'), challenge.extra['challenge'].encode('utf8'))
+            signature = compute_wcs(str(args.password).encode('utf8'), challenge.extra['challenge'].encode('utf8'))
             return signature.decode('ascii')
         else:
             raise Exception("don't know how to handle authmethod {}".format(challenge.method))
@@ -59,7 +61,7 @@ class PandasServiceComponent(ApplicationSession):
             try:
                 if name is None:
                     if 1==len(datacubes):
-                        name = datacubes.keys()[0]
+                        name = list(datacubes.keys())[0]
                 request_cache_key = json.dumps(['request', name, filters, sort, ascending, start, stop, indexes, fields])
                 cached = yield redis.get(request_cache_key)
                 if not cached:
@@ -109,15 +111,15 @@ class PandasServiceComponent(ApplicationSession):
                 data.append(col.tobytes())
             data = b''.join(data)
             return {'num_rows': x.dims['dim_0'],
-                    'col_names': [unicode(name) for name in x.keys()],
-                    'col_types': [unicode(x[name].dtype.name) for name in x.keys()],
+                    'col_names': [str(name) for name in x.keys()],
+                    'col_types': [str(x[name].dtype.name) for name in x.keys()],
                     'item_sizes': [x[name].dtype.itemsize for name in x.keys()],
                     'data': bytes(zlib.compress(data))}
 
 
         def _application_error(e):
             traceback.print_exc()
-            raise RuntimeError(u'org.brain-map.api.datacube.application_error', e.__class__.__name__, e.message, e.args, e.__doc__)
+            raise RuntimeError(str('org.brain-map.api.datacube.application_error'), e.__class__.__name__, e.message, e.args, e.__doc__)
 
 
         try:
@@ -187,5 +189,5 @@ if __name__ == '__main__':
                 chunks = nc_file['chunks'] if nc_file['use_chunks'] else None
                 datacubes[dataset['name']] = Datacube(dataset['data-dir'] + nc_file['path'], chunks=chunks)
 
-    runner = ApplicationRunner(unicode(args.router), unicode(args.realm))
+    runner = ApplicationRunner(str(args.router), str(args.realm))
     runner.run(PandasServiceComponent, auto_reconnect=True)

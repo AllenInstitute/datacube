@@ -1,1 +1,2 @@
-from datacube import Datacube
+from __future__ import absolute_import
+from .datacube import Datacube
