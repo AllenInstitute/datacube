@@ -11,7 +11,7 @@
                 "chunks": {"dim_0": 8000}
             }
         ],
-        "arguments": ["--data-src", "http://testwarehouse:9000/", "--data-dir", "../../data/", "--data-name", "cell_specimens"]
+        "arguments": ["--data-src", "http://iwarehouse/", "--data-dir", "../../data/", "--data-name", "cell_specimens"]
     },
     {
         "name": "mni",

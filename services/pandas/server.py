@@ -24,6 +24,7 @@ import os.path
 import re
 
 from six import text_type as str
+from builtins import bytes
 
 from datacube import Datacube
 
@@ -112,7 +113,7 @@ class PandasServiceComponent(ApplicationSession):
             data = b''.join(data)
             return {'num_rows': x.dims['dim_0'],
                     'col_names': [str(name) for name in x.keys()],
-                    'col_types': [str(x[name].dtype.name) for name in x.keys()],
+                    'col_types': [str(x[name].dtype.name).replace('bytes', 'string') for name in x.keys()],
                     'item_sizes': [x[name].dtype.itemsize for name in x.keys()],
                     'data': bytes(zlib.compress(data))}
 

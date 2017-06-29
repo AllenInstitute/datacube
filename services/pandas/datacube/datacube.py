@@ -6,7 +6,7 @@ import redis
 #import txredisapi
 #from twisted.internet import reactor
 import xarray as xr
-import dask.array
+import dask
 
 
 class Datacube:
@@ -129,21 +129,22 @@ class Datacube:
                 field = f['field']
                 value = f['value']
 
-                res = np.zeros(df[field].shape, dtype=np.bool)
-                start = 0
-                stop = df[field].size
+                res = None
                 if isinstance(df[field].data, dask.array.core.Array):
                     if op == '=' or op == 'is':
-                        return (df[field] == value)
+                        res = (df[field] == value)
                     elif op == '<':
-                        return (df[field] < value)
+                        res = (df[field] < value)
                     elif op == '>':
-                        return (df[field] > value)
+                        res = (df[field] > value)
                     elif op == '<=':
-                        return (df[field] <= value)
+                        res = (df[field] <= value)
                     elif op == '>=':
-                        return (df[field] >= value)
+                        res = (df[field] >= value)
                 else:
+                    start = 0
+                    stop = df[field].size
+                    res = np.zeros(df[field].shape, dtype=np.bool)
                     if op == '=' or op == 'is':
                         start = np.searchsorted(df[field], value, side='left', sorter=column_argsort[field])
                         stop = np.searchsorted(df[field], value, side='right', sorter=column_argsort[field])
