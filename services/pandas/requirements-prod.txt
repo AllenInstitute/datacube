@@ -5,3 +5,7 @@ pandas
 numpy
 scipy
 txaio
+xarray
+netCDF4
+dask
+toolz

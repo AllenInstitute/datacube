@@ -5,18 +5,15 @@ import pickle
 import redis
 #import txredisapi
 #from twisted.internet import reactor
-
-#todo: use xr.Dataset instead of np structured array?
 import xarray as xr
-#
-def np_structured_array_to_xr_dataset(sa):
-    return xr.Dataset({field: ('dim_0', sa[field]) for field in sa.dtype.names})
+import dask.array
+
 
 class Datacube:
 
 
-    def __init__(self, npy_file=None):
-        if npy_file: self.load(npy_file)
+    def __init__(self, nc_file=None, chunks=None):
+        if nc_file: self.load(nc_file, chunks)
         #todo: would be nice to find a way to swap these out,
         # and also to be able to run without redis (numpy-only)
         #if reactor.running:
@@ -25,10 +22,10 @@ class Datacube:
         self.redis_client = redis.StrictRedis('localhost', 6379)
 
 
-    def load(self, npy_file):
+    def load(self, nc_file, chunks=None):
         #todo: rename df
         #todo: argsorts need to be cached to a file
-        self.df = np_structured_array_to_xr_dataset(np.load(npy_file, mmap_mode='r'))
+        self.df = xr.open_dataset(nc_file, chunks=chunks)
         self.argsorts = {}
         for field in self.df.keys():
             self.argsorts[field] = np.argsort(self.df[field].values)
@@ -135,18 +132,30 @@ class Datacube:
                 res = np.zeros(df[field].shape, dtype=np.bool)
                 start = 0
                 stop = df[field].size
-                if op == '=' or op == 'is':
-                    start = np.searchsorted(df[field], value, side='left', sorter=column_argsort[field])
-                    stop = np.searchsorted(df[field], value, side='right', sorter=column_argsort[field])
-                elif op == '<':
-                    stop = np.searchsorted(df[field], value, side='left', sorter=column_argsort[field])
-                elif op == '>':
-                    start = np.searchsorted(df[field], value, side='right', sorter=column_argsort[field])
-                elif op == '<=':
-                    stop = np.searchsorted(df[field], value, side='right', sorter=column_argsort[field])
-                elif op == '>=':
-                    start = np.searchsorted(df[field], value, side='left', sorter=column_argsort[field])
-                res[column_argsort[field][start:stop]] = True
+                if isinstance(df[field].data, dask.array.core.Array):
+                    if op == '=' or op == 'is':
+                        return (df[field] == value)
+                    elif op == '<':
+                        return (df[field] < value)
+                    elif op == '>':
+                        return (df[field] > value)
+                    elif op == '<=':
+                        return (df[field] <= value)
+                    elif op == '>=':
+                        return (df[field] >= value)
+                else:
+                    if op == '=' or op == 'is':
+                        start = np.searchsorted(df[field], value, side='left', sorter=column_argsort[field])
+                        stop = np.searchsorted(df[field], value, side='right', sorter=column_argsort[field])
+                    elif op == '<':
+                        stop = np.searchsorted(df[field], value, side='left', sorter=column_argsort[field])
+                    elif op == '>':
+                        start = np.searchsorted(df[field], value, side='right', sorter=column_argsort[field])
+                    elif op == '<=':
+                        stop = np.searchsorted(df[field], value, side='right', sorter=column_argsort[field])
+                    elif op == '>=':
+                        start = np.searchsorted(df[field], value, side='left', sorter=column_argsort[field])
+                    res[column_argsort[field][start:stop]] = True
                 return res
 
             expanded_filters = []

@@ -21,6 +21,7 @@ import pickle
 import txredisapi
 import subprocess
 import os.path
+import re
 
 from datacube import Datacube
 
@@ -173,15 +174,18 @@ if __name__ == '__main__':
     with open(args.dataset_manifest, 'r') as datasets_json:
         datasets = json.load(datasets_json)
         for dataset in datasets:
-            existing = [os.path.isfile(dataset['data-dir'] + filename) for filename in dataset['files']]
-            if args.recache or sum(existing) == 0:
-                print([dataset['script']] + dataset['arguments'])
-                subprocess.call([dataset['script']] + dataset['arguments'])
-            else:
-                if sum(existing) < len(dataset['files']):
-                    raise RuntimeError('Refusing to run with ' + str(sum(existing)) + ' files when expecting ' + str(len(dataset['files'])) + ', for dataset "' + dataset['name'] + '". Specify --recache option to generate files (will overwrite existing files).')
-                    exit(1)
-            datacubes[dataset['name']] = Datacube(next(dataset['data-dir'] + f for f in dataset['files'] if '.npy' in f))
+            if dataset['enabled']:
+                existing = [os.path.isfile(dataset['data-dir'] + f['path']) for f in dataset['files']]
+                if args.recache or sum(existing) == 0:
+                    print(' '.join([dataset['script']] + dataset['arguments']))
+                    subprocess.call([dataset['script']] + dataset['arguments'])
+                else:
+                    if sum(existing) < len(dataset['files']):
+                        raise RuntimeError('Refusing to run with ' + str(sum(existing)) + ' files when expecting ' + str(len(dataset['files'])) + ', for dataset "' + dataset['name'] + '". Specify --recache option to generate files (will overwrite existing files).')
+                        exit(1)
+                nc_file = next(f for f in dataset['files'] if re.search('\.nc$', f['path']))
+                chunks = nc_file['chunks'] if nc_file['use_chunks'] else None
+                datacubes[dataset['name']] = Datacube(dataset['data-dir'] + nc_file['path'], chunks=chunks)
 
     runner = ApplicationRunner(unicode(args.router), unicode(args.realm))
     runner.run(PandasServiceComponent, auto_reconnect=True)
