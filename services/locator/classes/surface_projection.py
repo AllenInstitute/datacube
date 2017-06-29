@@ -1,23 +1,23 @@
 import os
-import binascii
 import h5py
 import numpy
 
 class SurfacePoint ():
-    def __init__(self):
-        global filePath
-        global file
-
-        filePath = "/allen/programs/celltypes/production/0378/informatics/model/P56/corticalCoordinates/"
-        file = "surface_coords_10.h5"
+    def __init__(self, config):
+        self.config = config
 
 
     def get (self, seedPoint):
 
+        if len(seedPoint) !=  3:
+            raise ValueError("seedPoint must have three dimensions")
+
+        path = self.config.get_property("p56_file_path")
+
         if not os.path.exists(path) or not os.path.getsize(path) > 0:
             raise IOError("could not find surface_coords_10.h5")
         
-        f = h5py.File(filePath + file)
+        f = h5py.File(path)
 
         # Watch for an argument out of range err?
         seedPoint = [self.micron2vox(i) for i in seedPoint]

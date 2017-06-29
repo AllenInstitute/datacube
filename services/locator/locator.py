@@ -1,19 +1,28 @@
 import sys
 import argparse
 import json
+import os
 
 from os import environ
 from twisted.internet.defer import inlineCallbacks
 from autobahn.twisted.wamp import ApplicationSession, ApplicationRunner
 
+from configuration_manager import ConfigurationManager
+
 from classes.surface_projection import SurfacePoint
 from classes.projection_point import ProjectionPoint
+from classes.filmstrip_locator import FilmStripLocator
+
 
 class LocatorServiceComponent(ApplicationSession):
 
     @inlineCallbacks
     def onJoin(self, details):
         global ready
+        
+        path = os.path.join(os.path.dirname(__file__), "env_vars.json")
+        config = ConfigurationManager(path)
+
 
         ####################################################################
         ########################## Endpoints ###############################
@@ -30,16 +39,15 @@ class LocatorServiceComponent(ApplicationSession):
             results = dict()
             results.setdefault("success", False)
 
-            # Return an error message if any arguments are missing
-            if seedPoint is None:
+            # Validate Arguments
+            if seedPoint == None:
                 status = results.setdefault("status", dict())
                 status.setdefault("message", "requires seed point")
                 
                 return json.dumps(results)
             
             try:
-                # If all arguments are present instantiate the approp. object and get the infos
-                projector = SurfacePoint()
+                projector = SurfacePoint(config)
                 results.setdefault("coordinate", projector.get(seedPoint))
                 results['success'] = True
 
@@ -52,22 +60,46 @@ class LocatorServiceComponent(ApplicationSession):
             results = dict()
             results.setdefault("success", False)
 
-            if path is None or pixel is None or len(pixel) < 2:
+            # Validate Arguments
+            if path == None or pixel == None or len(pixel) < 2:
                 status = results.setdefault("status", dict())
-                status.setdefault("message", "missing path or pixel arguments")
+                status.setdefault("message", "missing path or pixel argument(s)")
 
                 return json.dumps(results)
 
             try:
-                projector = ProjectionPoint()
+                projector = ProjectionPoint(config)
                 results.setdefault("coordinate", projector.get(path, pixel))
                 results["success"] = True
 
             except (IOError, ValueError) as e:
                 results.setdefault("message", e.message)
 
-           
             return json.dumps(results)
+
+        def filmstrip_location (pixel = None, distanceMapPath = None, direction = None):
+            results = dict()
+            results.setdefault("success", False)
+
+            # Validate Arguments
+            if pixel == None or distanceMapPath == None or direction == None:
+                status = results.setdefault("status", dict())
+                status.setdefault("message", "missing pixel, distanceMapPath, or direction argument(s)")
+
+            try:
+                locator = FilmStripLocator(config)
+                vol_coord, physical_coord, hemisphere, structure = locator.get(pixel, distanceMapPath, direction)
+
+                results.setdefault("volumeCoordinate",vol_coord)
+                results.setdefault("physicalCoordinate", physical_coord)
+                results.setdefault("hemisphere", hemisphere)
+                results.setdefault("structure", structure)
+                results["success"] = True
+
+            except (IOError) as e:
+                results.setdefault("message", e.message)
+
+            return results
 
 
         ready = False
@@ -79,6 +111,7 @@ class LocatorServiceComponent(ApplicationSession):
             yield self.register(describe, u"org.alleninstitute.locator.describe")
             yield self.register(surface_point, u"org.alleninstitute.locator.get_surface_point")
             yield self.register(projection_point, u"org.alleninstitute.locator.get_projection_point")
+            yield self.register(filmstrip_location, u"org.alleninstitute.locator.get_filmstrip_location")
 
             ready = True
         except Exception as e:
