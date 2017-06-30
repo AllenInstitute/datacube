@@ -162,6 +162,7 @@ SystemJS.import('./node_modules/datacube-js/lib/systemjs/pandas.js').then(functi
   var preload_margin = 25;
   var pandas_client = new pandasjs.PandasClient(wamp_router_url,
                                                 wamp_realm,
+                                                'cell_specimens',
                                                 chunk_size,
                                                 preload_margin,
                                                 get_current_filters,

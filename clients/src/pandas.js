@@ -6,6 +6,7 @@ import {ScrollPreloader} from "./common/scroll_preloader.js";
 
 export function PandasClient(wamp_router_url,
                              wamp_realm,
+                             datacube_name,
                              chunk_size,
                              preload_margin,
                              get_current_filters,
@@ -14,6 +15,7 @@ export function PandasClient(wamp_router_url,
                              get_current_page_range,
                              page_data_callback,
                              update_finished) {
+    this.datacube_name = datacube_name;
     this.connection = new autobahn.Connection({url: wamp_router_url, realm: wamp_realm});
     this.session = null;
 
@@ -50,6 +52,7 @@ PandasClient.prototype.update_page = function() {
 
 PandasClient.prototype.load_indexes = function(kwargs_in, start, stop, callback) {
     var kwargs = {};
+    kwargs.name = this.datacube_name;
     kwargs.filters = kwargs_in.filters;
     kwargs.sort = kwargs_in.sort;
     kwargs.ascending = kwargs_in.ascending;
@@ -71,7 +74,7 @@ PandasClient.prototype.load_records = function(indexes, range, callback) {
     } else {
         var indexes = indexes.slice(range.start, range.end);
         this.session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [],
-                         {'indexes': indexes, 'fields': JSON.parse(document.getElementById('fields').value)}).then(
+                         {'indexes': indexes, 'fields': JSON.parse(document.getElementById('fields').value), 'name': this.datacube_name}).then(
             function (res) {
                 //var zbuf = atob(res.data);
                 var zbuf = res.data;

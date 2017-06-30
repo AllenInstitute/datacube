@@ -115,7 +115,7 @@ class PandasServiceComponent(ApplicationSession):
                 _application_error(e)
 
 
-        #todo: support arbitrary dims
+        #todo: support arbitrary dims (possibly use xr.Dataset.to_dict())
         def _format_xr_dataset_response(x):
             data = []
             for field in x.keys():
