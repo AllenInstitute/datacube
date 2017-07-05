@@ -30,9 +30,10 @@ class Datacube:
 
     def load(self, nc_file, chunks=None):
         #todo: rename df
-        #todo: argsorts need to be cached to a file
+        #todo: argsorts need to be cached to a file (?)
         self.df = xr.open_dataset(nc_file, chunks=chunks)
         self.argsorts = {}
+        #todo: only do this for < N-d fields
         for field in self.df.keys():
             self.argsorts[field] = np.argsort(self.df[field].values)
 

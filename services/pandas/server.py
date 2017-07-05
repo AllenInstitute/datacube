@@ -50,19 +50,38 @@ class PandasServiceComponent(ApplicationSession):
     def onJoin(self, details):
 
 
+        def _get_datacube(name=None):
+            if name is None:
+                if 1==len(datacubes):
+                    name = list(datacubes.keys())[0]
+                else:
+                    raise RuntimeError('Must specify datacube name when server has more than one datacube loaded (' + ', '.join(datacubes.keys()) + ').')
+            return datacubes[name]
+            
+
+        @inlineCallbacks
+        def raw(fields, select, name=None):
+            try:
+                datacube = _get_datacube(name)
+                res = yield threads.deferToThread(datacube.raw, select, fields)
+                returnValue(res.to_dict())
+            except Exception as e:
+                print({'fields': fields, 'select': select, 'name': name})
+                _application_error(e)
+
+
         @inlineCallbacks
         def image(field, select, image_format='jpeg', name=None):
             try:
-                if name is None:
-                    if 1==len(datacubes):
-                        name = list(datacubes.keys())[0]
-                res = yield threads.deferToThread(datacubes[name].image, select, field, image_format)
+                datacube = _get_datacube(name)
+                res = yield threads.deferToThread(datacube.image, select, field, image_format)
                 returnValue(res)
             except Exception as e:
                 print({'field': field, 'select': select, 'image_format': image_format, 'name': name})
                 _application_error(e)
 
 
+        #todo: this is the 1-d-only analog of "raw", with filtering; these should be combined
         @inlineCallbacks
         def select(name=None,
                    filters=None,
@@ -73,16 +92,14 @@ class PandasServiceComponent(ApplicationSession):
                    indexes=None,
                    fields=None):
             try:
-                if name is None:
-                    if 1==len(datacubes):
-                        name = list(datacubes.keys())[0]
+                datacube = _get_datacube(name)
                 request_cache_key = json.dumps(['request', name, filters, sort, ascending, start, stop, indexes, fields])
                 cached = yield redis.get(request_cache_key)
                 if not cached:
                     #res = yield threads.deferToThreadPool(reactor,
                     #                                      thread_pool,
                     res = yield threads.deferToThread(
-                                                          datacubes[name].select,
+                                                          datacube.select,
                                                           'dim_0',
                                                           filters,
                                                           sort,
@@ -146,11 +163,14 @@ class PandasServiceComponent(ApplicationSession):
 
             #yield pool.on_ready(timeout=30)
 
-            yield self.register(select,
-                                u'org.brain-map.api.datacube.select',
+            yield self.register(raw,
+                                u'org.brain-map.api.datacube.raw',
                                 options=RegisterOptions(invoke=u'roundrobin'))
             yield self.register(image,
                                 u'org.brain-map.api.datacube.image',
+                                options=RegisterOptions(invoke=u'roundrobin'))
+            yield self.register(select,
+                                u'org.brain-map.api.datacube.select',
                                 options=RegisterOptions(invoke=u'roundrobin'))
             # legacy
             yield self.register(select,

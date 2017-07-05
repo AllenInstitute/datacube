@@ -29,9 +29,9 @@ def generate(data_dir='./', data_name='mni'):
         dims = ['x', 'y', 'z']
         ds = xr.Dataset(data_vars={'mni': (dims, mni), 'annotation': (dims, mni_anno), 'color': (dims+['RGBA'], mni_anno_color)},
                         coords={
-                            'mni_x': (['x'], (np.array(range(mni.shape[0]))*float(opts['space directions'][0][0]))-float(opts['space origin'][0])),
-                            'mni_y': (['y'], (np.array(range(mni.shape[1]))*float(opts['space directions'][1][1]))-float(opts['space origin'][1])),
-                            'mni_z': (['z'], (np.array(range(mni.shape[2]))*float(opts['space directions'][2][2]))-float(opts['space origin'][2]))
+                            'mni_x': (['x'], (np.array(range(mni.shape[0]))*float(opts['space directions'][0][0]))+float(opts['space origin'][0])),
+                            'mni_y': (['y'], (np.array(range(mni.shape[1]))*float(opts['space directions'][1][1]))+float(opts['space origin'][1])),
+                            'mni_z': (['z'], (np.array(range(mni.shape[2]))*float(opts['space directions'][2][2]))+float(opts['space origin'][2]))
                         })
         ds.to_netcdf(data_path, format='NETCDF4')
     print('Data created in data_dir.')

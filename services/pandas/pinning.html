@@ -8,6 +8,7 @@
 <noscript>You must enable JavaScript</noscript>
 <p>slice:<div id="slider"></div></p>
 <p>opacity:<div id="opacity"></div></p>
+<p>MNI coords: <span id="coords"></span></p>
 <canvas id="graph"  width="300" height="150"></canvas>
 <script type="text/javascript" src="node_modules/autobahn-js-built/autobahn.min.js"></script>
 <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
@@ -62,6 +63,27 @@
         };
 
         connection.open();
+
+        var canvas = document.getElementById('graph');
+        canvas.addEventListener('click', function(event) {
+            var rect = canvas.getBoundingClientRect();
+            var x = Math.round(event.clientX - rect.left);
+            var y = Math.round(event.clientY - rect.top);
+            
+            var idx = Math.round($('#slider').slider("option", "value"));
+            var select = {'x': [y], 'y': [x], 'z': [idx]};
+            var call = 'org.brain-map.api.datacube.raw';
+            var args = [];
+            var kwargs = {'name': 'mni', 'fields': ['mni_x', 'mni_y', 'mni_z'], 'select': select};
+            session.call(call, args, kwargs).then(
+                function (res) {
+                    var mni_x = res.coords.mni_x.data[0];
+                    var mni_y = res.coords.mni_y.data[0];
+                    var mni_z = res.coords.mni_z.data[0];
+                    document.getElementById('coords').innerHTML = JSON.stringify([mni_x, mni_y, mni_z]);
+                }
+            );
+        });
 
         var image = document.createElement('img');
         image.style.display = 'none';
