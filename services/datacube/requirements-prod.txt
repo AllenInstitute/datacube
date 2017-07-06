@@ -4,7 +4,6 @@ Twisted
 pg8000
 sqlalchemy
 txaio
-progressbar
 numpy
 scipy
 Pillow

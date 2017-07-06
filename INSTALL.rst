@@ -4,14 +4,14 @@ Installation instructions
 System dependencies
 -------------------
 
-.. code-block::
+::
    
     yum install gcc openssl-devel libffi-devel
 
 Install redis
 -------------
 
-Datacube needs redis>=2.6.0.
+Datacube needs redis>=3.2.
 
 On CentOS 7::
 
@@ -44,3 +44,31 @@ Install crossbar under pypy::
     pypy-5.8-linux_x86_64-portable/bin/pypy -m pip install -U pip
     pypy-5.8-linux_x86_64-portable/bin/pip install crossbar
     pypy-5.8-linux_x86_64-portable/bin/crossbar version
+
+Install Miniconda
+-----------------
+
+Download and install::
+
+    wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
+    bash Miniconda3-latest-Linux-x86_64.sh
+
+Install Datacube
+----------------
+
+Create a conda environment and install required python packages.
+
+The :code:`--ignore-installed` option is a workaround for https://github.com/ContinuumIO/anaconda-issues/issues/542::
+
+    conda create --name datacube python=3
+    source activate datacube
+    pip install --ignore-installed -r requirements.txt
+
+Verify Install
+--------------
+
+Verify the environment and install by running the demo::
+
+    crossbar start --config config-demo.json
+
+And pointing your browser to http://localhost:8082/ and clicking on the links.
