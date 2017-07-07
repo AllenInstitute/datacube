@@ -1,2 +1,1 @@
 -r requirements-dev.txt
-allensdk==0.12.4
