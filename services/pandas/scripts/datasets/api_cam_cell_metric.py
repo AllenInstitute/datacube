@@ -6,22 +6,23 @@ import os
 import re
 import urllib
 import argparse
-from util.convert import pd_dataframe_to_np_structured_array
+from util import pd_dataframe_to_np_structured_array, np_structured_array_to_xr_dataset
 from allensdk.api.queries.brain_observatory_api import BrainObservatoryApi
 
 
 def main():
     parser = argparse.ArgumentParser(description='ApiCamCellMetric pandas data generator script')
     parser.add_argument('--data-src', default='http://api.brain-map.org/', help='base RMA url from which to load data')
-    parser.add_argument('--data-dir', default='./', help='load CSV and NPY files from this directory')
+    parser.add_argument('--data-dir', default='./', help='save CSV and NPY files in this directory')
+    parser.add_argument('--data-name', default='cell_specimens', help="base name with which to create files")
     args = parser.parse_args()
 
-    generate(args.data_src, args.data_dir)
+    generate(args.data_src, args.data_dir, args.data_name)
 
 
-def generate(data_src=None, data_dir='./'):
+def generate(data_src=None, data_dir='./', data_name='cell_specimens'):
     print('Generating...')
-    csv_file = data_dir + 'cell_specimens.csv'
+    csv_file = data_dir + data_name + '.csv'
 
     # download directly over SQL
     #import sqlalchemy as sa
@@ -44,15 +45,13 @@ def generate(data_src=None, data_dir='./'):
     api = BrainObservatoryApi(base_uri=data_src)
     data = api.get_cell_metrics()
     df = pd.DataFrame.from_dict(data)
-    df.to_csv(csv_file)
 
-    npyfile = re.sub('\.csv', '.npy', csv_file, flags=re.I)
-    df = pd.read_csv(csv_file)
-    df.to_csv(csv_file, index=('index' not in list(df)), index_label='index')
+    nc_file = re.sub('\.csv', '.nc', csv_file, flags=re.I)
     sa = pd_dataframe_to_np_structured_array(df)
     del df
-    np.save(npyfile, sa)
+    ds = np_structured_array_to_xr_dataset(sa)
     del sa
+    ds.to_netcdf(nc_file, format='NETCDF4')
     print('Data created in data_dir.')
 
 

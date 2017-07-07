@@ -1,13 +1,13 @@
 SystemJS.config({
-  baseURL: '/node_modules/',
+  baseURL: './node_modules/',
   packages: {
-    '/node_modules/': {
+    './node_modules/': {
       defaultJSExtensions: 'js'
     }
   },
   map: {
-    "autobahn": '/node_modules/autobahn-js-built/autobahn.min.js',
-    "pako": '/node_modules/pako/dist/pako.min.js',
-    "text-encoding": '/node_modules/text-encoding/lib/encoding.js'
+    "autobahn": './node_modules/autobahn-js-built/autobahn.min.js',
+    "pako": './node_modules/pako/dist/pako.min.js',
+    "text-encoding": './node_modules/text-encoding/lib/encoding.js'
   }
 });

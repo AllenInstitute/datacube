@@ -1,10 +1,9 @@
-autobahn==0.17.1
-crossbar==16.10.1
-Twisted==16.6.0
+autobahn
+crossbar
+Twisted
 pg8000
 sqlalchemy
 txaio
-progressbar
 numpy
 scipy
 Pillow

@@ -55,9 +55,20 @@
                     "type": "web",
                     "endpoint": {
                         "type": "tcp",
-                        "port": 8080
+                        "port": 8082
                     },
                     "paths": {
+                        "/": {
+                            "type": "static",
+                            "directory": "..",
+                            "options": {
+                                "enable_directory_listing": true,
+                                "mime_types": {
+                                    ".md": "text/plain",
+                                    ".py": "text/plain"
+                                }
+                            }
+                        },
                         "ws": {
                             "type": "websocket",
                             "options": {
@@ -105,7 +116,7 @@
             "id": "datacube",
             "type": "guest",
             "executable": "run.sh",
-            "arguments": ["ws://localhost:8080/auth_ws", "aibs", "pandas_service", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "datasets.json"],
+            "arguments": ["ws://localhost:8082/auth_ws", "aibs", "pandas_service", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "datasets.json"],
             "options": {
                 "workdir": "../services/pandas/"
             }

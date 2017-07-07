@@ -1,5 +1,5 @@
 import pandas as pd
-#import xarray as xr
+import xarray as xr
 import numpy as np
 
 
@@ -35,5 +35,5 @@ def pd_dataframe_to_np_structured_array(df):
     return out
 
 
-#def np_structured_array_to_xr_dataset(sa):
-#    return xr.Dataset({field: ('dim_0', sa[field]) for field in sa.dtype.names})
+def np_structured_array_to_xr_dataset(sa):
+    return xr.Dataset({field: ('dim_0', sa[field]) for field in sa.dtype.names})
