@@ -112,6 +112,9 @@ class LocatorServiceComponent(ApplicationSession):
             yield self.register(surface_point, u"org.alleninstitute.locator.get_surface_point")
             yield self.register(projection_point, u"org.alleninstitute.locator.get_projection_point")
             yield self.register(filmstrip_location, u"org.alleninstitute.locator.get_filmstrip_location")
+            # Streamlines
+            # Reconstuctions
+            # Brain OBJs
 
             ready = True
         except Exception as e:
