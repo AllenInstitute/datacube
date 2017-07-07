@@ -72,3 +72,10 @@ Verify the environment and install by running the demo::
     crossbar start --config config-demo.json
 
 Wait for the "Server Ready." message, and then point your browser to http://localhost:8082/ and click on the links.
+
+Run tests
+---------
+
+::
+
+    make test
