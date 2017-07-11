@@ -4,7 +4,8 @@ import struct
 import binascii
 
 class ProjectionPoint ():
-    def __init__(self):
+    def __init__(self, config):
+        self.config = config
         self.components = 3
         self.projection_width = 1140
         self.projection_height = 1320
@@ -29,12 +30,7 @@ class ProjectionPoint ():
 
         f.seek(pos, 1)
 
-        x = struct.unpack('<i', f.read(self.size_of_int))[0]
-        y = struct.unpack('<i', f.read(self.size_of_int))[0]
-        z = struct.unpack('<i', f.read(self.size_of_int))[0]
-
-        return [x, y, z]
-        
+        return struct.unpack('<iii', f.read(self.size_of_int*3))        
 
     def skip_header (self, f):
         in_header = True

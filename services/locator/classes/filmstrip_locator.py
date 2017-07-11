@@ -16,14 +16,29 @@ class FilmStripLocator ():
         self.rotation = 360.0
         self.config = config
 
-    def get(self, pixel, distance_map_path, direction):
-        self.prepare_files(pixel, distance_map_path, direction)
-        self.get_volume_coordinate(pixel, distance_map_path, direction)
-        self.get_physical_coordinate()
-        self.get_hemisphere()
-        self.get_volume_annotation()
+    def get(self, pixel, distance_map_path, direction, results):
 
-        return self.vol_coord, self.phys_coord, self.hem, self.structure
+        try:
+            self.prepare_files(pixel, distance_map_path, direction)
+            self.get_volume_coordinate(pixel, distance_map_path, direction)
+    
+            # get_physical_coordinate
+            self.phys_coord = [int(i * self.annot_spacing) for i in self.vol_coord]
+            
+            self.get_hemisphere()
+            self.get_volume_annotation()
+            results.setdefault("volumeCoordinate", list(self.vol_coord))
+            results.setdefault("physicalCoordinate", self.phys_coord)
+            results.setdefault("hemisphere", self.hem)
+            results.setdefault("structure", self.structure)
+            results["success"] = True
+            
+            return results
+
+        except (IOError, ValueError) as e:
+            print "?!?!?!??"
+            return results.setdefault('message', e.message)
+
 
     def prepare_files(self, pixel, distance_map_path, direction):
         if len(pixel) != 2: 
@@ -33,8 +48,8 @@ class FilmStripLocator ():
             raise IOError("Distance map does not exist or was not provided")
 
         # new up our structures, just in case one ends up being empty when we return errything
-        self.vol_coord = [-1, -1, -1]
-        self.phys_coord = [-1, -1, -1]
+        self.vol_coord = np.array([-1, -1, -1])
+        self.phys_coord = np.array([-1, -1, -1])
         self.hem = ""
         self.structure = dict()
 
@@ -43,27 +58,26 @@ class FilmStripLocator ():
         self.read_mhd_header(distance_map_path)
 
         self.frame_width = self.dist_map_dimensions[0] / self.frames
-        self.vol_padding = [0, 0, 0]
+        self.vol_padding = np.array([0, 0, 0])
 
         self.dist_map_spacing.append(self.dist_map_spacing[0])
-
         if direction == "vertical":
             x_len = self.annot_dimensions[0]
             y_len = self.annot_dimensions[0]
             z_len = self.annot_dimensions[0]
 
-            max_hor_size = math.sqrt(x_len * x_len + z_len * z_len)
-            max_ver_size = math.sqrt(y_len * y_len + z_len * z_len)
+            max_hor_size = np.linalg.norm([x_len, z_len])
+            max_ver_size = np.linalg.norm([y_len, z_len])
 
             self.vol_padding[0] = (max_hor_size - x_len) * .5
             self.vol_padding[1] = (max_ver_size - y_len) * .5
 
+
         self.center_of_rotation = [0, 0, 0]
         self.depth_scale = [1, 1, 1]
 
-        for i in range(0, 2):
-            self.center_of_rotation[i] = self.annot_dimensions[i] * .5
-            self.depth_scale[i] = self.dist_map_spacing[i] / self.annot_spacing
+        self.center_of_rotation = [i * .5 for i in self.annot_dimensions]
+        self.depth_scale = [i / self.annot_spacing for i in self.dist_map_spacing]
 
 
     def get_volume_coordinate(self, pixel, distance_map_path, direction):
@@ -74,12 +88,10 @@ class FilmStripLocator ():
 
         angle = pixel[0] / self.frame_width
 
-        self.vol_coord = [pixel[0] - (angle * self.frame_width), pixel[1], depth]
+        self.vol_coord = np.array([pixel[0] - (angle * self.frame_width), pixel[1], depth])
 
-        for i in range(0, 2):
-            self.vol_coord[i] -= self.vol_padding[i]
-            self.vol_coord[i] *= self.depth_scale[i]
-
+        self.vol_coord = (self.vol_coord - self.vol_padding) * self.depth_scale
+    
         self.rotate_volume_coordinate(self.vol_coord, angle, direction)
 
     def get_annotation_files(self):
@@ -92,7 +104,7 @@ class FilmStripLocator ():
         annotation_file = self.config.get_property("p56_annotation_file")
         shape = tuple(self.annot_dimensions)
         
-        annotation_volume = np.memmap(annotation_file, dtype='uint32', mode = 'r', shape = shape, order='f')
+        annotation_volume = np.load(annotation_file)
         
         id = annotation_volume[self.vol_coord[0], self.vol_coord[1], self.vol_coord[2]]
         
@@ -104,36 +116,32 @@ class FilmStripLocator ():
         self.structure.setdefault('name', s['safe_name'] )
         self.structure.setdefault('abbreviation', s['acronym'])
         self.structure.setdefault('color', s['color_hex_triplet'])
-
-    def get_physical_coordinate(self):
-        for i in range(0,3):
-            self.phys_coord[i] = int(self.vol_coord[i] * self.annot_spacing)
-
+        
     def get_rotation_matrix(self, theta, rotation_direction):
         ctheta = math.cos(theta)
         stheta = math.sin(theta)
 
         if rotation_direction == "horizontal":
-            return [ ctheta, 0.0,   -stheta, 0.0,
-                     0.0,    1.0,   0.0,     0.0,
-                     stheta, 0.0,   ctheta,  0.0,
-                     0.0,    0.0,   0.0,     1.0 ]
+            return [[ ctheta, 0.0,   -stheta, 0.0],
+                    [ 0.0,    1.0,   0.0,     0.0],
+                    [ stheta, 0.0,   ctheta,  0.0],
+                    [ 0.0,    0.0,   0.0,     1.0]]
 
         if rotation_direction == "vertical":
-            return [ 1.0,   0.0,     0.0,       0.0,
-                     0.0,   ctheta,  -stheta,   0.0,
-                     0.0,   stheta,  ctheta,    0.0,
-                     0.0,   0.0,     0.0,       1.0 ]
+            return [[ 1.0,   0.0,     0.0,       0.0 ],
+                    [ 0.0,   ctheta,  -stheta,   0.0 ],
+                    [ 0.0,   stheta,  ctheta,    0.0 ],
+                    [ 0.0,   0.0,     0.0,       1.0 ] ]
 
     def get_hemisphere(self):
         if self.vol_coord[self.horizontal_index] > self.annot_dimensions[self.horizontal_index] / 2:
-            self.hem = "right"
+            self.hem = u'right'
         else:
-            self.hem = "left"
+            self.hem = u'left'
 
     def sample_distance_map(self, pixel_coord):
         raw_file = file(self.dist_map_raw)
-
+        
         index = pixel_coord[1] * self.frame_width * self.frames + pixel_coord[0]
         unsigned_int_size = 4
         
@@ -146,17 +154,15 @@ class FilmStripLocator ():
         theta = deg * math.pi / 180
 
         tmp_coord = vol_coords
+        
+        tmp_coord = [tmp_coord[i] - self.center_of_rotation[i] for i in range(0,3)]
+        tmp_coord.append(1)
 
-        for i in range(0, 2):
-            tmp_coord[i] -= self.center_of_rotation[i]
+        transform = np.matrix(self.get_rotation_matrix(theta, direction))
 
-        transform = self.get_rotation_matrix(theta, direction)
+        tmp_coord = np.dot(transform, tmp_coord)
 
-        for i in range(0, 2):
-            self.vol_coord[i] = transform[4*i] * tmp_coord[0] + transform[4 * i + 1] * tmp_coord[1] + transform[4 * i + 2] * tmp_coord[2] + transform[4 * i +3]
-
-        for i in range(0, 3):
-            vol_coords[i] = int(vol_coords[i] + self.center_of_rotation[i])
+        vol_coords = [int(vol_coords[i] + self.center_of_rotation[i]) for i in range(0, 3)]
 
     def read_mhd_header(self, meta_file):
         meta = open(meta_file).readlines()
@@ -172,7 +178,13 @@ class FilmStripLocator ():
                 line = line[1].strip().split(' ')
                 self.dist_map_dimensions = [int(line[0]), int(line[1])] 
 
-        self.dist_map_raw = meta_file.replace('.mhd', '.raw')
+            if "ElementDataFile" in line:
+                line = line.split('=')
+                line = line[1].strip()
+                self.dist_map_raw = line
+
+        self.dist_map_raw = os.path.join(os.path.dirname(meta_file), self.dist_map_raw)
+
 
     def read_annotation_header(self):
         self.annot_dimensions = self.annotation_meta['sizes']

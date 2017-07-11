@@ -1,10 +1,11 @@
 import os
 import h5py
-import numpy
+import numpy as np
 
 class SurfacePoint ():
     def __init__(self, config):
         self.config = config
+        self.spacing_um = [10, 10, 10]
 
 
     def get (self, seedPoint):
@@ -19,15 +20,13 @@ class SurfacePoint ():
         
         f = h5py.File(path)
 
-        # Watch for an argument out of range err?
-        seedPoint = [self.micron2vox(i) for i in seedPoint]
+        seedPoint = np.array(seedPoint, dtype=np.int) / self.spacing_um
         one_d_index = f['lut'][seedPoint[0], seedPoint[1], seedPoint[2]]
-        ind = numpy.unravel_index(one_d_index, f['lut'].shape)
+        ind = np.unravel_index(one_d_index, f['lut'].shape)
 
-        result = list(ind)
-        result = [self.vox2micron(i) for i in result]
+        result = np.array(ind) * self.spacing_um
         
-        return result
+        return list(result)
 
     def micron2vox(self, micron):
         return int(micron * 0.1)

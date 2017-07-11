@@ -1,17 +1,18 @@
 import sys
-import argparse
-import json
 import os
 
 from os import environ
+from twisted.internet import threads
 from twisted.internet.defer import inlineCallbacks
 from autobahn.twisted.wamp import ApplicationSession, ApplicationRunner
+from twisted.internet.defer import inlineCallbacks, returnValue
 
 from configuration_manager import ConfigurationManager
 
 from classes.surface_projection import SurfacePoint
 from classes.projection_point import ProjectionPoint
 from classes.filmstrip_locator import FilmStripLocator
+from classes.model_loader import ModelLoader
 
 
 class LocatorServiceComponent(ApplicationSession):
@@ -20,8 +21,13 @@ class LocatorServiceComponent(ApplicationSession):
     def onJoin(self, details):
         global ready
         
-        path = os.path.join(os.path.dirname(__file__), "env_vars.json")
-        config = ConfigurationManager(path)
+        try:
+            path = os.path.join(os.path.dirname(__file__), "env_vars.json")
+            config = ConfigurationManager(path)
+        except (IOError) as e:
+            print e.message
+
+        
 
 
         ####################################################################
@@ -44,7 +50,7 @@ class LocatorServiceComponent(ApplicationSession):
                 status = results.setdefault("status", dict())
                 status.setdefault("message", "requires seed point")
                 
-                return json.dumps(results)
+                return results
             
             try:
                 projector = SurfacePoint(config)
@@ -54,7 +60,7 @@ class LocatorServiceComponent(ApplicationSession):
             except IOError as e:
                 results.setdefault("message", e.message)
 
-            return json.dumps(results)
+            return results
 
         def projection_point (path = None, pixel = None):
             results = dict()
@@ -65,7 +71,7 @@ class LocatorServiceComponent(ApplicationSession):
                 status = results.setdefault("status", dict())
                 status.setdefault("message", "missing path or pixel argument(s)")
 
-                return json.dumps(results)
+                return results
 
             try:
                 projector = ProjectionPoint(config)
@@ -75,8 +81,9 @@ class LocatorServiceComponent(ApplicationSession):
             except (IOError, ValueError) as e:
                 results.setdefault("message", e.message)
 
-            return json.dumps(results)
+            return results
 
+        @inlineCallbacks
         def filmstrip_location (pixel = None, distanceMapPath = None, direction = None):
             results = dict()
             results.setdefault("success", False)
@@ -86,20 +93,10 @@ class LocatorServiceComponent(ApplicationSession):
                 status = results.setdefault("status", dict())
                 status.setdefault("message", "missing pixel, distanceMapPath, or direction argument(s)")
 
-            try:
-                locator = FilmStripLocator(config)
-                vol_coord, physical_coord, hemisphere, structure = locator.get(pixel, distanceMapPath, direction)
-
-                results.setdefault("volumeCoordinate",vol_coord)
-                results.setdefault("physicalCoordinate", physical_coord)
-                results.setdefault("hemisphere", hemisphere)
-                results.setdefault("structure", structure)
-                results["success"] = True
-
-            except (IOError) as e:
-                results.setdefault("message", e.message)
-
-            return results
+            locator = FilmStripLocator(config)
+            d = yield threads.deferToThread(locator.get, pixel, distanceMapPath, direction, results)
+                
+            returnValue(d)
 
 
         ready = False
@@ -108,13 +105,14 @@ class LocatorServiceComponent(ApplicationSession):
             ###################### Endpoint Registration #######################
             ####################################################################
 
-            yield self.register(describe, u"org.alleninstitute.locator.describe")
-            yield self.register(surface_point, u"org.alleninstitute.locator.get_surface_point")
-            yield self.register(projection_point, u"org.alleninstitute.locator.get_projection_point")
-            yield self.register(filmstrip_location, u"org.alleninstitute.locator.get_filmstrip_location")
+            yield self.register(describe,           u"org.brain_map.locator.describe")
+            yield self.register(surface_point,      u"org.brain_map.locator.get_surface_point")
+            yield self.register(projection_point,   u"org.brain_map.locator.get_projection_point")
+            yield self.register(filmstrip_location, u"org.brain_map.locator.get_filmstrip_location")
+
+            # TODO:
             # Streamlines
             # Reconstuctions
-            # Brain OBJs
 
             ready = True
         except Exception as e:
