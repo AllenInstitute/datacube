@@ -18,6 +18,10 @@ from builtins import int
 class Datacube:
 
 
+    def test(self):
+        return 1
+
+
     def __init__(self, nc_file=None, chunks=None):
         if nc_file: self.load(nc_file, chunks)
         #todo: would be nice to find a way to swap these out,

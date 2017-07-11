@@ -1,5 +1,4 @@
 -r requirements-prod.txt
-allensdk==0.12.4
+allensdk
 h5py
 pynrrd
-numba
