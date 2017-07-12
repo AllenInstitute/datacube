@@ -113,7 +113,7 @@ class FilmStripLocator ():
         s = ontology.get_structure_by_id(id)
 
         self.structure.setdefault('id', int(id))
-        self.structure.setdefault('name', s['safe_name'] )
+        self.structure.setdefault('name', s['safe_name'])
         self.structure.setdefault('abbreviation', s['acronym'])
         self.structure.setdefault('color', s['color_hex_triplet'])
         
@@ -131,7 +131,7 @@ class FilmStripLocator ():
             return [[ 1.0,   0.0,     0.0,       0.0 ],
                     [ 0.0,   ctheta,  -stheta,   0.0 ],
                     [ 0.0,   stheta,  ctheta,    0.0 ],
-                    [ 0.0,   0.0,     0.0,       1.0 ] ]
+                    [ 0.0,   0.0,     0.0,       1.0 ]]
 
     def get_hemisphere(self):
         if self.vol_coord[self.horizontal_index] > self.annot_dimensions[self.horizontal_index] / 2:

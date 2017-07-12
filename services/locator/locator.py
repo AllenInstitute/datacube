@@ -13,6 +13,7 @@ from classes.surface_projection import SurfacePoint
 from classes.projection_point import ProjectionPoint
 from classes.filmstrip_locator import FilmStripLocator
 from classes.model_loader import ModelLoader
+from classes.voxel_lookup import VoxelLookup
 
 
 class LocatorServiceComponent(ApplicationSession):
@@ -98,6 +99,17 @@ class LocatorServiceComponent(ApplicationSession):
                 
             returnValue(d)
 
+        @inlineCallbacks
+        def voxel_lookup (coords = None):
+            results = dict()
+            results.setdefault("success", False)
+            
+            lookup = VoxelLookup(config)
+            
+            d = yield threads.deferToThread(lookup.get, coords, results)
+
+            returnValue(d)
+
 
         ready = False
         try:
@@ -109,6 +121,7 @@ class LocatorServiceComponent(ApplicationSession):
             yield self.register(surface_point,      u"org.brain_map.locator.get_surface_point")
             yield self.register(projection_point,   u"org.brain_map.locator.get_projection_point")
             yield self.register(filmstrip_location, u"org.brain_map.locator.get_filmstrip_location")
+            yield self.register(voxel_lookup,       u"org.brain_map.locator.get_voxel_structure")
 
             # TODO:
             # Streamlines
