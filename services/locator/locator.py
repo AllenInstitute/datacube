@@ -14,6 +14,7 @@ from classes.projection_point import ProjectionPoint
 from classes.filmstrip_locator import FilmStripLocator
 from classes.model_loader import ModelLoader
 from classes.voxel_lookup import VoxelLookup
+from classes.line_finder import LineFinder
 
 
 class LocatorServiceComponent(ApplicationSession):
@@ -27,8 +28,6 @@ class LocatorServiceComponent(ApplicationSession):
             config = ConfigurationManager(path)
         except (IOError) as e:
             print e.message
-
-        
 
 
         ####################################################################
@@ -110,6 +109,18 @@ class LocatorServiceComponent(ApplicationSession):
 
             returnValue(d)
 
+        # Retrieves streamlines or neuron reconstructions by an ambiguous id
+        @inlineCallbacks
+        def get_lines (id = None):
+            results = dict()
+            results.setdefault("success", False)
+
+            locator = LineFinder(config)
+
+            d = yield threads.deferToThread(locator.get, id, results)
+            
+            returnValue(d)
+
 
         ready = False
         try:
@@ -122,6 +133,7 @@ class LocatorServiceComponent(ApplicationSession):
             yield self.register(projection_point,   u"org.brain_map.locator.get_projection_point")
             yield self.register(filmstrip_location, u"org.brain_map.locator.get_filmstrip_location")
             yield self.register(voxel_lookup,       u"org.brain_map.locator.get_voxel_structure")
+            yield self.register(get_lines,          u"org.brain_map.locator.get_lines")
 
             # TODO:
             # Streamlines
