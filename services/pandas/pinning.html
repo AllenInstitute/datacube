@@ -72,9 +72,9 @@
             
             var idx = Math.round($('#slider').slider("option", "value"));
             var select = {'x': [y], 'y': [x], 'z': [idx]};
-            var call = 'org.brain-map.api.datacube.raw';
+            var call = 'org.brain-map.api.datacube.raw.mni';
             var args = [];
-            var kwargs = {'name': 'mni', 'fields': ['mni_x', 'mni_y', 'mni_z'], 'select': select};
+            var kwargs = {'fields': ['mni_x', 'mni_y', 'mni_z'], 'select': select};
             session.call(call, args, kwargs).then(
                 function (res) {
                     var mni_x = res.coords.mni_x.data[0];
@@ -123,9 +123,9 @@
                 }
             }
 
-            var call = 'org.brain-map.api.datacube.image';
+            var call = 'org.brain-map.api.datacube.image.mni';
             var args = [];
-            var kwargs = {'name': 'mni', 'field': 'mni', 'image_format': 'jpeg', 'select': select};
+            var kwargs = {'field': 'mni', 'image_format': 'jpeg', 'select': select};
             session.call(call, args, kwargs).then(
                 function (res) {
                     if(res.data) {
@@ -139,9 +139,9 @@
                 }
             );
 
-            call = 'org.brain-map.api.datacube.image';
+            call = 'org.brain-map.api.datacube.image.mni';
             args = [];
-            kwargs = {'name': 'mni', 'field': 'color', 'image_format': 'png', 'select': select_color};
+            kwargs = {'field': 'color', 'image_format': 'png', 'select': select_color};
             session.call(call, args, kwargs).then(
                 function (res) {
                     if(res.data) {
