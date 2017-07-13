@@ -36,7 +36,6 @@ class FilmStripLocator ():
             return results
 
         except (IOError, ValueError) as e:
-            print "?!?!?!??"
             return results.setdefault('message', e.message)
 
 
