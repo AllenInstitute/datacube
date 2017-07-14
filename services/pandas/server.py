@@ -63,13 +63,13 @@ class PandasServiceComponent(ApplicationSession):
 
 
         @inlineCallbacks
-        def image(field, select, image_format='jpeg', name=None):
+        def image(field, select, image_format='jpeg', dim_order=None, name=None):
             try:
                 datacube = datacubes[name]
-                res = yield threads.deferToThread(datacube.image, select, field, image_format)
+                res = yield threads.deferToThread(datacube.image, select, field, dim_order, image_format)
                 returnValue(res)
             except Exception as e:
-                print({'field': field, 'select': select, 'image_format': image_format, 'name': name})
+                print({'field': field, 'select': select, 'dim_order': dim_order, 'image_format': image_format, 'name': name})
                 _application_error(e)
 
 
@@ -125,12 +125,12 @@ class PandasServiceComponent(ApplicationSession):
                 else:
                     res = pickle.loads(cached)
                 if fields == "indexes_only":
-                    returnValue({'filtered_total': res.size, 'indexes': res.tolist()})
+                    returnValue({'filtered_total': int(res[1]), 'indexes': res[0].tolist()})
                 else:
                     ret = yield threads.deferToThread(_format_xr_dataset_response, res)
                     returnValue(ret)
             except Exception as e:
-                print({'filters': filters, 'sort': sort, 'ascending': ascending, 'start': start, 'stop': stop, 'indexes': indexes, 'fields': fields})
+                print({'name': name, 'filters': filters, 'sort': sort, 'ascending': ascending, 'start': start, 'stop': stop, 'indexes': indexes, 'fields': fields})
                 _application_error(e)
 
 
@@ -230,8 +230,9 @@ if __name__ == '__main__':
                 data_dir = os.path.join(os.path.dirname(args.dataset_manifest), dataset['data-dir'])
                 existing = [os.path.isfile(os.path.join(data_dir, f['path'])) for f in dataset['files']]
                 if args.recache or sum(existing) == 0:
-                    print(' '.join([dataset['script']] + dataset['arguments']))
-                    subprocess.call([dataset['script']] + dataset['arguments'])
+                    command = [dataset['script']] + dataset['arguments']
+                    print(' '.join(command))
+                    subprocess.call(command, cwd=basepath)
                 else:
                     if sum(existing) < len(dataset['files']):
                         raise RuntimeError('Refusing to run with ' + str(sum(existing)) + ' files when expecting ' + str(len(dataset['files'])) + ', for dataset "' + dataset['name'] + '". Specify --recache option to generate files (will overwrite existing files).')
