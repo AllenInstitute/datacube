@@ -2,6 +2,7 @@ import pandas as pd
 import xarray as xr
 import numpy as np
 
+from past.builtins import basestring
 
 def pd_dataframe_to_np_structured_array(df):
     if 'index' in list(df):
