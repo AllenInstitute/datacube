@@ -52,7 +52,6 @@ PandasClient.prototype.update_page = function() {
 
 PandasClient.prototype.load_indexes = function(kwargs_in, start, stop, callback) {
     var kwargs = {};
-    kwargs.name = this.datacube_name;
     kwargs.filters = kwargs_in.filters;
     kwargs.sort = kwargs_in.sort;
     kwargs.ascending = kwargs_in.ascending;
@@ -63,7 +62,7 @@ PandasClient.prototype.load_indexes = function(kwargs_in, start, stop, callback)
     if(stop != null) {
         kwargs.stop = stop;
     }
-    this.session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [], kwargs).then(
+    this.session.call('org.brain-map.api.datacube.select.' + this.datacube_name, [], kwargs).then(
         function (res) { callback(res.indexes, res.filtered_total); });
 };
 
@@ -73,8 +72,8 @@ PandasClient.prototype.load_records = function(indexes, range, callback) {
         callback([], range);
     } else {
         var indexes = indexes.slice(range.start, range.end);
-        this.session.call('org.alleninstitute.pandas_service.filter_cell_specimens', [],
-                         {'indexes': indexes, 'fields': JSON.parse(document.getElementById('fields').value), 'name': this.datacube_name}).then(
+        this.session.call('org.brain-map.api.datacube.select.' + this.datacube_name, [],
+                         {'indexes': indexes, 'fields': JSON.parse(document.getElementById('fields').value)}).then(
             function (res) {
                 //var zbuf = atob(res.data);
                 var zbuf = res.data;

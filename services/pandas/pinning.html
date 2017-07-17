@@ -71,16 +71,16 @@
             var y = Math.round(event.clientY - rect.top);
             
             var idx = Math.round($('#slider').slider("option", "value"));
-            var select = {'x': [y], 'y': [x], 'z': [idx]};
-            var call = 'org.brain-map.api.datacube.raw';
+            var select = {'left_right': [y], 'anterior_posterior': [x], 'superior_inferior': [idx]};
+            var call = 'org.brain-map.api.datacube.raw.mni';
             var args = [];
-            var kwargs = {'name': 'mni', 'fields': ['mni_x', 'mni_y', 'mni_z'], 'select': select};
+            var kwargs = {'fields': ['mni_left_right', 'mni_anterior_posterior', 'mni_superior_inferior'], 'select': select};
             session.call(call, args, kwargs).then(
                 function (res) {
-                    var mni_x = res.coords.mni_x.data[0];
-                    var mni_y = res.coords.mni_y.data[0];
-                    var mni_z = res.coords.mni_z.data[0];
-                    document.getElementById('coords').innerHTML = JSON.stringify([mni_x, mni_y, mni_z]);
+                    var mni_left_right = res.coords.mni_left_right.data[0];
+                    var mni_anterior_posterior = res.coords.mni_anterior_posterior.data[0];
+                    var mni_superior_inferior = res.coords.mni_superior_inferior.data[0];
+                    document.getElementById('coords').innerHTML = JSON.stringify([mni_left_right, mni_anterior_posterior, mni_superior_inferior]);
                 }
             );
         });
@@ -109,8 +109,8 @@
         };
 
         function send(idx) {
-            select = {'x': null, 'y': null, 'z': [idx]};
-            select_color = {'x': null, 'y': null, 'z': [idx], 'RGBA': null};
+            select = {'left_right': null, 'anterior_posterior': null, 'superior_inferior': idx};
+            select_color = {'left_right': null, 'anterior_posterior': null, 'superior_inferior': idx, 'RGBA': null};
             var start = new Date();
             got_image = false;
             got_overlay = false;
@@ -123,9 +123,9 @@
                 }
             }
 
-            var call = 'org.brain-map.api.datacube.image';
+            var call = 'org.brain-map.api.datacube.image.mni';
             var args = [];
-            var kwargs = {'name': 'mni', 'field': 'mni', 'image_format': 'jpeg', 'select': select};
+            var kwargs = {'field': 'mni', 'image_format': 'jpeg', 'select': select, 'dim_order': ['anterior_posterior', 'left_right']};
             session.call(call, args, kwargs).then(
                 function (res) {
                     if(res.data) {
@@ -139,9 +139,9 @@
                 }
             );
 
-            call = 'org.brain-map.api.datacube.image';
+            call = 'org.brain-map.api.datacube.image.mni';
             args = [];
-            kwargs = {'name': 'mni', 'field': 'color', 'image_format': 'png', 'select': select_color};
+            kwargs = {'field': 'color', 'image_format': 'png', 'select': select_color, 'dim_order': ['anterior_posterior', 'left_right']};
             session.call(call, args, kwargs).then(
                 function (res) {
                     if(res.data) {

@@ -3,7 +3,7 @@
         "name": "cell_specimens",
         "enabled": true,
         "script": "./scripts/datasets/api_cam_cell_metric.py",
-        "data-dir": "../../data/",
+        "data-dir": "./data/",
         "files": [
             {
                 "path": "cell_specimens.nc",
@@ -11,13 +11,13 @@
                 "chunks": {"dim_0": 8000}
             }
         ],
-        "arguments": ["--data-src", "http://iwarehouse/", "--data-dir", "../../data/", "--data-name", "cell_specimens"]
+        "arguments": ["--data-src", "http://iwarehouse/", "--data-dir", "./data/", "--data-name", "cell_specimens"]
     },
     {
         "name": "mni",
         "enabled": true,
         "script": "./scripts/datasets/mni.py",
-        "data-dir": "../../data/",
+        "data-dir": "./data/",
         "files": [
             {
                 "path": "mni.nc",
@@ -25,6 +25,6 @@
                 "chunks": {"x": 20, "y": 20, "z": 20}
             }
         ],
-        "arguments": ["--data-dir", "../../data/", "--data-name", "mni"]
+        "arguments": ["--data-dir", "./data/", "--data-name", "mni"]
     }
 ]

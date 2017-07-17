@@ -22,6 +22,7 @@ import txredisapi
 import subprocess
 import os.path
 import re
+import functools
 
 from six import text_type as str
 from builtins import bytes
@@ -50,19 +51,10 @@ class PandasServiceComponent(ApplicationSession):
     def onJoin(self, details):
 
 
-        def _get_datacube(name=None):
-            if name is None:
-                if 1==len(datacubes):
-                    name = list(datacubes.keys())[0]
-                else:
-                    raise RuntimeError('Must specify datacube name when server has more than one datacube loaded (' + ', '.join(datacubes.keys()) + ').')
-            return datacubes[name]
-            
-
         @inlineCallbacks
         def raw(fields, select, name=None):
             try:
-                datacube = _get_datacube(name)
+                datacube = datacubes[name]
                 res = yield threads.deferToThread(datacube.raw, select, fields)
                 returnValue(res.to_dict())
             except Exception as e:
@@ -71,14 +63,24 @@ class PandasServiceComponent(ApplicationSession):
 
 
         @inlineCallbacks
-        def image(field, select, image_format='jpeg', name=None):
+        def image(field, select, image_format='jpeg', dim_order=None, name=None):
             try:
-                datacube = _get_datacube(name)
-                res = yield threads.deferToThread(datacube.image, select, field, image_format)
+                datacube = datacubes[name]
+                res = yield threads.deferToThread(datacube.image, select, field, dim_order, image_format)
                 returnValue(res)
             except Exception as e:
-                print({'field': field, 'select': select, 'image_format': image_format, 'name': name})
+                print({'field': field, 'select': select, 'dim_order': dim_order, 'image_format': image_format, 'name': name})
                 _application_error(e)
+
+
+        def filter_cell_specimens(filters=None,
+                                  sort=None,
+                                  ascending=None,
+                                  start=0,
+                                  stop=None,
+                                  indexes=None,
+                                  fields=None):
+            return select('cell_specimens', filters, sort, ascending, start, stop, indexes, fields)
 
 
         #todo: this is the 1-d-only analog of "raw", with filtering; these should be combined
@@ -92,7 +94,7 @@ class PandasServiceComponent(ApplicationSession):
                    indexes=None,
                    fields=None):
             try:
-                datacube = _get_datacube(name)
+                datacube = datacubes[name]
                 request_cache_key = json.dumps(['request', name, filters, sort, ascending, start, stop, indexes, fields])
                 cached = yield redis.get(request_cache_key)
                 if not cached:
@@ -123,12 +125,12 @@ class PandasServiceComponent(ApplicationSession):
                 else:
                     res = pickle.loads(cached)
                 if fields == "indexes_only":
-                    returnValue({'filtered_total': res.size, 'indexes': res.tolist()})
+                    returnValue({'filtered_total': int(res[1]), 'indexes': res[0].tolist()})
                 else:
                     ret = yield threads.deferToThread(_format_xr_dataset_response, res)
                     returnValue(ret)
             except Exception as e:
-                print({'filters': filters, 'sort': sort, 'ascending': ascending, 'start': start, 'stop': stop, 'indexes': indexes, 'fields': fields})
+                print({'name': name, 'filters': filters, 'sort': sort, 'ascending': ascending, 'start': start, 'stop': stop, 'indexes': indexes, 'fields': fields})
                 _application_error(e)
 
 
@@ -163,17 +165,27 @@ class PandasServiceComponent(ApplicationSession):
 
             #yield pool.on_ready(timeout=30)
 
-            yield self.register(raw,
-                                u'org.brain-map.api.datacube.raw',
-                                options=RegisterOptions(invoke=u'roundrobin'))
-            yield self.register(image,
-                                u'org.brain-map.api.datacube.image',
-                                options=RegisterOptions(invoke=u'roundrobin'))
-            yield self.register(select,
-                                u'org.brain-map.api.datacube.select',
-                                options=RegisterOptions(invoke=u'roundrobin'))
+            #def _get_datacube(name=None):
+            #    if name is None:
+            #        if 1==len(datacubes):
+            #            name = list(datacubes.keys())[0]
+            #        else:
+            #            raise RuntimeError('Must specify datacube name when server has more than one datacube loaded (' + ', '.join(datacubes.keys()) + ').')
+            #    return datacubes[name]
+
+            for name in datacubes.keys():
+                yield self.register(functools.partial(raw, name=name),
+                                    u'org.brain-map.api.datacube.raw.' + name,
+                                    options=RegisterOptions(invoke=u'roundrobin'))
+                yield self.register(functools.partial(image, name=name),
+                                    u'org.brain-map.api.datacube.image.' + name,
+                                    options=RegisterOptions(invoke=u'roundrobin'))
+                yield self.register(functools.partial(select, name=name),
+                                    u'org.brain-map.api.datacube.select.' + name,
+                                    options=RegisterOptions(invoke=u'roundrobin'))
+
             # legacy
-            yield self.register(select,
+            yield self.register(filter_cell_specimens,
                                 u'org.alleninstitute.pandas_service.filter_cell_specimens',
                                 options=RegisterOptions(invoke=u'roundrobin'))
 
@@ -210,21 +222,24 @@ if __name__ == '__main__':
     #process_pool = txpool.Pool(size=4, log=logging, init_call='datacube.worker.instance.load', init_args=(args.data_dir + 'cell_specimens.npy',))
 
     datacubes={}
+    basepath = os.path.dirname(args.dataset_manifest)
     with open(args.dataset_manifest, 'r') as datasets_json:
         datasets = json.load(datasets_json)
         for dataset in datasets:
             if dataset['enabled']:
-                existing = [os.path.isfile(dataset['data-dir'] + f['path']) for f in dataset['files']]
+                data_dir = os.path.join(os.path.dirname(args.dataset_manifest), dataset['data-dir'])
+                existing = [os.path.isfile(os.path.join(data_dir, f['path'])) for f in dataset['files']]
                 if args.recache or sum(existing) == 0:
-                    print(' '.join([dataset['script']] + dataset['arguments']))
-                    subprocess.call([dataset['script']] + dataset['arguments'])
+                    command = [dataset['script']] + dataset['arguments']
+                    print(' '.join(command))
+                    subprocess.call(command, cwd=basepath)
                 else:
                     if sum(existing) < len(dataset['files']):
                         raise RuntimeError('Refusing to run with ' + str(sum(existing)) + ' files when expecting ' + str(len(dataset['files'])) + ', for dataset "' + dataset['name'] + '". Specify --recache option to generate files (will overwrite existing files).')
                         exit(1)
                 nc_file = next(f for f in dataset['files'] if re.search('\.nc$', f['path']))
                 chunks = nc_file['chunks'] if nc_file['use_chunks'] else None
-                datacubes[dataset['name']] = Datacube(dataset['data-dir'] + nc_file['path'], chunks=chunks)
+                datacubes[dataset['name']] = Datacube(os.path.join(data_dir, nc_file['path']), chunks=chunks)
 
     runner = ApplicationRunner(str(args.router), str(args.realm))
     runner.run(PandasServiceComponent, auto_reconnect=True)
