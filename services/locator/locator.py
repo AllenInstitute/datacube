@@ -17,6 +17,7 @@ from classes.voxel_lookup import VoxelLookup
 from classes.line_finder import LineFinder
 from classes.spacial_search import SpacialSearch
 from classes.ontology_service import OntologyService
+from classes.model_loader import ModelLoader
 
 
 class LocatorServiceComponent(ApplicationSession):
@@ -136,6 +137,11 @@ class LocatorServiceComponent(ApplicationSession):
 
             return service.get_ontology()
         
+        def ccf_model(id = None):
+            service = ModelLoader(config)
+            
+            return service.get(id)
+
 
         ready = False
         try:
@@ -150,8 +156,9 @@ class LocatorServiceComponent(ApplicationSession):
             yield self.register(voxel_lookup,       u"org.brain_map.locator.get_voxel_structure")
             yield self.register(get_lines,          u"org.brain_map.locator.get_lines")
             yield self.register(spacial_search,     u"org.brain_map.locator.get_streamlines_at_voxel")
-            yield self.register(ccf_ontology,       u"org.brain_map.locator.get_ontology")
-
+            yield self.register(ccf_ontology,       u"org.brain_map.locator.get_ccf_ontology")
+            yield self.register(ccf_model,          u"org.brain_map.locator.get_ccf_model")
+        
             ready = True
         except Exception as e:
             print("Could not register procedure: {0}".format(e))
