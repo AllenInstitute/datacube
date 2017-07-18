@@ -16,6 +16,7 @@ from classes.model_loader import ModelLoader
 from classes.voxel_lookup import VoxelLookup
 from classes.line_finder import LineFinder
 from classes.spacial_search import SpacialSearch
+from classes.ontology_service import OntologyService
 
 
 class LocatorServiceComponent(ApplicationSession):
@@ -130,6 +131,12 @@ class LocatorServiceComponent(ApplicationSession):
 
             return d
 
+        def ccf_ontology():
+            service = OntologyService(config)
+
+            return service.get_ontology()
+        
+
         ready = False
         try:
             ####################################################################
@@ -143,6 +150,7 @@ class LocatorServiceComponent(ApplicationSession):
             yield self.register(voxel_lookup,       u"org.brain_map.locator.get_voxel_structure")
             yield self.register(get_lines,          u"org.brain_map.locator.get_lines")
             yield self.register(spacial_search,     u"org.brain_map.locator.get_streamlines_at_voxel")
+            yield self.register(ccf_ontology,       u"org.brain_map.locator.get_ontology")
 
             ready = True
         except Exception as e:

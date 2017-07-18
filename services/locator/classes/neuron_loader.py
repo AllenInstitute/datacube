@@ -1,14 +1,16 @@
-
+import json
 
 class NeuronLoader():
     def __init__(self, file_path):
         self.file_path = file_path
 
     def load(self):
+        points = dict()
+
         with open(self.file_path) as f:
-            points = dict()
 
             for line in f:
+
                 if '#' in line:
                     continue
 
@@ -30,13 +32,13 @@ class NeuronLoader():
                 else:
                     point['children'] = points[point['id']]['children']
                     points[point['id']] = point
-
+                
                 if point['pid'] not in points:
                     points.setdefault(point['pid'], { 'children': [ point ] })
                 else:
                     points[point['pid']]['children'].append(point)
-
-            return points[-1]
+        
+        return points[1]
 
 
 

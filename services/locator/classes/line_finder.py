@@ -31,7 +31,7 @@ class LineFinder():
                 results['success'] = True
 
             except Exception as e:
-                results.setdefault("message", "an error occured while parsing the streamline files")    
+                results.setdefault("message", "an error occured while parsing the streamline files: " + e.message)    
 
             return results
         
@@ -42,10 +42,14 @@ class LineFinder():
                 # Go get the reconstruction and convert that ish
                 results.setdefault("type", "reconstruction")
                 loader = NeuronLoader(file_location)
-                results.setdefault('lines', loader.load())
+                
+                res = loader.load()
+                
+                results.setdefault('lines', res)
                 results['success'] = True
-            except:
-                results.setdefault("message", "an error occured while parsing the neuron reconstruction")
+
+            except Exception as e:
+                results.setdefault("message", "an error occured while parsing the neuron reconstruction: " + e.message)
                 return results
 
         results.setdefault("message", "invalid streamline or reconstruction id")

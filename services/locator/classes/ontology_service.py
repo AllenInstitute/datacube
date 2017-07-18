@@ -12,3 +12,6 @@ class OntologyService ():
         for line in self.ontology:
             if line["id"] == str(id):
                 return line
+
+    def get_ontology(self):
+        return self.ontology
