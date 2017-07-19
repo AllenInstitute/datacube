@@ -40,6 +40,17 @@ class Datacube:
         #todo: only do this for < N-d fields
         for field in self.df.keys():
             self.argsorts[field] = np.argsort(self.df[field].values)
+        #todo: would be nice to cache these instead of computing on every startup
+        self.mins = {}
+        self.maxes = {}
+        self.means = {}
+        self.stds = {}
+        for field in self.df.keys():
+            self.mins[field] = self.df[field].min().values
+            self.maxes[field] = self.df[field].max().values
+            if not self.df[field].dtype.kind in 'OSU':
+                self.means[field] = self.df[field].mean().values
+                self.stds[field] = self.df[field].std().values
 
 
     def _validate_select(self, select):
@@ -111,7 +122,6 @@ class Datacube:
         return self.get_data(subscripts, fields, dim_order)
 
 
-    #todo: add dim_order argument so e.g. ['y', 'x'] would give transposed image of ['x', 'y']
     def image(self, select, field, dim_order=None, image_format='jpeg'):
         if 'RGBA' in self.df[field].dims:
             if 'RGBA' in dim_order:
@@ -129,9 +139,9 @@ class Datacube:
         if data.ndim != 2 and not (data.ndim == 3 and data.shape[2] == 4):
             raise RuntimeError('Non 2-d region selected when requesting image')
 
+        #todo: probably ought to make normalization configurable in the request in some manner
         if data.ndim == 2 and data.dtype != np.uint8:
-            #todo: precompute min, max for each numeric field on the datacube
-            data = ((data / np.max(data)) * 255.0).astype(np.uint8)
+            data = ((data / self.maxes[field]) * 255.0).astype(np.uint8)
 
         image = Image.fromarray(data)
         buf = BytesIO()
