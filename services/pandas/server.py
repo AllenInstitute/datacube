@@ -52,6 +52,17 @@ class PandasServiceComponent(ApplicationSession):
 
 
         @inlineCallbacks
+        def info(name=None):
+            try:
+                datacube = datacubes[name]
+                res = yield threads.deferToThread(datacube.info)
+                returnValue(res)
+            except Exception as e:
+                print({'name': name})
+                _application_error(e)
+
+
+        @inlineCallbacks
         def raw(fields, select, name=None):
             try:
                 datacube = datacubes[name]
@@ -174,6 +185,9 @@ class PandasServiceComponent(ApplicationSession):
             #    return datacubes[name]
 
             for name in datacubes.keys():
+                yield self.register(functools.partial(info, name=name),
+                                    u'org.brain-map.api.datacube.info.' + name,
+                                    options=RegisterOptions(invoke=u'roundrobin'))
                 yield self.register(functools.partial(raw, name=name),
                                     u'org.brain-map.api.datacube.raw.' + name,
                                     options=RegisterOptions(invoke=u'roundrobin'))

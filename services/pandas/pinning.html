@@ -2,160 +2,192 @@
 <html>
 <head>
 <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+<style type="text/css">
+canvas {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+}
+
+canvas:active {
+    cursor:none;
+}
+</style>
 </head>
 <body bgcolor="gray">
 <h3>datacube reference space test page</h3>
 <noscript>You must enable JavaScript</noscript>
-<p>slice:<div id="slider"></div></p>
+<p>sagittal:<div id="s_slider"></div></p>
+<p>coronal:<div id="c_slider"></div></p>
+<p>horizontal:<div id="h_slider"></div></p>
 <p>opacity:<div id="opacity"></div></p>
 <p>MNI coords: <span id="coords"></span></p>
-<canvas id="graph"  width="300" height="150"></canvas>
+<canvas id="s_graph"  width="300" height="450"></canvas>
+<canvas id="c_graph"  width="300" height="450"></canvas>
+<canvas id="h_graph"  width="300" height="450"></canvas>
+
+<!-- dev module loading -->
+<!--
+<script src="node_modules/bluebird/js/browser/bluebird.min.js"></script>
+<script src="node_modules/systemjs/dist/system.js"></script>
+<script src="system.config.js"></script>
+-->
+
+<!-- precompiled/production module loading -->
+
 <script type="text/javascript" src="node_modules/autobahn-js-built/autobahn.min.js"></script>
+<script type="text/javascript" src="node_modules/datacube-js/lib/umd/slice_viewer.js"></script>
+
+
 <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
 <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
 <script type="text/javascript">
+//uncomment for dev
+//SystemJS.import('./node_modules/datacube-js/src/slice_viewer.js').then(function(slice_viewer) {
     $(function() {
-        var pending = false;
-        var did_scroll = false;
-        function scroll() {
-            did_scroll = true;
+        class SliderControl {
+            constructor(slider_elem) {
+                var self = this;
+                self.control = slider_elem;
+            }
+
+            setup(min, max, initial_value, event_handler) {
+                var self = this;
+                self.control.slider({
+                        min: min,
+                        max: max,
+                        value: initial_value,
+                        slide: event_handler
+                });
+            }
+
+            get_current_value() {
+                var self = this;
+                return self.control.slider("option", "value");
+            }
         }
-        setInterval(function() {
-            if(did_scroll) {
-                if(!pending) {
-                    did_scroll = false;
-                    pending = true;
-                    send($('#slider').slider("option", "value"));
-                }
-            }
-        }, 50);
 
-        $('#slider').slider(
-            {
-                min: 0,
-                max: 377,
-                value: 194,
-                slide: function(event, ui) {
-                    scroll();
-                }
-            }
-        );
-        $('#opacity').slider(
-            {
-                min: 0,
-                max: 100,
-                value: 25,
-                slide: function(event, ui) {
-                    render();
-                }
-            }
-        );
+        var canvases = {'left_right': $('#s_graph')[0], 'anterior_posterior': $('#c_graph')[0], 'superior_inferior': $('#h_graph')[0]};
+        var controls = {'left_right': new SliderControl($('#s_slider')),
+                        'anterior_posterior': new SliderControl($('#c_slider')),
+                        'superior_inferior': new SliderControl($('#h_slider'))};
 
-        var connection = new autobahn.Connection({
-             url: 'ws://' + window.location.hostname + (window.location.port ? ':' + window.location.port : '') + '/ws',
-             realm: 'aibs'
-        });
+        //todo: do this dynamically
+        var h_image = document.createElement('img');
+        h_image.style.display = 'none';
+        var h_overlay = document.createElement('img');
+        h_overlay.style.display = 'none';
+        var s_image = document.createElement('img');
+        s_image.style.display = 'none';
+        var s_overlay = document.createElement('img');
+        s_overlay.style.display = 'none';
+        var c_image = document.createElement('img');
+        c_image.style.display = 'none';
+        var c_overlay = document.createElement('img');
+        c_overlay.style.display = 'none';
+        var images = {'left_right': {'mni': s_image, 'color': s_overlay},
+                      'anterior_posterior': {'mni': c_image, 'color': c_overlay},
+                      'superior_inferior': {'mni': h_image, 'color': h_overlay}};
+        function resize(datacube, canvas, images) {
+            canvas.width = images['mni'].width;
+            canvas.height = images['mni'].height;
+        }
 
-        var session;
-        connection.onopen = function (s) {
-            session = s;
-            scroll();
-        };
-
-        connection.open();
-
-        var canvas = document.getElementById('graph');
-        canvas.addEventListener('click', function(event) {
-            var rect = canvas.getBoundingClientRect();
-            var x = Math.round(event.clientX - rect.left);
-            var y = Math.round(event.clientY - rect.top);
-            
-            var idx = Math.round($('#slider').slider("option", "value"));
-            var select = {'left_right': [y], 'anterior_posterior': [x], 'superior_inferior': [idx]};
-            var call = 'org.brain-map.api.datacube.raw.mni';
-            var args = [];
-            var kwargs = {'fields': ['mni_left_right', 'mni_anterior_posterior', 'mni_superior_inferior'], 'select': select};
-            session.call(call, args, kwargs).then(
-                function (res) {
-                    var mni_left_right = res.coords.mni_left_right.data[0];
-                    var mni_anterior_posterior = res.coords.mni_anterior_posterior.data[0];
-                    var mni_superior_inferior = res.coords.mni_superior_inferior.data[0];
-                    document.getElementById('coords').innerHTML = JSON.stringify([mni_left_right, mni_anterior_posterior, mni_superior_inferior]);
-                }
-            );
-        });
-
-        var image = document.createElement('img');
-        image.style.display = 'none';
-        var overlay = document.createElement('img');
-        overlay.style.display = 'none';
-        var got_image = false;
-        var got_overlay = false;
-
-        function render() {
-            var canvas = document.getElementById('graph');
-            canvas.width = image.width;
-            canvas.height = image.height;
-
+        function render(datacube, x, y, canvas, images) {
             var context = canvas.getContext('2d');
             context.clearRect(0, 0, canvas.width, canvas.height);
-            context.drawImage(image, 0, 0, canvas.width, canvas.height);
-            context.globalCompositeOperation = 'source-over';
+            context.drawImage(images['mni'], 0, 0, canvas.width, canvas.height);
+            //context.globalCompositeOperation = 'source-over';
             context.globalAlpha = $('#opacity').slider("option", "value")/100.0;
-            context.drawImage(overlay, 0, 0, canvas.width, canvas.height);
+            context.drawImage(images['color'], 0, 0, canvas.width, canvas.height);
+            context.globalAlpha = 1.0;
             // if a file or dataUrl is needed
             //canvas.toBlob(function(blob) { console.log(blob); }, 'image/jpeg', 0.4);
             //console.log(canvas.toDataURL('image/jpeg', 0.4));
+
+            context.beginPath();
+            context.moveTo(x, 0);
+            context.lineTo(x, canvas.height);
+            context.lineWidth = 1;
+            context.strokeStyle = '#ff0000';
+            context.stroke();
+            context.beginPath();
+            context.moveTo(0, y);
+            context.lineTo(canvas.width, y);
+            context.lineWidth = 1;
+            context.strokeStyle = '#ff0000';
+            context.stroke();
         };
 
-        function send(idx) {
-            select = {'left_right': null, 'anterior_posterior': null, 'superior_inferior': idx};
-            select_color = {'left_right': null, 'anterior_posterior': null, 'superior_inferior': idx, 'RGBA': null};
-            var start = new Date();
-            got_image = false;
-            got_overlay = false;
-
-            function finish() {
-                if(pending && got_image && got_overlay) {
-                    render();
-                    pending = false;
-                    console.log('finished in ' + (new Date() - start) + ' ms');
+        var url = 'ws://' + window.location.hostname + (window.location.port ? ':' + window.location.port : '') + '/ws';
+        var realm = 'aibs';
+        new slice_viewer.DatacubeConnection(url, realm, function(datacube_connection) {
+            new slice_viewer.Datacube(datacube_connection, 'mni', function(datacube) {
+                function click_coords(coords) {
+                    var call = 'org.brain-map.api.datacube.raw';
+                    var args = [];
+                    var kwargs = {'fields': ['mni_left_right', 'mni_anterior_posterior', 'mni_superior_inferior'], 'select': coords};
+                    datacube.call(call, args, kwargs).then(
+                        function (res) {
+                            var mni_left_right = res.coords.mni_left_right.data;
+                            var mni_anterior_posterior = res.coords.mni_anterior_posterior.data;
+                            var mni_superior_inferior = res.coords.mni_superior_inferior.data;
+                            document.getElementById('coords').innerHTML = JSON.stringify({'mni_left_right': mni_left_right,
+                                                                                          'mni_anterior_posterior': mni_anterior_posterior,
+                                                                                          'mni_superior_inferior': mni_superior_inferior});
+                        }
+                    );
                 }
-            }
 
-            var call = 'org.brain-map.api.datacube.image.mni';
-            var args = [];
-            var kwargs = {'field': 'mni', 'image_format': 'jpeg', 'select': select, 'dim_order': ['anterior_posterior', 'left_right']};
-            session.call(call, args, kwargs).then(
-                function (res) {
-                    if(res.data) {
-                        image.onload = function() {
-                            console.log('mni jpeg: ' + res.data.length + ' bytes');
-                            got_image = true;
-                            finish();
-                        };
-                        image.src = res.data;
+                var datacube_slice_view = new slice_viewer.DatacubeSliceView(datacube,
+                                                                ['left_right', 'anterior_posterior', 'superior_inferior'],
+                                                                {
+                                                                    'left_right': ['superior_inferior', 'anterior_posterior'],
+                                                                    'anterior_posterior': ['superior_inferior', 'left_right'],
+                                                                    'superior_inferior': ['anterior_posterior', 'left_right']
+                                                                },
+                                                                {
+                                                                    'left_right': {'superior_inferior': -1, 'anterior_posterior': 1},
+                                                                    'anterior_posterior': {'superior_inferior': -1, 'left_right': -1},
+                                                                    'superior_inferior': {'anterior_posterior': -1, 'left_right': -1}
+                                                                },
+                                                                ['mni', 'color'],
+                                                                {
+                                                                    'left_right': {
+                                                                        'mni': {'image_format': 'jpeg'},
+                                                                        'color': {'image_format': 'png'}
+                                                                    },
+                                                                    'anterior_posterior': {
+                                                                        'mni': {'image_format': 'jpeg'},
+                                                                        'color': {'image_format': 'png'}
+                                                                    },
+                                                                    'superior_inferior': {
+                                                                        'mni': {'image_format': 'jpeg'},
+                                                                        'color': {'image_format': 'png'}
+                                                                    }
+                                                                },
+                                                                canvases,
+                                                                controls,
+                                                                images, //todo: remove
+                                                                render,
+                                                                resize,
+                                                                click_coords);
+
+                $('#opacity').slider(
+                    {
+                        min: 0,
+                        max: 100,
+                        value: 25,
+                        slide: function(event, ui) {
+                            datacube_slice_view.redraw();
+                        }
                     }
-                }
-            );
-
-            call = 'org.brain-map.api.datacube.image.mni';
-            args = [];
-            kwargs = {'field': 'color', 'image_format': 'png', 'select': select_color, 'dim_order': ['anterior_posterior', 'left_right']};
-            session.call(call, args, kwargs).then(
-                function (res) {
-                    if(res.data) {
-                        overlay.onload = function() {
-                            console.log('annotation png: ' + res.data.length + ' bytes');
-                            got_overlay = true;
-                            finish();
-                        };
-                        overlay.src = res.data;
-                    }
-                }
-            );
-        }
+                );
+            });
+        });
     });
+//uncomment for dev
+//});
 </script>
 </body>
 </html>

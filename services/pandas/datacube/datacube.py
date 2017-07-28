@@ -54,7 +54,7 @@ class Datacube:
 
 
     def _validate_select(self, select):
-        assert(all(f in list(self.df.keys()) for f in select.keys()))
+        assert(all(f in list(self.df.dims.keys()) for f in select.keys()))
 
         for axis, selector in iteritems(select):
             if isinstance(selector, list):
@@ -113,6 +113,15 @@ class Datacube:
         if dim_order:
             res = res.transpose(*dim_order)
         return res
+
+
+    def info(self):
+        dims = {name: size for name, size in self.df.dims.items()}
+        variables = {name: {'type': da.dtype.name, 'dims': da.dims} for name, da in self.df.variables.items()}
+        for name, da in self.df.variables.items():
+            variables[name]['attrs'] = dict(da.attrs.items())
+        attrs = dict(self.df.attrs.items())
+        return {'dims': dims, 'vars': variables, 'attrs': attrs}
 
 
     def raw(self, select, fields, dim_order=None):
