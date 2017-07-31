@@ -18,6 +18,10 @@ from builtins import int
 class Datacube:
 
 
+    def test(self):
+        return 1
+
+
     def __init__(self, nc_file=None, chunks=None):
         if nc_file: self.load(nc_file, chunks)
         #todo: would be nice to find a way to swap these out,
@@ -36,10 +40,21 @@ class Datacube:
         #todo: only do this for < N-d fields
         for field in self.df.keys():
             self.argsorts[field] = np.argsort(self.df[field].values)
+        #todo: would be nice to cache these instead of computing on every startup
+        self.mins = {}
+        self.maxes = {}
+        self.means = {}
+        self.stds = {}
+        for field in self.df.keys():
+            self.mins[field] = self.df[field].min().values
+            self.maxes[field] = self.df[field].max().values
+            if not self.df[field].dtype.kind in 'OSU':
+                self.means[field] = self.df[field].mean().values
+                self.stds[field] = self.df[field].std().values
 
 
     def _validate_select(self, select):
-        assert(all(f in list(self.df.keys()) for f in select.keys()))
+        assert(all(f in list(self.df.dims.keys()) for f in select.keys()))
 
         for axis, selector in iteritems(select):
             if isinstance(selector, list):
@@ -72,6 +87,12 @@ class Datacube:
                     raise RuntimeError('All elements of selector for axis {0} do not have the same type.'.format(axis))
             elif isinstance(selector, dict):
                 select[axis] = slice(selector.get('start'), selector.get('stop'), selector.get('step'))
+            elif isinstance(selector, int):
+                select[axis] = selector
+            elif selector is None:
+                pass
+            else:
+                raise ValueError('Unexpected selector of type ' + str(type(selector)))
         return select
 
 
@@ -87,21 +108,36 @@ class Datacube:
         return subscripts
 
 
-    def get_data(self, subscripts, fields):
-        return self.df[subscripts][fields]
+    def get_data(self, subscripts, fields, dim_order=None):
+        res = self.df[subscripts][fields]
+        if dim_order:
+            res = res.transpose(*dim_order)
+        return res
 
 
-    def raw(self, select, fields):
+    def info(self):
+        dims = {name: size for name, size in self.df.dims.items()}
+        variables = {name: {'type': da.dtype.name, 'dims': da.dims} for name, da in self.df.variables.items()}
+        for name, da in self.df.variables.items():
+            variables[name]['attrs'] = dict(da.attrs.items())
+        attrs = dict(self.df.attrs.items())
+        return {'dims': dims, 'vars': variables, 'attrs': attrs}
+
+
+    def raw(self, select, fields, dim_order=None):
         assert(all(f in list(self.df.keys()) for f in fields))
         self._validate_select(select)
         subscripts = self._get_subscripts_from_select(select)
-        return self.get_data(subscripts, fields)
+        return self.get_data(subscripts, fields, dim_order)
 
 
-    #todo: add dims argument so e.g. ['y', 'x'] would give transposed image of ['x', 'y']
-    def image(self, select, field, image_format='jpeg'):
-        data = self.raw(select, [field])
-        dims = list(data.dims.keys())
+    def image(self, select, field, dim_order=None, image_format='jpeg'):
+        if 'RGBA' in self.df[field].dims:
+            if 'RGBA' in dim_order:
+                dim_order.remove('RGBA')
+            dim_order.append('RGBA')
+        data = self.raw(select, [field], dim_order)
+        dims = list(data[field].dims)
         if 'RGBA' in dims:
             dims.remove('RGBA')
             dims.append('RGBA')
@@ -112,9 +148,9 @@ class Datacube:
         if data.ndim != 2 and not (data.ndim == 3 and data.shape[2] == 4):
             raise RuntimeError('Non 2-d region selected when requesting image')
 
+        #todo: probably ought to make normalization configurable in the request in some manner
         if data.ndim == 2 and data.dtype != np.uint8:
-            #todo: precompute min, max for each numeric field on the datacube
-            data = ((data / np.max(data)) * 255.0).astype(np.uint8)
+            data = ((data / self.maxes[field]) * 255.0).astype(np.uint8)
 
         image = Image.fromarray(data)
         buf = BytesIO()
@@ -164,9 +200,10 @@ class Datacube:
                 inds = sorted_inds[np.in1d(sorted_inds, inds)]
             else:
                 inds = sorted_inds
+        filtered_total = inds.size
         inds = inds[start:stop]
         if fields == "indexes_only":
-            return inds
+            return inds, filtered_total
         else:
             if options.get('max_records') and inds.size > options.get('max_records'):
                 raise ValueError('Requested would return ' + str(inds.size) + ' records; please limit request to ' + str(options['max_records']) + ' records.')

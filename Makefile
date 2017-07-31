@@ -1,4 +1,4 @@
 .PHONY: test
 
 test:
-	trial test/*.py
+	py.test

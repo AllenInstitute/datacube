@@ -35,8 +35,8 @@ Run Crossbar under Pypy (optional)
 
 Download and unzip portable pypy::
 
-    wget https://bitbucket.org/squeaky/portable-pypy/downloads/pypy-5.8-linux_x86_64-portable.tar.bz2
-    tar xvjf pypy-5.8-linux_x86_64-portable.tar.bz2
+    wget https://bitbucket.org/squeaky/portable-pypy/downloads/pypy-5.8-1-linux_x86_64-portable.tar.bz2
+    tar xvjf pypy-5.8-1-linux_x86_64-portable.tar.bz2
 
 Install crossbar under pypy::
 
@@ -72,3 +72,10 @@ Verify the environment and install by running the demo::
     crossbar start --config config-demo.json
 
 Wait for the "Server Ready." message, and then point your browser to http://localhost:8082/ and click on the links.
+
+Run tests
+---------
+
+::
+
+    make test

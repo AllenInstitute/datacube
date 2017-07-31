@@ -2,6 +2,8 @@ import pandas as pd
 import xarray as xr
 import numpy as np
 
+from past.builtins import basestring
+from builtins import bytes
 
 def pd_dataframe_to_np_structured_array(df):
     if 'index' in list(df):
@@ -18,9 +20,9 @@ def pd_dataframe_to_np_structured_array(df):
 
         if data.dtype.kind == 'O':
             if all(isinstance(x, basestring) or x is np.nan or x is None for x in data):
-                data[data == np.array([None])] = b''
-                data[np.array([True if str(x) == 'nan' else False for x in data], dtype=np.bool)] = b''
-                data = np.array([x + '\0' for x in data], dtype=np.str)
+                data[data == np.array([None])] = ''
+                data[np.array([True if str(x) == 'nan' else False for x in data], dtype=np.bool)] = ''
+                data = np.array([bytes(x, 'ascii') + b'\0' for x in data], dtype='S')
         col_data.append(data)
         col_names.append(name)
         # javascript cannot natively handle longs

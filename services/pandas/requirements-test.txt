@@ -1,1 +1,4 @@
 -r requirements-dev.txt
+mock
+pytest
+pytest-redis
