@@ -124,7 +124,7 @@
         {
             "id": "redis",
             "type": "guest",
-            "executable": "redis-3.2.9/src/redis-server",
+            "executable": "redis-server",
             "arguments": [],
             "options": {
                 "workdir": ".."

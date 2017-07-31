@@ -24,6 +24,8 @@ On CentOS 6::
     pushd redis-3.2.9
     make
     make test
+    popd
+    export PATH=$PATH:$PWD/redis-3.2.9/src/
 
 Run :code:`redis-server` and heed these warnings if they are present::
 
