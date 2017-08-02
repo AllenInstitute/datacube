@@ -38,8 +38,9 @@ class Datacube:
         self.df = xr.open_dataset(nc_file, chunks=chunks)
         self.argsorts = {}
         #todo: only do this for < N-d fields
-        for field in self.df.keys():
-            self.argsorts[field] = np.argsort(self.df[field].values)
+        #todo: serious problem with this. certain configurations of these precomputations causes segfault. also seems to use more memory than it should.
+        #for field in self.df.keys():
+        #    self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
         #todo: would be nice to cache these instead of computing on every startup
         self.mins = {}
         self.maxes = {}

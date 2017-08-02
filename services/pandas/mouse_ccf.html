@@ -21,7 +21,7 @@ canvas:active {
 <p>coronal:<div id="c_slider"></div></p>
 <p>horizontal:<div id="h_slider"></div></p>
 <p>opacity:<div id="opacity"></div></p>
-<p>MNI coords: <span id="coords"></span></p>
+<p>coords: <span id="coords"></span></p>
 <canvas id="s_graph"  width="300" height="450"></canvas>
 <canvas id="c_graph"  width="300" height="450"></canvas>
 <canvas id="h_graph"  width="300" height="450"></canvas>
@@ -85,18 +85,18 @@ canvas:active {
         c_image.style.display = 'none';
         var c_overlay = document.createElement('img');
         c_overlay.style.display = 'none';
-        var images = {'left_right': {'mni': s_image, 'color': s_overlay},
-                      'anterior_posterior': {'mni': c_image, 'color': c_overlay},
-                      'superior_inferior': {'mni': h_image, 'color': h_overlay}};
+        var images = {'left_right': {'ccf': s_image, 'color': s_overlay},
+                      'anterior_posterior': {'ccf': c_image, 'color': c_overlay},
+                      'superior_inferior': {'ccf': h_image, 'color': h_overlay}};
         function resize(datacube, canvas, images) {
-            canvas.width = images['mni'].width;
-            canvas.height = images['mni'].height;
+            canvas.width = images['ccf'].width;
+            canvas.height = images['ccf'].height;
         }
 
         function render(datacube, x, y, canvas, images) {
             var context = canvas.getContext('2d');
             context.clearRect(0, 0, canvas.width, canvas.height);
-            context.drawImage(images['mni'], 0, 0, canvas.width, canvas.height);
+            context.drawImage(images['ccf'], 0, 0, canvas.width, canvas.height);
             //context.globalCompositeOperation = 'source-over';
             context.globalAlpha = $('#opacity').slider("option", "value")/100.0;
             context.drawImage(images['color'], 0, 0, canvas.width, canvas.height);
@@ -122,21 +122,9 @@ canvas:active {
         var url = 'ws://' + window.location.hostname + (window.location.port ? ':' + window.location.port : '') + '/ws';
         var realm = 'aibs';
         new slice_viewer.DatacubeConnection(url, realm, function(datacube_connection) {
-            new slice_viewer.Datacube(datacube_connection, 'mni', function(datacube) {
+            new slice_viewer.Datacube(datacube_connection, 'mouse_ccf', function(datacube) {
                 function click_coords(coords) {
-                    var call = 'org.brain-map.api.datacube.raw';
-                    var args = [];
-                    var kwargs = {'fields': ['mni_left_right', 'mni_anterior_posterior', 'mni_superior_inferior'], 'select': coords};
-                    datacube.call(call, args, kwargs).then(
-                        function (res) {
-                            var mni_left_right = res.coords.mni_left_right.data;
-                            var mni_anterior_posterior = res.coords.mni_anterior_posterior.data;
-                            var mni_superior_inferior = res.coords.mni_superior_inferior.data;
-                            document.getElementById('coords').innerHTML = JSON.stringify({'mni_left_right': mni_left_right,
-                                                                                          'mni_anterior_posterior': mni_anterior_posterior,
-                                                                                          'mni_superior_inferior': mni_superior_inferior});
-                        }
-                    );
+                    document.getElementById('coords').innerHTML = JSON.stringify(coords);
                 }
 
                 var datacube_slice_view = new slice_viewer.DatacubeSliceView(datacube,
@@ -147,22 +135,22 @@ canvas:active {
                                                                     'superior_inferior': ['anterior_posterior', 'left_right']
                                                                 },
                                                                 {
-                                                                    'left_right': {'superior_inferior': -1, 'anterior_posterior': 1},
-                                                                    'anterior_posterior': {'superior_inferior': -1, 'left_right': -1},
-                                                                    'superior_inferior': {'anterior_posterior': -1, 'left_right': -1}
+                                                                    'left_right': {'superior_inferior': 1, 'anterior_posterior': -1},
+                                                                    'anterior_posterior': {'superior_inferior': 1, 'left_right': 1},
+                                                                    'superior_inferior': {'anterior_posterior': 1, 'left_right': 1}
                                                                 },
-                                                                ['mni', 'color'],
+                                                                ['ccf', 'color'],
                                                                 {
                                                                     'left_right': {
-                                                                        'mni': {'image_format': 'jpeg'},
+                                                                        'ccf': {'image_format': 'jpeg'},
                                                                         'color': {'image_format': 'png'}
                                                                     },
                                                                     'anterior_posterior': {
-                                                                        'mni': {'image_format': 'jpeg'},
+                                                                        'ccf': {'image_format': 'jpeg'},
                                                                         'color': {'image_format': 'png'}
                                                                     },
                                                                     'superior_inferior': {
-                                                                        'mni': {'image_format': 'jpeg'},
+                                                                        'ccf': {'image_format': 'jpeg'},
                                                                         'color': {'image_format': 'png'}
                                                                     }
                                                                 },

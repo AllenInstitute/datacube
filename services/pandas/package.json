@@ -8,6 +8,8 @@
     "bulk": "^2.0.1",
     "core-js": "^2.4.1",
     "datacube-js": "../../clients/",
+    "jquery": "^3.2.1",
+    "jquery-ui-dist": "^1.12.1",
     "linklocal": "^2.8.0",
     "pako": "^1.0.5",
     "systemjs": "^0.20.12",
