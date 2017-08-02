@@ -37,10 +37,9 @@ class Datacube:
         #todo: argsorts need to be cached to a file (?)
         self.df = xr.open_dataset(nc_file, chunks=chunks)
         self.argsorts = {}
-        #todo: only do this for < N-d fields
-        #todo: serious problem with this. certain configurations of these precomputations causes segfault. also seems to use more memory than it should.
-        #for field in self.df.keys():
-        #    self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
+        for field in self.df.keys():
+            if self.df[field].size < np.sqrt(np.product(list(self.df.dims.values()))):
+                self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
         #todo: would be nice to cache these instead of computing on every startup
         self.mins = {}
         self.maxes = {}
@@ -253,7 +252,6 @@ class Datacube:
     def _query(self, dim, filters):
         df = self.df
         redis_client = self.redis_client
-        column_argsort = self.argsorts
         if not filters:
             return np.array(range(df.dims[dim]), dtype=np.int)
         else:
@@ -265,7 +263,7 @@ class Datacube:
                 value = f['value']
 
                 res = None
-                if isinstance(df[field].data, dask.array.core.Array):
+                if isinstance(df[field].data, dask.array.core.Array) or not field in self.argsorts:
                     if op == '=' or op == 'is':
                         res = (df[field] == value)
                     elif op == '<':
@@ -281,17 +279,17 @@ class Datacube:
                     stop = df[field].size
                     res = np.zeros(df[field].shape, dtype=np.bool)
                     if op == '=' or op == 'is':
-                        start = np.searchsorted(df[field], value, side='left', sorter=column_argsort[field])
-                        stop = np.searchsorted(df[field], value, side='right', sorter=column_argsort[field])
+                        start = np.searchsorted(df[field], value, side='left', sorter=self.argsorts[field])
+                        stop = np.searchsorted(df[field], value, side='right', sorter=self.argsorts[field])
                     elif op == '<':
-                        stop = np.searchsorted(df[field], value, side='left', sorter=column_argsort[field])
+                        stop = np.searchsorted(df[field], value, side='left', sorter=self.argsorts[field])
                     elif op == '>':
-                        start = np.searchsorted(df[field], value, side='right', sorter=column_argsort[field])
+                        start = np.searchsorted(df[field], value, side='right', sorter=self.argsorts[field])
                     elif op == '<=':
-                        stop = np.searchsorted(df[field], value, side='right', sorter=column_argsort[field])
+                        stop = np.searchsorted(df[field], value, side='right', sorter=self.argsorts[field])
                     elif op == '>=':
-                        start = np.searchsorted(df[field], value, side='left', sorter=column_argsort[field])
-                    res[column_argsort[field][start:stop]] = True
+                        start = np.searchsorted(df[field], value, side='left', sorter=self.argsorts[field])
+                    res[self.argsorts[field][start:stop]] = True
                 return res
 
             expanded_filters = []
