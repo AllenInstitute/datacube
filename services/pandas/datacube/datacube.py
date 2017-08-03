@@ -22,7 +22,8 @@ class Datacube:
         return 1
 
 
-    def __init__(self, nc_file=None, chunks=None):
+    def __init__(self, nc_file=None, chunks=None, max_cacheable_bytes=10*1024*1024):
+        self.max_cacheable_bytes = max_cacheable_bytes
         if nc_file: self.load(nc_file, chunks)
         #todo: would be nice to find a way to swap these out,
         # and also to be able to run without redis (numpy-only)
@@ -38,7 +39,7 @@ class Datacube:
         self.df = xr.open_dataset(nc_file, chunks=chunks)
         self.argsorts = {}
         for field in self.df.keys():
-            if self.df[field].size < np.sqrt(np.product(list(self.df.dims.values()))):
+            if self.df[field].size/8. < self.max_cacheable_bytes:
                 self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
         #todo: would be nice to cache these instead of computing on every startup
         self.mins = {}
