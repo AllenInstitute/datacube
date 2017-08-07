@@ -3,10 +3,13 @@
   "dependencies": {},
   "devDependencies": {
     "autobahn-js-built": "^0.11.1",
+    "babel-standalone": "^6.25.0",
     "bluebird": "^3.5.0",
     "bulk": "^2.0.1",
     "core-js": "^2.4.1",
     "datacube-js": "../../clients/",
+    "jquery": "^3.2.1",
+    "jquery-ui-dist": "^1.12.1",
     "linklocal": "^2.8.0",
     "pako": "^1.0.5",
     "systemjs": "^0.20.12",

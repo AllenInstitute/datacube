@@ -37,9 +37,9 @@ class Datacube:
         #todo: argsorts need to be cached to a file (?)
         self.df = xr.open_dataset(nc_file, chunks=chunks)
         self.argsorts = {}
-        #todo: only do this for < N-d fields
         for field in self.df.keys():
-            self.argsorts[field] = np.argsort(self.df[field].values)
+            if self.df[field].size < np.sqrt(np.product(list(self.df.dims.values()))):
+                self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
         #todo: would be nice to cache these instead of computing on every startup
         self.mins = {}
         self.maxes = {}
@@ -54,7 +54,7 @@ class Datacube:
 
 
     def _validate_select(self, select):
-        assert(all(f in list(self.df.keys()) for f in select.keys()))
+        assert(all(f in list(self.df.dims.keys()) for f in select.keys()))
 
         for axis, selector in iteritems(select):
             if isinstance(selector, list):
@@ -113,6 +113,15 @@ class Datacube:
         if dim_order:
             res = res.transpose(*dim_order)
         return res
+
+
+    def info(self):
+        dims = {name: size for name, size in self.df.dims.items()}
+        variables = {name: {'type': da.dtype.name, 'dims': da.dims} for name, da in self.df.variables.items()}
+        for name, da in self.df.variables.items():
+            variables[name]['attrs'] = dict(da.attrs.items())
+        attrs = dict(self.df.attrs.items())
+        return {'dims': dims, 'vars': variables, 'attrs': attrs}
 
 
     def raw(self, select, fields, dim_order=None):
@@ -243,7 +252,6 @@ class Datacube:
     def _query(self, dim, filters):
         df = self.df
         redis_client = self.redis_client
-        column_argsort = self.argsorts
         if not filters:
             return np.array(range(df.dims[dim]), dtype=np.int)
         else:
@@ -255,7 +263,7 @@ class Datacube:
                 value = f['value']
 
                 res = None
-                if isinstance(df[field].data, dask.array.core.Array):
+                if isinstance(df[field].data, dask.array.core.Array) or not field in self.argsorts:
                     if op == '=' or op == 'is':
                         res = (df[field] == value)
                     elif op == '<':
@@ -271,17 +279,17 @@ class Datacube:
                     stop = df[field].size
                     res = np.zeros(df[field].shape, dtype=np.bool)
                     if op == '=' or op == 'is':
-                        start = np.searchsorted(df[field], value, side='left', sorter=column_argsort[field])
-                        stop = np.searchsorted(df[field], value, side='right', sorter=column_argsort[field])
+                        start = np.searchsorted(df[field], value, side='left', sorter=self.argsorts[field])
+                        stop = np.searchsorted(df[field], value, side='right', sorter=self.argsorts[field])
                     elif op == '<':
-                        stop = np.searchsorted(df[field], value, side='left', sorter=column_argsort[field])
+                        stop = np.searchsorted(df[field], value, side='left', sorter=self.argsorts[field])
                     elif op == '>':
-                        start = np.searchsorted(df[field], value, side='right', sorter=column_argsort[field])
+                        start = np.searchsorted(df[field], value, side='right', sorter=self.argsorts[field])
                     elif op == '<=':
-                        stop = np.searchsorted(df[field], value, side='right', sorter=column_argsort[field])
+                        stop = np.searchsorted(df[field], value, side='right', sorter=self.argsorts[field])
                     elif op == '>=':
-                        start = np.searchsorted(df[field], value, side='left', sorter=column_argsort[field])
-                    res[column_argsort[field][start:stop]] = True
+                        start = np.searchsorted(df[field], value, side='left', sorter=self.argsorts[field])
+                    res[self.argsorts[field][start:stop]] = True
                 return res
 
             expanded_filters = []

@@ -26,5 +26,19 @@
             }
         ],
         "arguments": ["--data-dir", "./data/", "--data-name", "mni"]
+    },
+    {
+        "name": "mouse_ccf",
+        "enabled": true,
+        "script": "./scripts/datasets/mouse_ccf.py",
+        "data-dir": "./data/",
+        "files": [
+            {
+                "path": "mouse_ccf.nc",
+                "use_chunks": false,
+                "chunks": {"x": 20, "y": 20, "z": 20}
+            }
+        ],
+        "arguments": ["--data-src", "http://iwarehouse/", "--data-dir", "./data/", "--data-name", "mouse_ccf"]
     }
 ]
