@@ -157,6 +157,7 @@ class Datacube:
         image = Image.fromarray(data)
         buf = BytesIO()
         if image_format.lower() == 'jpeg':
+            image = image.convert('RGB')
             image.save(buf, format='JPEG', quality=40)
         elif image_format.lower() == 'png':
             image.save(buf, format='PNG')
