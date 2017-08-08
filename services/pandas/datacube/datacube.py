@@ -133,10 +133,11 @@ class Datacube:
 
 
     def image(self, select, field, dim_order=None, image_format='jpeg'):
-        if 'RGBA' in self.df[field].dims:
-            if 'RGBA' in dim_order:
-                dim_order.remove('RGBA')
-            dim_order.append('RGBA')
+        if dim_order:
+            if 'RGBA' in self.df[field].dims:
+                if 'RGBA' in dim_order:
+                    dim_order.remove('RGBA')
+                dim_order.append('RGBA')
         data = self.raw(select, [field], dim_order)
         dims = list(data[field].dims)
         if 'RGBA' in dims:
