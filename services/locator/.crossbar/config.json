@@ -1,0 +1,83 @@
+{
+    "version": 2,
+    "workers": [
+        {
+            "type": "router",
+            "options": {
+                "pythonpath": [".."]
+            },
+            "realms": [
+                {
+                    "name": "aibs",
+                    "roles": [
+                        {
+                            "name": "backend",
+                            "permissions": [
+                                {
+                                    "uri": "org.brain_map.locator",
+                                    "match": "prefix",
+                                    "allow": {
+                                        "call": true,
+                                        "register": true,
+                                        "publish": true,
+                                        "subscribe": true
+                                    },
+                                    "disclose": {
+                                        "caller": false, 
+                                        "publisher": false
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "name": "anonymous",
+                            "permissions": [
+                                {
+                                    "uri": "org.brain_map.locator",
+                                    "match": "prefix",
+                                    "allow": {
+                                        "call": true,
+                                        "register": false,
+                                        "publish": false,
+                                        "subscribe": true
+                                    },
+                                    "disclose": {
+                                        "caller": false, 
+                                        "publisher": false
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "transports":[
+                {
+                    "type": "web",
+                    "endpoint": {
+                        "type": "tcp",
+                        "port": 9000
+                    },
+                    "paths": {
+                        "/":{
+                            "type": "static",
+                            "directory": "../web"
+                        },
+                        "ws":{
+                            "type": "websocket"
+                            
+                        }
+                    }
+                }
+            ],
+            "components":[
+                {
+                    "type": "class",
+                    "classname": "locator.LocatorServiceComponent",
+                    "realm": "aibs",
+                    "role": "backend"
+                }
+            ]
+        }
+    ]
+}
