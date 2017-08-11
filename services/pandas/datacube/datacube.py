@@ -10,9 +10,47 @@ import dask
 from PIL import Image
 from io import BytesIO
 import base64
+from functools import reduce
 
 from six import iteritems
 from builtins import int
+
+
+# https://github.com/dask/dask/issues/732
+import dask.array as da
+
+def da_einsum(*args, **kwargs):
+    args = list(args)
+    out_inds = args.pop()
+    in_inds = args[1::2]
+    arrays = args[0::2]
+    dtype = kwargs.get('dtype')
+    einsum_dtype = dtype
+    if dtype is None:
+        dtype = np.result_type(*[a.dtype for a in arrays])
+    casting = kwargs.get('casting')
+    if casting is None:
+        casting = 'safe'
+    
+    full_inds = list(set().union(*in_inds))
+    contract_inds = tuple(set(full_inds)-set(out_inds))
+    
+    def kernel(*operands, **kwargs):
+        kernel_dtype = kwargs.get('kernel_dtype')
+        casting = kwargs.get('casting')
+        chunk = np.einsum(dtype=kernel_dtype, casting=casting, *([arg for arg_pair in zip(operands, in_inds) for arg in arg_pair]+[out_inds]))
+        chunk = np.array(chunk)
+        chunk.shape = tuple([1 if ind not in out_inds else chunk.shape[out_inds.index(ind)] for ind in full_inds])
+        return chunk
+    
+    adjust_chunks = {ind: 1 for ind in contract_inds}
+    result = da.atop(kernel, full_inds, *args, dtype=dtype, kernel_dtype=einsum_dtype, casting=casting, adjust_chunks=adjust_chunks)
+    if contract_inds:
+        result = da.sum(result, axis=contract_inds)
+    return result
+
+# monkey-patch the method into the module for now
+setattr(da, 'einsum', da_einsum)
 
 
 class Datacube:
@@ -22,7 +60,8 @@ class Datacube:
         return 1
 
 
-    def __init__(self, nc_file=None, chunks=None, max_cacheable_bytes=10*1024*1024):
+    def __init__(self, name, nc_file, chunks=None, max_cacheable_bytes=10*1024*1024):
+        self.name = name
         self.max_cacheable_bytes = max_cacheable_bytes
         if nc_file: self.load(nc_file, chunks)
         #todo: would be nice to find a way to swap these out,
@@ -222,9 +261,8 @@ class Datacube:
 
     def _sort(self, dim, sort, ascending):
         df = self.df
-        redis_client = self.redis_client
-        sort_cache_key = json.dumps(['sort', dim, sort, ascending])
-        cached = redis_client.get(sort_cache_key)
+        sort_cache_key = json.dumps([self.name, 'sort', dim, sort, ascending])
+        cached = self.redis_client.get(sort_cache_key)
         if not cached:
             if not ascending:
                 ascending = [True] * len(sort)
@@ -246,54 +284,97 @@ class Datacube:
                 else:
                     ranks[:,idx] = np.clip(ranks[:,idx], 0, maxrank - blank_count + 1)
             res = np.lexsort(tuple(ranks[:,idx] for idx in range(ranks.shape[1])))
-            redis_client.setnx(sort_cache_key, pickle.dumps(res))
+            self.redis_client.setnx(sort_cache_key, pickle.dumps(res))
             return res
         else:
             return pickle.loads(cached)
 
 
-    def _query(self, dim, filters):
+    def _query(self, filters):
         df = self.df
-        redis_client = self.redis_client
         if not filters:
-            return np.array(range(df.dims[dim]), dtype=np.int)
+            return (self.df, [])
         else:
-            # todo: add name to datacube object and include in cache keys
+            df = self.df
+            res = xr.Dataset()
 
-            def _do_search(f):
+            def _filter(f):
                 op = f['op']
                 field = f['field']
                 value = f['value']
 
-                res = None
-                if isinstance(df[field].data, dask.array.core.Array) or not field in self.argsorts:
+                def _filter_key(f):
+                    return json.dumps([self.name, 'filter', f['op'], f['field'], f['value']])
+
+                res = {'inds': {}, 'masks': []}
+                if field not in self.argsorts:
                     if op == '=' or op == 'is':
-                        res = (df[field] == value)
+                        mask = (df[field] == value)
                     elif op == '<':
-                        res = (df[field] < value)
+                        mask = (df[field] < value)
                     elif op == '>':
-                        res = (df[field] > value)
+                        mask = (df[field] > value)
                     elif op == '<=':
-                        res = (df[field] <= value)
+                        mask = (df[field] <= value)
                     elif op == '>=':
-                        res = (df[field] >= value)
+                        mask = (df[field] >= value)
+                    res['masks'].append(mask)
                 else:
-                    start = 0
-                    stop = df[field].size
-                    res = np.zeros(df[field].shape, dtype=np.bool)
-                    if op == '=' or op == 'is':
-                        start = np.searchsorted(df[field], value, side='left', sorter=self.argsorts[field])
-                        stop = np.searchsorted(df[field], value, side='right', sorter=self.argsorts[field])
-                    elif op == '<':
-                        stop = np.searchsorted(df[field], value, side='left', sorter=self.argsorts[field])
-                    elif op == '>':
-                        start = np.searchsorted(df[field], value, side='right', sorter=self.argsorts[field])
-                    elif op == '<=':
-                        stop = np.searchsorted(df[field], value, side='right', sorter=self.argsorts[field])
-                    elif op == '>=':
-                        start = np.searchsorted(df[field], value, side='left', sorter=self.argsorts[field])
-                    res[self.argsorts[field][start:stop]] = True
+                    filter_key = _filter_key(f)
+                    cached = self.redis_client.get(filter_key)
+                    if not cached:
+                        start = 0
+                        stop = df[field].size
+                        if op == '=' or op == 'is':
+                            start = np.searchsorted(df[field], value, side='left', sorter=self.argsorts[field])
+                            stop = np.searchsorted(df[field], value, side='right', sorter=self.argsorts[field])
+                        elif op == '<':
+                            stop = np.searchsorted(df[field], value, side='left', sorter=self.argsorts[field])
+                        elif op == '>':
+                            start = np.searchsorted(df[field], value, side='right', sorter=self.argsorts[field])
+                        elif op == '<=':
+                            stop = np.searchsorted(df[field], value, side='right', sorter=self.argsorts[field])
+                        elif op == '>=':
+                            start = np.searchsorted(df[field], value, side='left', sorter=self.argsorts[field])
+                        inds = self.argsorts[field][start:stop]
+                        self.redis_client.setnx(filter_key, pickle.dumps(inds))
+                    else:
+                        inds = pickle.loads(cached)
+                    
+                    if 1==self.df[field].ndim:
+                        res['inds'][dim] = xr.DataArray(inds, dims=df[field].dims)
+                    else:
+                        unravel_inds = np.unravel_index(inds, df[field].shape)
+                        for i, dim in enumerate(df[field].dims):
+                            res['inds'][dim] = xr.DataArray(np.unique(unravel_inds[i]), dims=dim)
+                        mask = xr.zeros_like(df[field], dtype=np.bool)
+                        mask.values.flat[inds] = True
+                        res['masks'].append(mask)
+
+            def _and(m1, m2):
+                res = {}
+                for mask in m1['masks']+m2['masks']:
+                    d = {}
+                    d.setdefault(mask.dims, []).append(mask)
+                    for k, v in d:
+                        res.setdefault('masks', []).append(reduce(xr.ufuncs.logical_and, v))
+                res['inds'] = m1['inds']
+                for dim, inds in m2['inds']:
+                    if dim in res['inds']:
+                        res['inds'][dim] = np.intersect1d(res['inds'][dim], m2['inds'][dim], assume_unique=True)
                 return res
+
+            def _or(m1, m2):
+                res['masks'] = [xr.ufuncs.logical_or(reduce(xr.ufuncs.logical_and, m1['masks']), reduce(xr.ufuncs.logical_and, m2['masks']))]
+                res['inds'] = m1['inds']
+                for dim, inds in m2['inds']:
+                    if dim in res['inds']:
+                        res['inds'][dim] = np.union1d(res['inds'][dim], m2['inds'][dim])
+                return res
+
+            # --- todo ---
+
+            #todo: support {'and': [...]} and {'or': [...]}
 
             expanded_filters = []
             for f in filters:
@@ -309,24 +390,6 @@ class Datacube:
                 else:
                     expanded_filters.append(f)
 
-            def _filter_cache_key(f):
-                return json.dumps(['filter', dim, f['op'], f['field'], f['value']])
-
-            def _pack(bool_array):
-                return str(np.packbits(bool_array).tobytes())
-
-            def _unpack(bitstring, sz):
-                res = np.fromstring(bitstring, dtype=np.uint8)
-                res = res[:sz]
-                return res
-
-            def _cache_filter(f):
-                filter_cache_key = _filter_cache_key(f)
-                cached = redis_client.exists(filter_cache_key)
-                if not cached:
-                    filtered = _do_search(f)
-                    redis_client.setnx(filter_cache_key, _pack(filtered))
-                return filter_cache_key
 
             and_keys = []
             for f in expanded_filters:
@@ -335,7 +398,7 @@ class Datacube:
                     for o in f:
                         key = _cache_filter(o)
                         or_keys.append(key)
-                    or_cache_key = json.dumps(['filter_or', dim, or_keys])
+                    or_cache_key = json.dumps([self.name, 'filter_or', or_keys])
                     lua = '''
                         local exists=redis.call('EXISTS', KEYS[1])
                         if 0 == exists then
@@ -344,13 +407,13 @@ class Datacube:
                         return redis.call('GET', KEYS[1])
                     '''
                     eval_keys = (or_cache_key,)+tuple(or_keys)
-                    redis_client.eval(lua, len(eval_keys), *eval_keys)
+                    self.redis_client.eval(lua, len(eval_keys), *eval_keys)
                     and_keys.append(or_cache_key)
                 else:
                     key = _cache_filter(f)
                     and_keys.append(key)
 
-            and_cache_key = json.dumps(['filter_and', dim, and_keys])
+            and_cache_key = json.dumps([self.name, 'filter_and', and_keys])
             lua = '''
                 local exists=redis.call('EXISTS', KEYS[1])
                 if 0 == exists then
@@ -359,7 +422,7 @@ class Datacube:
                 return redis.call('GET', KEYS[1])
             '''
             eval_keys = (and_cache_key,)+tuple(and_keys)
-            res = redis_client.eval(lua, len(eval_keys), *eval_keys)
+            res = self.redis_client.eval(lua, len(eval_keys), *eval_keys)
             res = _unpack(res, df.dims[dim])
             res = np.flatnonzero(res)
             return res

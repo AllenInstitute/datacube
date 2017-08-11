@@ -253,7 +253,7 @@ if __name__ == '__main__':
                         exit(1)
                 nc_file = next(f for f in dataset['files'] if re.search('\.nc$', f['path']))
                 chunks = nc_file['chunks'] if nc_file['use_chunks'] else None
-                datacubes[dataset['name']] = Datacube(os.path.join(data_dir, nc_file['path']), chunks=chunks)
+                datacubes[dataset['name']] = Datacube(dataset['name'], os.path.join(data_dir, nc_file['path']), chunks=chunks)
 
     runner = ApplicationRunner(str(args.router), str(args.realm))
     runner.run(PandasServiceComponent, auto_reconnect=True)
