@@ -1,8 +1,8 @@
 import requests
 import json
 
-from streamline_loader import StreamlineLoader
-from neuron_loader import NeuronLoader
+from .streamline_loader import StreamlineLoader
+from .neuron_loader import NeuronLoader
 
 class LineFinder():
     def __init__(self, config, timeout = 100):

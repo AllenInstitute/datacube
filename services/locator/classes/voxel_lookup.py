@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from ontology_service import OntologyService
+from .ontology_service import OntologyService
 
 
 

@@ -7,17 +7,17 @@ from twisted.internet.defer import inlineCallbacks
 from autobahn.twisted.wamp import ApplicationSession, ApplicationRunner
 from twisted.internet.defer import inlineCallbacks, returnValue
 
-from configuration_manager import ConfigurationManager
+from .configuration_manager import ConfigurationManager
 
-from classes.surface_projection import SurfacePoint
-from classes.projection_point import ProjectionPoint
-from classes.filmstrip_locator import FilmStripLocator
-from classes.model_loader import ModelLoader
-from classes.voxel_lookup import VoxelLookup
-from classes.line_finder import LineFinder
-from classes.spacial_search import SpacialSearch
-from classes.ontology_service import OntologyService
-from classes.model_loader import ModelLoader
+from .classes.surface_projection import SurfacePoint
+from .classes.projection_point import ProjectionPoint
+from .classes.filmstrip_locator import FilmStripLocator
+from .classes.model_loader import ModelLoader
+from .classes.voxel_lookup import VoxelLookup
+from .classes.line_finder import LineFinder
+from .classes.spacial_search import SpacialSearch
+from .classes.ontology_service import OntologyService
+from .classes.model_loader import ModelLoader
 
 
 
@@ -45,7 +45,7 @@ class LocatorServiceComponent(ApplicationSession):
             path = os.path.join(os.path.dirname(__file__), "env_vars.json")
             config = ConfigurationManager(path)
         except (IOError) as e:
-            print e.message
+            print(e.message)
 
 
         ####################################################################

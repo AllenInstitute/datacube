@@ -4,7 +4,7 @@ import numpy as np
 import json
 import math
 import struct
-from ontology_service import OntologyService
+from .ontology_service import OntologyService
 
 #  #MATH #LOL #CPLUSPLUS
 
