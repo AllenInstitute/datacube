@@ -20,6 +20,21 @@ from classes.ontology_service import OntologyService
 from classes.model_loader import ModelLoader
 
 
+
+
+#  ],
+# "components": [
+#       {
+#          "type": "class",
+#          "classname": "locator.locator.LocatorServiceComponent",
+#          "realm": "aibs",
+#          "role": "authenticated"
+#      }
+#  ],
+#  "options":{
+#      "pythonpath": ["../services/"]
+#  }
+
 class LocatorServiceComponent(ApplicationSession):
 
     @inlineCallbacks
@@ -60,7 +75,7 @@ class LocatorServiceComponent(ApplicationSession):
                 results.setdefault("coordinate", projector.get(seedPoint))
                 results['success'] = True
 
-            except IOError as e:
+            except (IOError) as e:
                 results.setdefault("message", e.message)
 
             return results
@@ -160,7 +175,7 @@ class LocatorServiceComponent(ApplicationSession):
             yield self.register(ccf_model,          u"org.brain_map.locator.get_ccf_model")
         
             ready = True
-        except Exception as e:
+        except (Exception) as e:
             print("Could not register procedure: {0}".format(e))
 
         if ready:

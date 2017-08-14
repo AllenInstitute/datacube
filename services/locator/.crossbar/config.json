@@ -64,8 +64,8 @@
                             "directory": "../web"
                         },
                         "ws":{
-                            "type": "websocket"
-                            
+                            "type": "websocket",
+                            "serializers": ["msgpack"]
                         }
                     }
                 }

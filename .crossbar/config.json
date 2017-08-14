@@ -99,7 +99,18 @@
                         }
                     }
                 }
-            ]
+            ],
+            "components": [
+                 {
+                    "type": "class",
+                    "classname": "locator.locator.LocatorServiceComponent",
+                    "realm": "aibs",
+                    "role": "authenticated"
+                }
+            ],
+            "options":{
+                "pythonpath": ["../services/"]
+            }  
         },
         {
             "id": "datacube",
