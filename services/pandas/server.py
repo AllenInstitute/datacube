@@ -183,7 +183,6 @@ class PandasServiceComponent(ApplicationSession):
             #        else:
             #            raise RuntimeError('Must specify datacube name when server has more than one datacube loaded (' + ', '.join(datacubes.keys()) + ').')
             #    return datacubes[name]
-
             for name in datacubes.keys():
                 yield self.register(functools.partial(info, name=name),
                                     u'org.brain-map.api.datacube.info.' + name,
