@@ -5,9 +5,9 @@ pandas
 numpy
 scipy
 txaio
-xarray==0.8.2
+xarray
 netCDF4
-dask==0.14.3
+dask
 toolz
 txredisapi
 redis

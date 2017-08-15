@@ -15,7 +15,7 @@
     },
     {
         "name": "mni",
-        "enabled": true,
+        "enabled": false,
         "script": "./scripts/datasets/mni.py",
         "data-dir": "./data/",
         "files": [
@@ -29,7 +29,7 @@
     },
     {
         "name": "mouse_ccf",
-        "enabled": true,
+        "enabled": false,
         "script": "./scripts/datasets/mouse_ccf.py",
         "data-dir": "./data/",
         "files": [

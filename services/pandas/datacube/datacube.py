@@ -13,7 +13,7 @@ import base64
 from functools import reduce
 
 from six import iteritems
-from builtins import int
+from builtins import int, map
 
 
 # https://github.com/dask/dask/issues/732
@@ -229,7 +229,9 @@ class Datacube:
                 raise ValueError('Requested would return ' + str(num_results) + ' records; please limit request to ' + str(options['max_records']) + ' records.')
         inds = np.array(range(r.dims[dim]), dtype=np.int)
         if filters is not None:
-            inds = self._query(dim, filters)
+            _, mask = self._query({'and': filters})
+            if 'dim_0' in mask['inds']:
+                inds = np.array(mask['inds']['dim_0'])
         if indexes is not None:
             indexes = [x for x in indexes if x != None]
             if inds is not None:
@@ -272,7 +274,7 @@ class Datacube:
             s = df[sort]
             ranks = np.zeros((s.dims[dim], len(s.keys())), dtype=np.int)
             for idx, (field, asc) in enumerate(zip(sort[::-1], ascending[::-1])):
-                if s[field].dtype.name.startswith('string') or s[field].dtype.name.startswith('unicode'):
+                if s[field].dtype.name.startswith('string') or s[field].dtype.name.startswith('unicode') or s[field].dtype.name.startswith('bytes'):
                     blank_count = np.count_nonzero(s[field] == '')
                 else:
                     blank_count = np.count_nonzero(np.isnan(s[field]))
@@ -293,11 +295,8 @@ class Datacube:
     def _query(self, filters):
         df = self.df
         if not filters:
-            return (self.df, [])
+            return (df, {'inds': {}, 'masks': []})
         else:
-            df = self.df
-            res = xr.Dataset()
-
             def _filter(f):
                 op = f['op']
                 field = f['field']
@@ -341,8 +340,8 @@ class Datacube:
                     else:
                         inds = pickle.loads(cached)
                     
-                    if 1==self.df[field].ndim:
-                        res['inds'][dim] = xr.DataArray(inds, dims=df[field].dims)
+                    if 1==df[field].ndim:
+                        res['inds'][df[field].dims[0]] = xr.DataArray(inds, dims=df[field].dims)
                     else:
                         unravel_inds = np.unravel_index(inds, df[field].shape)
                         for i, dim in enumerate(df[field].dims):
@@ -350,79 +349,91 @@ class Datacube:
                         mask = xr.zeros_like(df[field], dtype=np.bool)
                         mask.values.flat[inds] = True
                         res['masks'].append(mask)
+                return res
 
             def _and(m1, m2):
-                res = {}
+                res = {'inds': {}, 'masks': []}
+                d = {}
                 for mask in m1['masks']+m2['masks']:
-                    d = {}
                     d.setdefault(mask.dims, []).append(mask)
-                    for k, v in d:
-                        res.setdefault('masks', []).append(reduce(xr.ufuncs.logical_and, v))
+                for k, v in iteritems(d):
+                    res.setdefault('masks', []).append(reduce(xr.ufuncs.logical_and, v))
                 res['inds'] = m1['inds']
-                for dim, inds in m2['inds']:
+                for dim, inds in iteritems(m2['inds']):
                     if dim in res['inds']:
-                        res['inds'][dim] = np.intersect1d(res['inds'][dim], m2['inds'][dim], assume_unique=True)
+                        res['inds'][dim] = np.intersect1d(res['inds'][dim], inds, assume_unique=True)
+                    else:
+                        res['inds'][dim] = inds
                 return res
 
             def _or(m1, m2):
-                res['masks'] = [xr.ufuncs.logical_or(reduce(xr.ufuncs.logical_and, m1['masks']), reduce(xr.ufuncs.logical_and, m2['masks']))]
+                res = {'inds': {}, 'masks': []}
+                if not m1['masks']:
+                    if not m2['masks']:
+                        res['masks'] = []
+                    else:
+                        res['masks'] = [reduce(xr.ufuncs.logical_and, m2['masks'])]
+                elif not m2['masks']:
+                    res['masks'] = []
+                else:
+                    res['masks'] = [xr.ufuncs.logical_or(reduce(xr.ufuncs.logical_and, m1['masks']), reduce(xr.ufuncs.logical_and, m2['masks']))]
+
                 res['inds'] = m1['inds']
-                for dim, inds in m2['inds']:
+                for dim, inds in iteritems(m2['inds']):
                     if dim in res['inds']:
                         res['inds'][dim] = np.union1d(res['inds'][dim], m2['inds'][dim])
                 return res
 
-            # --- todo ---
+            def _expand_filters(filters):
+                bool_op = None
+                if 'and' in filters:
+                    bool_op = 'and'
+                elif 'or' in filters:
+                    bool_op = 'or'
 
-            #todo: support {'and': [...]} and {'or': [...]}
+                res = {bool_op: []}
+                for f in filters[bool_op]:
+                    if 'and' in f or 'or' in f:
+                        res[bool_op].append(_expand_filters(f))
+                    else:
+                        op, field, value = (f['op'], f['field'], f['value'])
+                        if op == 'between':
+                            res[bool_op].append({'op': '>=', 'field': field, 'value': value[0]})
+                            res[bool_op].append({'op': '<=', 'field': field, 'value': value[1]})
+                        elif op == 'in':
+                            or_clause = {'or': []}
+                            for v in value:
+                                or_clause['or'].append({'op': '=', 'field': field, 'value': v})
+                            res[bool_op].append(or_clause)
+                        else:
+                            res[bool_op].append(f)
+                return res
+            
+            filters = _expand_filters(filters)
 
-            expanded_filters = []
-            for f in filters:
-                op, field, value = (f['op'], f['field'], f['value'])
-                if op == 'between':
-                    expanded_filters.append({'op': '>=', 'field': field, 'value': value[0]})
-                    expanded_filters.append({'op': '<=', 'field': field, 'value': value[1]})
-                elif op == 'in':
-                    or_clause = []
-                    for v in value:
-                        or_clause.append({'op': '=', 'field': field, 'value': v})
-                    expanded_filters.append(or_clause)
+            def _reduce(filters):
+                res = None
+                bool_op = None
+                bool_func = None
+                if 'and' in filters:
+                    bool_op = 'and'
+                    bool_func = _and
+                elif 'or' in filters:
+                    bool_op = 'or'
+                    bool_func = _or
                 else:
-                    expanded_filters.append(f)
+                    if 'inds' in filters or 'masks' in filters:
+                        return filters
+                    else:
+                        return _filter(filters)
 
-
-            and_keys = []
-            for f in expanded_filters:
-                if isinstance(f, list):
-                    or_keys = []
-                    for o in f:
-                        key = _cache_filter(o)
-                        or_keys.append(key)
-                    or_cache_key = json.dumps([self.name, 'filter_or', or_keys])
-                    lua = '''
-                        local exists=redis.call('EXISTS', KEYS[1])
-                        if 0 == exists then
-                            redis.call('BITOP', 'OR', unpack(KEYS))
-                        end
-                        return redis.call('GET', KEYS[1])
-                    '''
-                    eval_keys = (or_cache_key,)+tuple(or_keys)
-                    self.redis_client.eval(lua, len(eval_keys), *eval_keys)
-                    and_keys.append(or_cache_key)
+                if not filters[bool_op]:
+                    res = {'inds': {}, 'masks': []}
+                elif any(isinstance(x, dict) and 'and' in x or 'or' in x for x in filters[bool_op]):
+                    res = _reduce({bool_op: list(map(_reduce, filters[bool_op]))})
                 else:
-                    key = _cache_filter(f)
-                    and_keys.append(key)
+                    res = reduce(bool_func, list(map(_reduce, filters[bool_op])))
+                return res
 
-            and_cache_key = json.dumps([self.name, 'filter_and', and_keys])
-            lua = '''
-                local exists=redis.call('EXISTS', KEYS[1])
-                if 0 == exists then
-                    redis.call('BITOP', 'AND', unpack(KEYS))
-                end
-                return redis.call('GET', KEYS[1])
-            '''
-            eval_keys = (and_cache_key,)+tuple(and_keys)
-            res = self.redis_client.eval(lua, len(eval_keys), *eval_keys)
-            res = _unpack(res, df.dims[dim])
-            res = np.flatnonzero(res)
-            return res
+            res = _reduce(filters)
+            return (df[res['inds']], res)
