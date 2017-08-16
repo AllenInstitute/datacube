@@ -69,9 +69,20 @@ The :code:`--ignore-installed` option is a workaround for https://github.com/Con
 Verify Install
 --------------
 
-Verify the environment and install by running the demo::
+Verify the environment and install by running the server::
 
-    crossbar start --config config-demo.json
+    ./run.sh
+
+Running the Demo
+----------------
+
+First, an npm install for each of the services is needed::
+
+    ./nested-npm-install.sh
+
+Then run the demo::
+
+    ./run.sh --config config-demo.json
 
 Wait for the "Server Ready." message, and then point your browser to http://localhost:8082/ and click on the links.
 
