@@ -29,7 +29,7 @@
     },
     {
         "name": "mouse_ccf",
-        "enabled": false,
+        "enabled": true,
         "script": "./scripts/datasets/mouse_ccf.py",
         "data-dir": "./data/",
         "files": [

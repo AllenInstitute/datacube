@@ -63,13 +63,13 @@ class PandasServiceComponent(ApplicationSession):
 
 
         @inlineCallbacks
-        def raw(fields, select, name=None):
+        def raw(fields=None, select=None, filters=None, name=None):
             try:
                 datacube = datacubes[name]
-                res = yield threads.deferToThread(datacube.raw, select, fields)
+                res = yield threads.deferToThread(datacube.raw, select, fields, filters)
                 returnValue(res.to_dict())
             except Exception as e:
-                print({'fields': fields, 'select': select, 'name': name})
+                print({'fields': fields, 'select': select, 'name': name, 'filters': filters})
                 _application_error(e)
 
 
@@ -163,7 +163,7 @@ class PandasServiceComponent(ApplicationSession):
 
         def _application_error(e):
             traceback.print_exc()
-            raise RuntimeError(str('org.brain-map.api.datacube.application_error'), e.__class__.__name__, e.message, e.args, e.__doc__)
+            raise ApplicationError(str('org.brain-map.api.datacube.application_error'), str(e) + '\n' + traceback.format_exc())
 
 
         try:

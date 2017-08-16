@@ -6,6 +6,7 @@ import redis
 #import txredisapi
 #from twisted.internet import reactor
 import xarray as xr
+import xarray.ufuncs as xr_ufuncs
 import dask
 from PIL import Image
 from io import BytesIO
@@ -60,8 +61,9 @@ class Datacube:
         return 1
 
 
-    def __init__(self, name, nc_file, chunks=None, max_cacheable_bytes=10*1024*1024):
+    def __init__(self, name, nc_file, chunks=None, max_response_size=10*1024*1024, max_cacheable_bytes=10*1024*1024):
         self.name = name
+        self.max_response_size = max_response_size
         self.max_cacheable_bytes = max_cacheable_bytes
         if nc_file: self.load(nc_file, chunks)
         #todo: would be nice to find a way to swap these out,
@@ -148,8 +150,18 @@ class Datacube:
         return subscripts
 
 
-    def get_data(self, subscripts, fields, dim_order=None):
-        res = self.df[subscripts][fields]
+    def get_data(self, subscripts=None, fields=None, filters=None, dim_order=None):
+        res = self.df
+        if subscripts:
+            #import pdb
+            #pdb.set_trace()
+            res = res[subscripts]
+        if filters:
+            res, f = self._query(filters, df=res)
+            if f['masks']:
+                res = res.where(reduce(xr_ufuncs.logical_and, f['masks']), drop=True)
+        if fields:
+            res = res[fields]
         if dim_order:
             res = res.transpose(*dim_order)
         return res
@@ -164,11 +176,18 @@ class Datacube:
         return {'dims': dims, 'vars': variables, 'attrs': attrs}
 
 
-    def raw(self, select, fields, dim_order=None):
-        assert(all(f in list(self.df.keys()) for f in fields))
-        self._validate_select(select)
-        subscripts = self._get_subscripts_from_select(select)
-        return self.get_data(subscripts, fields, dim_order)
+    def raw(self, select=None, fields=None, filters=None, dim_order=None):
+        if fields:
+            assert(all(f in list(self.df.keys()) for f in fields))
+        subscripts=None
+        if select:
+            self._validate_select(select)
+            subscripts = self._get_subscripts_from_select(select)
+        res = self.get_data(subscripts, fields, filters, dim_order)
+        size = sum([res[field].size*res[field].dtype.itemsize for field in res.keys()])
+        if size > self.max_response_size:
+            raise ValueError('Requested would return ' + str(size) + ' bytes; please limit request to ' + str(self.max_response_size) + '.')
+        return res
 
 
     def image(self, select, field, dim_order=None, image_format='jpeg'):
@@ -229,7 +248,7 @@ class Datacube:
                 raise ValueError('Requested would return ' + str(num_results) + ' records; please limit request to ' + str(options['max_records']) + ' records.')
         inds = np.array(range(r.dims[dim]), dtype=np.int)
         if filters is not None:
-            _, mask = self._query({'and': filters})
+            _, mask = self._query(filters)
             if 'dim_0' in mask['inds']:
                 inds = np.array(mask['inds']['dim_0'])
         if indexes is not None:
@@ -292,8 +311,11 @@ class Datacube:
             return pickle.loads(cached)
 
 
-    def _query(self, filters):
-        df = self.df
+    #todo: 'select' clauses could be pretty easily added into each filter as in {'field': ..., 'select': ..., 'op': ..., 'value': ...}
+    def _query(self, filters, df=None):
+        df = df or self.df
+        if isinstance(filters, list):
+            filters = {'and': filters}
         if not filters:
             return (df, {'inds': {}, 'masks': []})
         else:
@@ -306,7 +328,7 @@ class Datacube:
                     return json.dumps([self.name, 'filter', f['op'], f['field'], f['value']])
 
                 res = {'inds': {}, 'masks': []}
-                if field not in self.argsorts:
+                if df is not self.df or field not in self.argsorts:
                     if op == '=' or op == 'is':
                         mask = (df[field] == value)
                     elif op == '<':
@@ -357,7 +379,7 @@ class Datacube:
                 for mask in m1['masks']+m2['masks']:
                     d.setdefault(mask.dims, []).append(mask)
                 for k, v in iteritems(d):
-                    res.setdefault('masks', []).append(reduce(xr.ufuncs.logical_and, v))
+                    res.setdefault('masks', []).append(reduce(xr_ufuncs.logical_and, v))
                 res['inds'] = m1['inds']
                 for dim, inds in iteritems(m2['inds']):
                     if dim in res['inds']:
@@ -372,11 +394,11 @@ class Datacube:
                     if not m2['masks']:
                         res['masks'] = []
                     else:
-                        res['masks'] = [reduce(xr.ufuncs.logical_and, m2['masks'])]
+                        res['masks'] = [reduce(xr_ufuncs.logical_and, m2['masks'])]
                 elif not m2['masks']:
                     res['masks'] = []
                 else:
-                    res['masks'] = [xr.ufuncs.logical_or(reduce(xr.ufuncs.logical_and, m1['masks']), reduce(xr.ufuncs.logical_and, m2['masks']))]
+                    res['masks'] = [xr_ufuncs.logical_or(reduce(xr_ufuncs.logical_and, m1['masks']), reduce(xr_ufuncs.logical_and, m2['masks']))]
 
                 res['inds'] = m1['inds']
                 for dim, inds in iteritems(m2['inds']):
