@@ -153,8 +153,6 @@ class Datacube:
     def get_data(self, subscripts=None, fields=None, filters=None, dim_order=None):
         res = self.df
         if subscripts:
-            #import pdb
-            #pdb.set_trace()
             res = res[subscripts]
         if filters:
             res, f = self._query(filters, df=res)
@@ -176,6 +174,7 @@ class Datacube:
         return {'dims': dims, 'vars': variables, 'attrs': attrs}
 
 
+    #todo: add sort and deprecate select()
     def raw(self, select=None, fields=None, filters=None, dim_order=None):
         if fields:
             assert(all(f in list(self.df.keys()) for f in fields))
@@ -347,16 +346,16 @@ class Datacube:
                         start = 0
                         stop = df[field].size
                         if op == '=' or op == 'is':
-                            start = np.searchsorted(df[field], value, side='left', sorter=self.argsorts[field])
-                            stop = np.searchsorted(df[field], value, side='right', sorter=self.argsorts[field])
+                            start = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
+                            stop = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
                         elif op == '<':
-                            stop = np.searchsorted(df[field], value, side='left', sorter=self.argsorts[field])
+                            stop = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
                         elif op == '>':
-                            start = np.searchsorted(df[field], value, side='right', sorter=self.argsorts[field])
+                            start = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
                         elif op == '<=':
-                            stop = np.searchsorted(df[field], value, side='right', sorter=self.argsorts[field])
+                            stop = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
                         elif op == '>=':
-                            start = np.searchsorted(df[field], value, side='left', sorter=self.argsorts[field])
+                            start = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
                         inds = self.argsorts[field][start:stop]
                         self.redis_client.setnx(filter_key, pickle.dumps(inds))
                     else:
@@ -368,7 +367,9 @@ class Datacube:
                         unravel_inds = np.unravel_index(inds, df[field].shape)
                         for i, dim in enumerate(df[field].dims):
                             res['inds'][dim] = xr.DataArray(np.unique(unravel_inds[i]), dims=dim)
-                        mask = xr.zeros_like(df[field], dtype=np.bool)
+                        #todo: upgrade xarray and use this:
+                        #mask = xr.zeros_like(df[field], dtype=np.bool)
+                        mask = xr.DataArray(np.zeros_like(df[field].values, dtype=np.bool), dims=df[field].dims)
                         mask.values.flat[inds] = True
                         res['masks'].append(mask)
                 return res
