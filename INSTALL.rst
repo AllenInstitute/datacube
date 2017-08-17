@@ -73,8 +73,14 @@ Verify the environment and install by running the server::
 
     ./run.sh
 
+Wait for the "Server ready." message in the log output.
+
 Running the Demo
 ----------------
+
+A Node.js installation is needed in order to install npm packages and to build the client javascript for the demos::
+
+    yum install nodejs
 
 First, an npm install for each of the services is needed::
 
