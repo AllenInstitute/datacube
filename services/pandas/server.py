@@ -84,6 +84,17 @@ class PandasServiceComponent(ApplicationSession):
                 _application_error(e)
 
 
+        @inlineCallbacks
+        def corr(field, dim, seed_idx, select=None, filters=None, name=None):
+            try:
+                datacube = datacubes[name]
+                res = yield threads.deferToThread(datacube.corr, field, dim, seed_idx, select=select, filters=filters)
+                returnValue(res.to_dict())
+            except Exception as e:
+                print({'field': field, 'dim': dim, 'seed_idx': seed_idx, 'select': select, 'filters': filters, 'name': name})
+                _application_error(e)
+
+
         def filter_cell_specimens(filters=None,
                                   sort=None,
                                   ascending=None,
@@ -193,6 +204,9 @@ class PandasServiceComponent(ApplicationSession):
                                     options=RegisterOptions(invoke=u'roundrobin'))
                 yield self.register(functools.partial(image, name=name),
                                     u'org.brain-map.api.datacube.image.' + name,
+                                    options=RegisterOptions(invoke=u'roundrobin'))
+                yield self.register(functools.partial(corr, name=name),
+                                    u'org.brain-map.api.datacube.corr.' + name,
                                     options=RegisterOptions(invoke=u'roundrobin'))
                 yield self.register(functools.partial(select, name=name),
                                     u'org.brain-map.api.datacube.select.' + name,

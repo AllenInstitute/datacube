@@ -8,6 +8,7 @@ import redis
 import xarray as xr
 import xarray.ufuncs as xr_ufuncs
 import dask
+import dask.array as da
 from PIL import Image
 from io import BytesIO
 import base64
@@ -17,9 +18,7 @@ from six import iteritems
 from builtins import int, map
 
 
-# https://github.com/dask/dask/issues/732
-import dask.array as da
-
+#todo: https://github.com/dask/dask/issues/732
 def da_einsum(*args, **kwargs):
     args = list(args)
     out_inds = args.pop()
@@ -78,9 +77,10 @@ class Datacube:
         #todo: rename df
         #todo: argsorts need to be cached to a file (?)
         self.df = xr.open_dataset(nc_file, chunks=chunks)
+        self.backend = da
         self.argsorts = {}
         for field in self.df.keys():
-            if self.df[field].size/8. < self.max_cacheable_bytes:
+            if self.df[field].size*self.df[field].dtype.itemsize <= self.max_cacheable_bytes:
                 self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
         #todo: would be nice to cache these instead of computing on every startup
         self.mins = {}
@@ -150,14 +150,31 @@ class Datacube:
         return subscripts
 
 
-    def get_data(self, subscripts=None, fields=None, filters=None, dim_order=None):
-        res = self.df
+    def _get_data(self, select=None, fields=None, filters=None, dim_order=None, df=None):
+        if df is not None:
+            res = df
+        else:
+            res = self.df
+        if isinstance(fields, list):
+            assert(all(f in list(res.keys()) for f in fields))
+        elif fields:
+            assert(fields in list(res.keys()))
+        subscripts=None
+        if select:
+            self._validate_select(select)
+            subscripts = self._get_subscripts_from_select(select)
         if subscripts:
             res = res[subscripts]
         if filters:
             res, f = self._query(filters, df=res)
             if f['masks']:
-                res = res.where(reduce(xr_ufuncs.logical_and, f['masks']), drop=True)
+                ds = res
+                res = xr.Dataset()
+                mask = reduce(xr_ufuncs.logical_and, f['masks'])
+                for field in ds.data_vars:
+                    res[field] = ds[field].where(mask.any(dim=[dim for dim in mask.dims if dim not in ds[field].dims]), drop=True)
+                    for coord in res[field].coords:
+                        res.coords[coord] = res[field].coords[coord]
         if fields:
             res = res[fields]
         if dim_order:
@@ -176,13 +193,7 @@ class Datacube:
 
     #todo: add sort and deprecate select()
     def raw(self, select=None, fields=None, filters=None, dim_order=None):
-        if fields:
-            assert(all(f in list(self.df.keys()) for f in fields))
-        subscripts=None
-        if select:
-            self._validate_select(select)
-            subscripts = self._get_subscripts_from_select(select)
-        res = self.get_data(subscripts, fields, filters, dim_order)
+        res = self._get_data(select, fields, filters, dim_order)
         size = sum([res[field].size*res[field].dtype.itemsize for field in res.keys()])
         if size > self.max_response_size:
             raise ValueError('Requested would return ' + str(size) + ' bytes; please limit request to ' + str(self.max_response_size) + '.')
@@ -279,6 +290,84 @@ class Datacube:
             return res
 
 
+    def corr(self, field, dim, seed_idx, select=None, filters=None):
+        data = self._get_data(select=select)
+        data, f = self._query(filters, df=data)
+        data = self._get_data(fields=field, df=data)
+        data = data.fillna(0)
+        #todo: is there a better way to handle this?
+        data = data.astype(np.float32)
+        mdata = self.backend.logical_not(self.backend.isnan(data))
+        if f['masks']:
+            mdata = reduce(xr_ufuncs.logical_and, f['masks'], mdata)
+        axis = data.dims.index(dim)
+        res = Datacube._corr(data, seed_idx, axis, mdata, backend=self.backend)
+        return xr.Dataset({'corr': ([dim], res.squeeze())})
+
+
+    # module `backend` is passed in; can be set to `np` or `da`
+    @staticmethod
+    def _get_seed(data, seed_idx, axis, mdata, backend=np):
+        seed = backend.take(data, seed_idx, axis=axis).data
+        #todo: will this work with dask arrays?
+        seed = np.reshape(seed, tuple(data.shape[i] if i != axis else 1 for i in range(0,data.ndim))) # restore dims after take
+        mseed = backend.take(mdata, seed_idx, axis=axis).data
+        mseed = np.reshape(mseed, tuple(mdata.shape[i] if i != axis else 1 for i in range(0,data.ndim))) # restore dims after take
+        return seed, mseed
+
+
+    @staticmethod
+    def _get_num_samples(data, axis, mdata, backend=np):
+        sample_axes = np.array([i for i in range(data.ndim) if i != axis])
+        if mdata is None:
+            num_samples = np.prod(np.array([data.shape[i] for i in sample_axes], dtype=data.dtype))
+            if backend == da:
+                num_samples = da.from_array(num_samples)
+            mdata_args = []
+        else:
+            dims = range(mdata.ndim)
+            num_samples = backend.einsum(mdata.astype(np.uint64), dims, [axis])
+            mdata_args = [mdata, dims]
+        return num_samples, mdata_args
+
+
+    @staticmethod
+    def _corr(data, seed_idx, axis, mdata, backend=np):
+        np.seterr(divide='ignore', invalid='ignore')
+
+        seed, mseed = Datacube._get_seed(data, seed_idx, axis, mdata, backend=backend)        
+        ddims = list(range(data.ndim))
+        #todo: can named dimensions be supported by da.einsum instead of doing this kind of stuff?
+        mdims = list(range(mdata.ndim))
+        sdims = list(range(seed.ndim))
+        sample_axes = np.array([i for i in ddims if i != axis])
+
+        seed_num_samples, _ = Datacube._get_num_samples(seed, axis, mseed, backend=backend)
+        num_samples, _ = Datacube._get_num_samples(data, axis, mdata, backend=backend)
+
+        seed_mean = backend.einsum(seed, sdims, mseed, sdims, []) / seed_num_samples
+        data_mean = backend.einsum(data, ddims, mdata, mdims, [axis]) / num_samples
+        data_mean = backend.reshape(data_mean, tuple(data.shape[i] if i == axis else 1 for i in ddims)) # restore dims after einsum
+
+        seed_dev = backend.einsum(seed-seed_mean, sdims, mseed, sdims, sdims)
+        numerator = backend.einsum(seed_dev, sdims, data, ddims, mdata, mdims, [axis])
+        numerator -= backend.einsum(seed_dev, sdims, data_mean, ddims, [axis])
+
+        denominator = backend.einsum(data, ddims, data, ddims, mdata, mdims, [axis])
+        # data_mean has already been masked
+        denominator += -2.0*backend.einsum(data, ddims, data_mean, ddims, mdata, mdims, [axis])
+        denominator += backend.sum(data_mean**2, axis=tuple(sample_axes)) * num_samples
+
+        denominator *= backend.sum(seed_dev**2, axis=tuple(sample_axes))
+        denominator = backend.sqrt(denominator)
+        import pdb
+        pdb.set_trace()
+        corr = backend.clip(numerator / denominator, -1.0, 1.0)
+        corr = backend.reshape(corr, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
+        
+        return corr
+
+
     def _sort(self, dim, sort, ascending):
         df = self.df
         sort_cache_key = json.dumps([self.name, 'sort', dim, sort, ascending])
@@ -312,7 +401,8 @@ class Datacube:
 
     #todo: 'select' clauses could be pretty easily added into each filter as in {'field': ..., 'select': ..., 'op': ..., 'value': ...}
     def _query(self, filters, df=None):
-        df = df or self.df
+        if df is None:
+            df = self.df
         if isinstance(filters, list):
             filters = {'and': filters}
         if not filters:
@@ -338,6 +428,7 @@ class Datacube:
                         mask = (df[field] <= value)
                     elif op == '>=':
                         mask = (df[field] >= value)
+                    #todo: convert 1-d masks to inds (?)
                     res['masks'].append(mask)
                 else:
                     filter_key = _filter_key(f)
@@ -356,7 +447,7 @@ class Datacube:
                             stop = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
                         elif op == '>=':
                             start = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
-                        inds = self.argsorts[field][start:stop]
+                        inds = np.sort(self.argsorts[field][start:stop])
                         self.redis_client.setnx(filter_key, pickle.dumps(inds))
                     else:
                         inds = pickle.loads(cached)
@@ -391,6 +482,16 @@ class Datacube:
 
             def _or(m1, m2):
                 res = {'inds': {}, 'masks': []}
+
+                for dim, inds in iteritems(m1['inds']):
+                    mask = xr.DataArray(np.zeros((df.dims[dim],), dtype=np.bool), dims=[dim])
+                    mask[inds] = True
+                    m1['masks'].append(mask)
+                for dim, inds in iteritems(m2['inds']):
+                    mask = xr.DataArray(np.zeros((df.dims[dim],), dtype=np.bool), dims=[dim])
+                    mask[inds] = True
+                    m2['masks'].append(mask)
+
                 if not m1['masks']:
                     if not m2['masks']:
                         res['masks'] = []
@@ -400,11 +501,6 @@ class Datacube:
                     res['masks'] = []
                 else:
                     res['masks'] = [xr_ufuncs.logical_or(reduce(xr_ufuncs.logical_and, m1['masks']), reduce(xr_ufuncs.logical_and, m2['masks']))]
-
-                res['inds'] = m1['inds']
-                for dim, inds in iteritems(m2['inds']):
-                    if dim in res['inds']:
-                        res['inds'][dim] = np.union1d(res['inds'][dim], m2['inds'][dim])
                 return res
 
             def _expand_filters(filters):
@@ -459,4 +555,6 @@ class Datacube:
                 return res
 
             res = _reduce(filters)
+            res['masks'] = [mask[res['inds']] for mask in res['masks']]
+
             return (df[res['inds']], res)
