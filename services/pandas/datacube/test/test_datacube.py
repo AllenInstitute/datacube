@@ -7,7 +7,6 @@ import xarray as xr
 from six import iteritems
 from itertools import product
 import json
-from scipy.stats import pearsonr
 
 
 @pytest.fixture(scope='session', params=[(20,30), (10,20,30)])
@@ -56,8 +55,8 @@ def test_raw_max_response_size(test_nd_netcdf, redisdb):
 
 def test_raw_select(test_datacube):
     d, ds = test_datacube
-    r = d.raw(select={'dim_0': {'start': 0, 'stop': 10}})
-    assert r.equals(ds[{'dim_0': slice(0,10)}])
+    r = d.raw(select={'dim_0': {'start': 0, 'stop': 8}})
+    assert r.equals(ds[{'dim_0': slice(0,8)}])
     r = d.raw(select={'dim_0': [0,2,5], 'dim_1': [3,5,7,9]})
     assert r.equals(ds[{'dim_0': [0,2,5], 'dim_1': [3,5,7,9]}])
 
@@ -98,28 +97,59 @@ def test_raw_filters(test_datacube):
     if 'foo_2' in ds: assert json.dumps(r.foo_2.to_dict()) == json.dumps(ds.where(cond, drop=True).foo_2.to_dict())
 
 
-@pytest.mark.filterwarnings('ignore:invalid value encountered in true_divide')
+def pearsonr(x, y):
+    mx = np.ma.array(x, mask=np.isnan(x))
+    my = np.ma.array(y, mask=np.isnan(y))
+    from scipy.stats.mstats import pearsonr as mstats_pearsonr
+    return mstats_pearsonr(mx,my)[0]
+
+
+@pytest.mark.filterwarnings('ignore')
 def test_corr(test_datacube):
     d, ds = test_datacube
 
     r = d.corr('foo_0', 'dim_0', 0)
-    assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_0.isel(dim_0=[0]), ds.foo_0.isel(dim_0=[i]))[0] for i in range(ds.dims['dim_0'])]), equal_nan=True)
+    assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_0.isel(dim_0=[0]), ds.foo_0.isel(dim_0=[i])) for i in range(ds.dims['dim_0'])]), equal_nan=True)
 
     r = d.corr('foo_1', 'dim_0', 0)
-    assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_1.isel(dim_0=0), ds.foo_1.isel(dim_0=i))[0] for i in range(ds.dims['dim_0'])]))
+    assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_1.isel(dim_0=0), ds.foo_1.isel(dim_0=i)) for i in range(ds.dims['dim_0'])]))
     #todo: upgrade xarray and use:
     #xr.testing.assert_allclose(r, xr.Dataset({'corr': (['dim_0'], np.array([pearsonr(ds.foo_1.isel(dim_0=0), ds.foo_1.isel(dim_0=i))[0] for i in range(ds.dims['dim_0'])]))}))
 
     r = d.corr('foo_1', 'dim_1', 0)
-    assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_1.isel(dim_1=0), ds.foo_1.isel(dim_1=i))[0] for i in range(ds.dims['dim_1'])]))
+    assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_1.isel(dim_1=0), ds.foo_1.isel(dim_1=i)) for i in range(ds.dims['dim_1'])]))
 
     if 'foo_2' in ds:
         r = d.corr('foo_2', 'dim_0', 0)
-        assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_2.isel(dim_0=0).values.flat, ds.foo_2.isel(dim_0=i).values.flat)[0] for i in range(ds.dims['dim_0'])]))
+        assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_2.isel(dim_0=0).values.flat, ds.foo_2.isel(dim_0=i).values.flat) for i in range(ds.dims['dim_0'])]))
 
         r = d.corr('foo_2', 'dim_1', 0)
-        assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_2.isel(dim_1=0).values.flat, ds.foo_2.isel(dim_1=i).values.flat)[0] for i in range(ds.dims['dim_1'])]))
+        assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_2.isel(dim_1=0).values.flat, ds.foo_2.isel(dim_1=i).values.flat) for i in range(ds.dims['dim_1'])]))
 
         r = d.corr('foo_2', 'dim_2', 0)
-        assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_2.isel(dim_2=0).values.flat, ds.foo_2.isel(dim_2=i).values.flat)[0] for i in range(ds.dims['dim_2'])]))
+        assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_2.isel(dim_2=0).values.flat, ds.foo_2.isel(dim_2=i).values.flat) for i in range(ds.dims['dim_2'])]))
 
+
+@pytest.mark.filterwarnings('ignore')
+def test_corr_select(test_datacube):
+    d, ds = test_datacube
+
+    r = d.corr('foo_1', 'dim_0', 0, select={'dim_1': {'start': 0, 'stop': 8}})
+    s = ds[{'dim_1': slice(0,8)}]
+    assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.isel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]))
+
+    r = d.corr('foo_1', 'dim_0', 0, select={'dim_0': [0,2,5], 'dim_1': [3,5,7,9]})
+    s = ds[{'dim_0': [0,2,5], 'dim_1': [3,5,7,9]}]
+    assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.isel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]))
+
+
+#todo: make sure and test when mask has different dimensions than data
+# (will need to add an option to skip the nan-masking in order to do this)
+@pytest.mark.filterwarnings('ignore')
+def test_corr_filters(test_datacube):
+    d, ds = test_datacube
+
+    r = d.corr('foo_1', 'dim_0', 0, filters={'or': [{'field': 'foo_0', 'op': '<=', 'value': 0.25},{'field': 'foo_1', 'op': '<=', 'value': 0.1}]})
+    cond = (ds.foo_0 <= 0.25) | (ds.foo_1 <= 0.1)
+    s = ds.where(cond, drop=True)
+    assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.isel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]), equal_nan=True)

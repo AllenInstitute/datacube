@@ -295,15 +295,21 @@ class Datacube:
         data = self._get_data(select=select)
         data, f = self._query(filters, df=data)
         data = self._get_data(fields=field, df=data)
-        data = data.fillna(0)
         #todo: is there a better way to handle this?
         data = data.astype(np.float32)
         mdata = self.backend.logical_not(self.backend.isnan(data))
+        data = data.fillna(0)
         if f['masks']:
             mdata = reduce(xr_ufuncs.logical_and, f['masks'], mdata)
         axis = data.dims.index(dim)
+        #todo: dask backend is being used regardless
         res = Datacube._corr(data, seed_idx, axis, mdata, backend=self.backend)
-        return xr.Dataset({'corr': ([dim], res.squeeze())})
+        res = xr.Dataset({'corr': ([dim], res.squeeze())})
+        if f['masks']:
+            mask = reduce(xr_ufuncs.logical_and, f['masks'])
+            reduce_dims = [d for d in mask.dims if d != dim]
+            res = res.where(mask.any(dim=reduce_dims), drop=True)
+        return res
 
 
     # module `backend` is passed in; can be set to `np` or `da`
@@ -362,7 +368,10 @@ class Datacube:
         denominator *= backend.sum(seed_dev**2, axis=tuple(sample_axes))
         denominator = backend.sqrt(denominator)
 
-        corr = backend.clip(numerator / denominator, -1.0, 1.0)
+        corr = numerator / denominator
+        #todo: better way of doing this?
+        corr *= backend.sign(np.inf*(backend.sum(mdata*mseed, axis=sample_axes)>1))
+        corr = backend.clip(corr, -1.0, 1.0)
         corr = backend.reshape(corr, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
         
         return corr
