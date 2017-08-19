@@ -361,8 +361,7 @@ class Datacube:
 
         denominator *= backend.sum(seed_dev**2, axis=tuple(sample_axes))
         denominator = backend.sqrt(denominator)
-        import pdb
-        pdb.set_trace()
+
         corr = backend.clip(numerator / denominator, -1.0, 1.0)
         corr = backend.reshape(corr, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
         

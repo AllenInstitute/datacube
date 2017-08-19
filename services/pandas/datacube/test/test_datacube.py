@@ -7,6 +7,7 @@ import xarray as xr
 from six import iteritems
 from itertools import product
 import json
+from scipy.stats import pearsonr
 
 
 @pytest.fixture(scope='session', params=[(20,30), (10,20,30)])
@@ -65,15 +66,19 @@ def test_raw_select(test_datacube):
 # dimension has size 0. using Dataset/DataArray to_dict() as a workaround for now
 def test_raw_filters(test_datacube):
     d, ds = test_datacube
+
     r = d.raw(filters=[{'field': 'foo_0', 'op': '<=', 'value': 0.5}])
     #assert r.equals(ds.where(ds.foo_0 <= 0.5, drop=True))
     assert json.dumps(r.to_dict()) == json.dumps(ds.where(ds.foo_0 <= 0.5, drop=True).to_dict())
+
     r = d.raw(filters={'and': [{'field': 'foo_0', 'op': '<=', 'value': 0.25},{'field': 'foo_0', 'op': '>=', 'value': 0.75}]})
     #assert r.equals(ds.where((ds.foo_0 <= 0.25) & (ds.foo_0 >= 0.75), drop=True))
     assert json.dumps(r.to_dict()) == json.dumps(ds.where((ds.foo_0 <= 0.25) & (ds.foo_0 >= 0.75), drop=True).to_dict())
+
     r = d.raw(filters={'or': [{'field': 'foo_0', 'op': '<=', 'value': 0.25},{'field': 'foo_0', 'op': '>=', 'value': 0.75}]})
     #assert r.equals(ds.where((ds.foo_0 <= 0.25) | (ds.foo_0 >= 0.75), drop=True))
     assert json.dumps(r.to_dict()) == json.dumps(ds.where((ds.foo_0 <= 0.25) | (ds.foo_0 >= 0.75), drop=True).to_dict())
+
     r = d.raw(filters={'and': [{'field': 'foo_0', 'op': '<=', 'value': 0.5},{'field': 'foo_1', 'op': '<=', 'value': 0.5}]})
     cond = (ds.foo_0 <= 0.5) & (ds.foo_1 <= 0.5)
     #assert r.foo_0.equals(ds.where(cond.any(dim='dim_1'), drop=True).foo_0)
@@ -82,6 +87,7 @@ def test_raw_filters(test_datacube):
     assert json.dumps(r.foo_1.to_dict()) == json.dumps(ds.where(cond, drop=True).foo_1.to_dict())
     #if 'foo_2' in ds: assert r.foo_2.equals(ds.where(cond, drop=True).foo_2)
     if 'foo_2' in ds: assert json.dumps(r.foo_2.to_dict()) == json.dumps(ds.where(cond, drop=True).foo_2.to_dict())
+
     r = d.raw(filters={'or': [{'field': 'foo_0', 'op': '<=', 'value': 0.25},{'field': 'foo_1', 'op': '<=', 'value': 0.1}]})
     cond = (ds.foo_0 <= 0.25) | (ds.foo_1 <= 0.1)
     #assert r.foo_0.equals(ds.where(cond.any(dim='dim_1'), drop=True).foo_0)
@@ -90,3 +96,11 @@ def test_raw_filters(test_datacube):
     assert json.dumps(r.foo_1.to_dict()) == json.dumps(ds.where(cond, drop=True).foo_1.to_dict())
     #if 'foo_2' in ds: assert r.foo_2.equals(ds.where(cond, drop=True).foo_2)
     if 'foo_2' in ds: assert json.dumps(r.foo_2.to_dict()) == json.dumps(ds.where(cond, drop=True).foo_2.to_dict())
+
+
+def test_corr(test_datacube):
+    d, ds = test_datacube
+    r = d.corr('foo_1', 'dim_0', 0)
+    assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_1.isel(dim_0=0), ds.foo_1.isel(dim_0=i))[0] for i in range(ds.dims['dim_0'])]))
+    #todo: upgrade xarray and use:
+    #xr.testing.assert_allclose(r, xr.Dataset({'corr': (['dim_0'], np.array([pearsonr(ds.foo_1.isel(dim_0=0), ds.foo_1.isel(dim_0=i))[0] for i in range(ds.dims['dim_0'])]))}))
