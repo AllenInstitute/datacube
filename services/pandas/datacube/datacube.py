@@ -168,11 +168,12 @@ class Datacube:
         if filters:
             res, f = self._query(filters, df=res)
             if f['masks']:
-                ds = res
+                ds = res.load()
                 res = xr.Dataset()
                 mask = reduce(xr_ufuncs.logical_and, f['masks'])
                 for field in ds.data_vars:
-                    res[field] = ds[field].where(mask.any(dim=[dim for dim in mask.dims if dim not in ds[field].dims]), drop=True)
+                    reduce_dims = [dim for dim in mask.dims if dim not in ds[field].dims]
+                    res[field] = ds[field].where(mask.any(dim=reduce_dims), drop=True)
                     for coord in res[field].coords:
                         res.coords[coord] = res[field].coords[coord]
         if fields:
