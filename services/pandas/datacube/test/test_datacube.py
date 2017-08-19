@@ -29,7 +29,7 @@ def test_datacube(request, test_nd_netcdf, redisdb):
     nc_file, ds = test_nd_netcdf
     chunks = None
     if use_chunks:
-        chunks = {dim: 5 for dim in ds.dims}
+        chunks = {dim: 3 for dim in ds.dims}
     d = Datacube('test', nc_file, chunks=chunks, max_cacheable_bytes=max_cacheable_bytes)
     return d, ds
 
@@ -98,9 +98,28 @@ def test_raw_filters(test_datacube):
     if 'foo_2' in ds: assert json.dumps(r.foo_2.to_dict()) == json.dumps(ds.where(cond, drop=True).foo_2.to_dict())
 
 
+@pytest.mark.filterwarnings('ignore:invalid value encountered in true_divide')
 def test_corr(test_datacube):
     d, ds = test_datacube
+
+    r = d.corr('foo_0', 'dim_0', 0)
+    assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_0.isel(dim_0=[0]), ds.foo_0.isel(dim_0=[i]))[0] for i in range(ds.dims['dim_0'])]), equal_nan=True)
+
     r = d.corr('foo_1', 'dim_0', 0)
     assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_1.isel(dim_0=0), ds.foo_1.isel(dim_0=i))[0] for i in range(ds.dims['dim_0'])]))
     #todo: upgrade xarray and use:
     #xr.testing.assert_allclose(r, xr.Dataset({'corr': (['dim_0'], np.array([pearsonr(ds.foo_1.isel(dim_0=0), ds.foo_1.isel(dim_0=i))[0] for i in range(ds.dims['dim_0'])]))}))
+
+    r = d.corr('foo_1', 'dim_1', 0)
+    assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_1.isel(dim_1=0), ds.foo_1.isel(dim_1=i))[0] for i in range(ds.dims['dim_1'])]))
+
+    if 'foo_2' in ds:
+        r = d.corr('foo_2', 'dim_0', 0)
+        assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_2.isel(dim_0=0).values.flat, ds.foo_2.isel(dim_0=i).values.flat)[0] for i in range(ds.dims['dim_0'])]))
+
+        r = d.corr('foo_2', 'dim_1', 0)
+        assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_2.isel(dim_1=0).values.flat, ds.foo_2.isel(dim_1=i).values.flat)[0] for i in range(ds.dims['dim_1'])]))
+
+        r = d.corr('foo_2', 'dim_2', 0)
+        assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_2.isel(dim_2=0).values.flat, ds.foo_2.isel(dim_2=i).values.flat)[0] for i in range(ds.dims['dim_2'])]))
+
