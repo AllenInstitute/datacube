@@ -22,7 +22,7 @@
             {
                 "path": "mni.nc",
                 "use_chunks": false,
-                "chunks": {"x": 20, "y": 20, "z": 20}
+                "chunks": {"left_right": 100, "anterior_posterior": 100, "superior_inferior": 100}
             }
         ],
         "arguments": ["--data-dir", "./data/", "--data-name", "mni"]
@@ -36,7 +36,7 @@
             {
                 "path": "mouse_ccf.nc",
                 "use_chunks": false,
-                "chunks": {"x": 20, "y": 20, "z": 20}
+                "chunks": {"left_right": 100, "anterior_posterior": 100, "superior_inferior": 100}
             }
         ],
         "arguments": ["--data-src", "http://iwarehouse/", "--data-dir", "./data/", "--data-name", "mouse_ccf"]

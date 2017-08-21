@@ -6,13 +6,51 @@ import redis
 #import txredisapi
 #from twisted.internet import reactor
 import xarray as xr
+import xarray.ufuncs as xr_ufuncs
 import dask
+import dask.array as da
 from PIL import Image
 from io import BytesIO
 import base64
+from functools import reduce
 
 from six import iteritems
-from builtins import int
+from builtins import int, map
+
+
+#todo: https://github.com/dask/dask/issues/732
+def da_einsum(*args, **kwargs):
+    args = list(args)
+    out_inds = args.pop()
+    in_inds = args[1::2]
+    arrays = args[0::2]
+    dtype = kwargs.get('dtype')
+    einsum_dtype = dtype
+    if dtype is None:
+        dtype = np.result_type(*[a.dtype for a in arrays])
+    casting = kwargs.get('casting')
+    if casting is None:
+        casting = 'safe'
+    
+    full_inds = list(set().union(*in_inds))
+    contract_inds = tuple(set(full_inds)-set(out_inds))
+    
+    def kernel(*operands, **kwargs):
+        kernel_dtype = kwargs.get('kernel_dtype')
+        casting = kwargs.get('casting')
+        chunk = np.einsum(dtype=kernel_dtype, casting=casting, *([arg for arg_pair in zip(operands, in_inds) for arg in arg_pair]+[out_inds]))
+        chunk = np.array(chunk)
+        chunk.shape = tuple([1 if ind not in out_inds else chunk.shape[out_inds.index(ind)] for ind in full_inds])
+        return chunk
+    
+    adjust_chunks = {ind: 1 for ind in contract_inds}
+    result = da.atop(kernel, full_inds, *args, dtype=dtype, kernel_dtype=einsum_dtype, casting=casting, adjust_chunks=adjust_chunks)
+    if contract_inds:
+        result = da.sum(result, axis=contract_inds)
+    return result
+
+# monkey-patch the method into the module for now
+setattr(da, 'einsum', da_einsum)
 
 
 class Datacube:
@@ -22,7 +60,9 @@ class Datacube:
         return 1
 
 
-    def __init__(self, nc_file=None, chunks=None, max_cacheable_bytes=10*1024*1024):
+    def __init__(self, name, nc_file, redis_client=None, chunks=None, max_response_size=10*1024*1024, max_cacheable_bytes=10*1024*1024):
+        self.name = name
+        self.max_response_size = max_response_size
         self.max_cacheable_bytes = max_cacheable_bytes
         if nc_file: self.load(nc_file, chunks)
         #todo: would be nice to find a way to swap these out,
@@ -30,16 +70,20 @@ class Datacube:
         #if reactor.running:
         #    self.redis_client = txredisapi.Connection('localhost', 6379)
         #else:
-        self.redis_client = redis.StrictRedis('localhost', 6379)
+        if redis_client:
+            self.redis_client = redis_client
+        else:
+            self.redis_client = redis.StrictRedis('localhost', 6379)
 
 
     def load(self, nc_file, chunks=None):
         #todo: rename df
         #todo: argsorts need to be cached to a file (?)
         self.df = xr.open_dataset(nc_file, chunks=chunks)
+        self.backend = da
         self.argsorts = {}
         for field in self.df.keys():
-            if self.df[field].size/8. < self.max_cacheable_bytes:
+            if self.df[field].size*self.df[field].dtype.itemsize <= self.max_cacheable_bytes:
                 self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
         #todo: would be nice to cache these instead of computing on every startup
         self.mins = {}
@@ -109,8 +153,34 @@ class Datacube:
         return subscripts
 
 
-    def get_data(self, subscripts, fields, dim_order=None):
-        res = self.df[subscripts][fields]
+    def _get_data(self, select=None, fields=None, filters=None, dim_order=None, df=None):
+        if df is not None:
+            res = df
+        else:
+            res = self.df
+        if isinstance(fields, list):
+            assert(all(f in list(res.keys()) for f in fields))
+        elif fields:
+            assert(fields in list(res.keys()))
+        subscripts=None
+        if select:
+            self._validate_select(select)
+            subscripts = self._get_subscripts_from_select(select)
+        if subscripts:
+            res = res[subscripts]
+        if filters:
+            res, f = self._query(filters, df=res)
+            if f['masks']:
+                ds = res.load()
+                res = xr.Dataset()
+                mask = reduce(xr_ufuncs.logical_and, f['masks'])
+                for field in ds.data_vars:
+                    reduce_dims = [dim for dim in mask.dims if dim not in ds[field].dims]
+                    res[field] = ds[field].where(mask.any(dim=reduce_dims), drop=True)
+                    for coord in res[field].coords:
+                        res.coords[coord] = res[field].coords[coord]
+        if fields:
+            res = res[fields]
         if dim_order:
             res = res.transpose(*dim_order)
         return res
@@ -125,11 +195,13 @@ class Datacube:
         return {'dims': dims, 'vars': variables, 'attrs': attrs}
 
 
-    def raw(self, select, fields, dim_order=None):
-        assert(all(f in list(self.df.keys()) for f in fields))
-        self._validate_select(select)
-        subscripts = self._get_subscripts_from_select(select)
-        return self.get_data(subscripts, fields, dim_order)
+    #todo: add sort and deprecate select()
+    def raw(self, select=None, fields=None, filters=None, dim_order=None):
+        res = self._get_data(select, fields, filters, dim_order)
+        size = sum([res[field].size*res[field].dtype.itemsize for field in res.keys()])
+        if size > self.max_response_size:
+            raise ValueError('Requested would return ' + str(size) + ' bytes; please limit request to ' + str(self.max_response_size) + '.')
+        return res
 
 
     def image(self, select, field, dim_order=None, image_format='jpeg'):
@@ -138,7 +210,7 @@ class Datacube:
                 if 'RGBA' in dim_order:
                     dim_order.remove('RGBA')
                 dim_order.append('RGBA')
-        data = self.raw(select, [field], dim_order)
+        data = self.raw(select=select, fields=[field], dim_order=dim_order)
         dims = list(data[field].dims)
         if 'RGBA' in dims:
             dims.remove('RGBA')
@@ -190,7 +262,9 @@ class Datacube:
                 raise ValueError('Requested would return ' + str(num_results) + ' records; please limit request to ' + str(options['max_records']) + ' records.')
         inds = np.array(range(r.dims[dim]), dtype=np.int)
         if filters is not None:
-            inds = self._query(dim, filters)
+            _, mask = self._query(filters)
+            if 'dim_0' in mask['inds']:
+                inds = np.array(mask['inds']['dim_0'])
         if indexes is not None:
             indexes = [x for x in indexes if x != None]
             if inds is not None:
@@ -220,11 +294,96 @@ class Datacube:
             return res
 
 
+    def corr(self, field, dim, seed_idx, select=None, filters=None):
+        data = self._get_data(select=select)
+        data, f = self._query(filters, df=data)
+        data = self._get_data(fields=field, df=data)
+        #todo: is there a better way to handle this?
+        data = data.astype(np.float32)
+        mdata = self.backend.logical_not(self.backend.isnan(data))
+        data = data.fillna(0)
+        if f['masks']:
+            mdata = reduce(xr_ufuncs.logical_and, f['masks'], mdata)
+        axis = data.dims.index(dim)
+        #todo: dask backend is being used regardless
+        res = Datacube._corr(data, seed_idx, axis, mdata, backend=self.backend)
+        res = xr.Dataset({'corr': ([dim], res.squeeze())})
+        if f['masks']:
+            mask = reduce(xr_ufuncs.logical_and, f['masks'])
+            reduce_dims = [d for d in mask.dims if d != dim]
+            res = res.where(mask.any(dim=reduce_dims), drop=True)
+        return res
+
+
+    # module `backend` is passed in; can be set to `np` or `da`
+    @staticmethod
+    def _get_seed(data, seed_idx, axis, mdata, backend=np):
+        seed = backend.take(data, seed_idx, axis=axis).data
+        #todo: will this work with dask arrays?
+        seed = np.reshape(seed, tuple(data.shape[i] if i != axis else 1 for i in range(0,data.ndim))) # restore dims after take
+        mseed = backend.take(mdata, seed_idx, axis=axis).data
+        mseed = np.reshape(mseed, tuple(mdata.shape[i] if i != axis else 1 for i in range(0,data.ndim))) # restore dims after take
+        return seed, mseed
+
+
+    @staticmethod
+    def _get_num_samples(data, axis, mdata, backend=np):
+        sample_axes = np.array([i for i in range(data.ndim) if i != axis])
+        if mdata is None:
+            num_samples = np.prod(np.array([data.shape[i] for i in sample_axes], dtype=data.dtype))
+            if backend == da:
+                num_samples = da.from_array(num_samples)
+            mdata_args = []
+        else:
+            dims = range(mdata.ndim)
+            num_samples = backend.einsum(mdata.astype(np.uint64), dims, [axis])
+            mdata_args = [mdata, dims]
+        return num_samples, mdata_args
+
+
+    @staticmethod
+    def _corr(data, seed_idx, axis, mdata, backend=np):
+        np.seterr(divide='ignore', invalid='ignore')
+
+        seed, mseed = Datacube._get_seed(data, seed_idx, axis, mdata, backend=backend)        
+        ddims = list(range(data.ndim))
+        #todo: can named dimensions be supported by da.einsum instead of doing this kind of stuff?
+        mdims = list(range(mdata.ndim))
+        sdims = list(range(seed.ndim))
+        sample_axes = np.array([i for i in ddims if i != axis])
+
+        seed_num_samples, _ = Datacube._get_num_samples(seed, axis, mseed, backend=backend)
+        num_samples, _ = Datacube._get_num_samples(data, axis, mdata, backend=backend)
+
+        seed_mean = backend.einsum(seed, sdims, mseed, sdims, []) / seed_num_samples
+        data_mean = backend.einsum(data, ddims, mdata, mdims, [axis]) / num_samples
+        data_mean = backend.reshape(data_mean, tuple(data.shape[i] if i == axis else 1 for i in ddims)) # restore dims after einsum
+
+        seed_dev = backend.einsum(seed-seed_mean, sdims, mseed, sdims, sdims)
+        numerator = backend.einsum(seed_dev, sdims, data, ddims, mdata, mdims, [axis])
+        numerator -= backend.einsum(seed_dev, sdims, data_mean, ddims, [axis])
+
+        denominator = backend.einsum(data, ddims, data, ddims, mdata, mdims, [axis])
+        # data_mean has already been masked
+        denominator += -2.0*backend.einsum(data, ddims, data_mean, ddims, mdata, mdims, [axis])
+        denominator += backend.sum(data_mean**2, axis=tuple(sample_axes)) * num_samples
+
+        denominator *= backend.sum(seed_dev**2, axis=tuple(sample_axes))
+        denominator = backend.sqrt(denominator)
+
+        corr = numerator / denominator
+        #todo: better way of doing this?
+        corr *= backend.sign(np.inf*(backend.sum(mdata*mseed, axis=sample_axes)>1))
+        corr = backend.clip(corr, -1.0, 1.0)
+        corr = backend.reshape(corr, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
+        
+        return corr
+
+
     def _sort(self, dim, sort, ascending):
         df = self.df
-        redis_client = self.redis_client
-        sort_cache_key = json.dumps(['sort', dim, sort, ascending])
-        cached = redis_client.get(sort_cache_key)
+        sort_cache_key = json.dumps([self.name, 'sort', dim, sort, ascending])
+        cached = self.redis_client.get(sort_cache_key)
         if not cached:
             if not ascending:
                 ascending = [True] * len(sort)
@@ -234,7 +393,7 @@ class Datacube:
             s = df[sort]
             ranks = np.zeros((s.dims[dim], len(s.keys())), dtype=np.int)
             for idx, (field, asc) in enumerate(zip(sort[::-1], ascending[::-1])):
-                if s[field].dtype.name.startswith('string') or s[field].dtype.name.startswith('unicode'):
+                if s[field].dtype.name.startswith('string') or s[field].dtype.name.startswith('unicode') or s[field].dtype.name.startswith('bytes'):
                     blank_count = np.count_nonzero(s[field] == '')
                 else:
                     blank_count = np.count_nonzero(np.isnan(s[field]))
@@ -246,120 +405,168 @@ class Datacube:
                 else:
                     ranks[:,idx] = np.clip(ranks[:,idx], 0, maxrank - blank_count + 1)
             res = np.lexsort(tuple(ranks[:,idx] for idx in range(ranks.shape[1])))
-            redis_client.setnx(sort_cache_key, pickle.dumps(res))
+            self.redis_client.setnx(sort_cache_key, pickle.dumps(res))
             return res
         else:
             return pickle.loads(cached)
 
 
-    def _query(self, dim, filters):
-        df = self.df
-        redis_client = self.redis_client
+    #todo: 'select' clauses could be pretty easily added into each filter as in {'field': ..., 'select': ..., 'op': ..., 'value': ...}
+    def _query(self, filters, df=None):
+        if df is None:
+            df = self.df
+        if isinstance(filters, list):
+            filters = {'and': filters}
         if not filters:
-            return np.array(range(df.dims[dim]), dtype=np.int)
+            return (df, {'inds': {}, 'masks': []})
         else:
-            # todo: add name to datacube object and include in cache keys
-
-            def _do_search(f):
+            def _filter(f):
                 op = f['op']
                 field = f['field']
                 value = f['value']
 
+                def _filter_key(f):
+                    return json.dumps([self.name, 'filter', f['op'], f['field'], f['value']])
+
+                res = {'inds': {}, 'masks': []}
+                if df is not self.df or field not in self.argsorts:
+                    if op == '=' or op == 'is':
+                        mask = (df[field] == value)
+                    elif op == '<':
+                        mask = (df[field] < value)
+                    elif op == '>':
+                        mask = (df[field] > value)
+                    elif op == '<=':
+                        mask = (df[field] <= value)
+                    elif op == '>=':
+                        mask = (df[field] >= value)
+                    #todo: convert 1-d masks to inds (?)
+                    res['masks'].append(mask)
+                else:
+                    filter_key = _filter_key(f)
+                    cached = self.redis_client.get(filter_key)
+                    if not cached:
+                        start = 0
+                        stop = df[field].size
+                        if op == '=' or op == 'is':
+                            start = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
+                            stop = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
+                        elif op == '<':
+                            stop = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
+                        elif op == '>':
+                            start = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
+                        elif op == '<=':
+                            stop = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
+                        elif op == '>=':
+                            start = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
+                        inds = np.sort(self.argsorts[field][start:stop])
+                        self.redis_client.setnx(filter_key, pickle.dumps(inds))
+                    else:
+                        inds = pickle.loads(cached)
+                    
+                    if 1==df[field].ndim:
+                        res['inds'][df[field].dims[0]] = xr.DataArray(inds, dims=df[field].dims)
+                    else:
+                        unravel_inds = np.unravel_index(inds, df[field].shape)
+                        for i, dim in enumerate(df[field].dims):
+                            res['inds'][dim] = xr.DataArray(np.unique(unravel_inds[i]), dims=dim)
+                        #todo: upgrade xarray and use this:
+                        #mask = xr.zeros_like(df[field], dtype=np.bool)
+                        mask = xr.DataArray(np.zeros_like(df[field].values, dtype=np.bool), dims=df[field].dims)
+                        mask.values.flat[inds] = True
+                        res['masks'].append(mask)
+                return res
+
+            def _and(m1, m2):
+                res = {'inds': {}, 'masks': []}
+                d = {}
+                for mask in m1['masks']+m2['masks']:
+                    d.setdefault(mask.dims, []).append(mask)
+                for k, v in iteritems(d):
+                    res.setdefault('masks', []).append(reduce(xr_ufuncs.logical_and, v))
+                res['inds'] = m1['inds']
+                for dim, inds in iteritems(m2['inds']):
+                    if dim in res['inds']:
+                        res['inds'][dim] = np.intersect1d(res['inds'][dim], inds, assume_unique=True)
+                    else:
+                        res['inds'][dim] = inds
+                return res
+
+            def _or(m1, m2):
+                res = {'inds': {}, 'masks': []}
+
+                for dim, inds in iteritems(m1['inds']):
+                    mask = xr.DataArray(np.zeros((df.dims[dim],), dtype=np.bool), dims=[dim])
+                    mask[inds] = True
+                    m1['masks'].append(mask)
+                for dim, inds in iteritems(m2['inds']):
+                    mask = xr.DataArray(np.zeros((df.dims[dim],), dtype=np.bool), dims=[dim])
+                    mask[inds] = True
+                    m2['masks'].append(mask)
+
+                if not m1['masks']:
+                    if not m2['masks']:
+                        res['masks'] = []
+                    else:
+                        res['masks'] = [reduce(xr_ufuncs.logical_and, m2['masks'])]
+                elif not m2['masks']:
+                    res['masks'] = []
+                else:
+                    res['masks'] = [xr_ufuncs.logical_or(reduce(xr_ufuncs.logical_and, m1['masks']), reduce(xr_ufuncs.logical_and, m2['masks']))]
+                return res
+
+            def _expand_filters(filters):
+                bool_op = None
+                if 'and' in filters:
+                    bool_op = 'and'
+                elif 'or' in filters:
+                    bool_op = 'or'
+
+                res = {bool_op: []}
+                for f in filters[bool_op]:
+                    if 'and' in f or 'or' in f:
+                        res[bool_op].append(_expand_filters(f))
+                    else:
+                        op, field, value = (f['op'], f['field'], f['value'])
+                        if op == 'between':
+                            res[bool_op].append({'op': '>=', 'field': field, 'value': value[0]})
+                            res[bool_op].append({'op': '<=', 'field': field, 'value': value[1]})
+                        elif op == 'in':
+                            or_clause = {'or': []}
+                            for v in value:
+                                or_clause['or'].append({'op': '=', 'field': field, 'value': v})
+                            res[bool_op].append(or_clause)
+                        else:
+                            res[bool_op].append(f)
+                return res
+            
+            filters = _expand_filters(filters)
+
+            def _reduce(filters):
                 res = None
-                if isinstance(df[field].data, dask.array.core.Array) or not field in self.argsorts:
-                    if op == '=' or op == 'is':
-                        res = (df[field] == value)
-                    elif op == '<':
-                        res = (df[field] < value)
-                    elif op == '>':
-                        res = (df[field] > value)
-                    elif op == '<=':
-                        res = (df[field] <= value)
-                    elif op == '>=':
-                        res = (df[field] >= value)
+                bool_op = None
+                bool_func = None
+                if 'and' in filters:
+                    bool_op = 'and'
+                    bool_func = _and
+                elif 'or' in filters:
+                    bool_op = 'or'
+                    bool_func = _or
                 else:
-                    start = 0
-                    stop = df[field].size
-                    res = np.zeros(df[field].shape, dtype=np.bool)
-                    if op == '=' or op == 'is':
-                        start = np.searchsorted(df[field], value, side='left', sorter=self.argsorts[field])
-                        stop = np.searchsorted(df[field], value, side='right', sorter=self.argsorts[field])
-                    elif op == '<':
-                        stop = np.searchsorted(df[field], value, side='left', sorter=self.argsorts[field])
-                    elif op == '>':
-                        start = np.searchsorted(df[field], value, side='right', sorter=self.argsorts[field])
-                    elif op == '<=':
-                        stop = np.searchsorted(df[field], value, side='right', sorter=self.argsorts[field])
-                    elif op == '>=':
-                        start = np.searchsorted(df[field], value, side='left', sorter=self.argsorts[field])
-                    res[self.argsorts[field][start:stop]] = True
+                    if 'inds' in filters or 'masks' in filters:
+                        return filters
+                    else:
+                        return _filter(filters)
+
+                if not filters[bool_op]:
+                    res = {'inds': {}, 'masks': []}
+                elif any(isinstance(x, dict) and 'and' in x or 'or' in x for x in filters[bool_op]):
+                    res = _reduce({bool_op: list(map(_reduce, filters[bool_op]))})
+                else:
+                    res = reduce(bool_func, list(map(_reduce, filters[bool_op])))
                 return res
 
-            expanded_filters = []
-            for f in filters:
-                op, field, value = (f['op'], f['field'], f['value'])
-                if op == 'between':
-                    expanded_filters.append({'op': '>=', 'field': field, 'value': value[0]})
-                    expanded_filters.append({'op': '<=', 'field': field, 'value': value[1]})
-                elif op == 'in':
-                    or_clause = []
-                    for v in value:
-                        or_clause.append({'op': '=', 'field': field, 'value': v})
-                    expanded_filters.append(or_clause)
-                else:
-                    expanded_filters.append(f)
+            res = _reduce(filters)
+            res['masks'] = [mask[res['inds']] for mask in res['masks']]
 
-            def _filter_cache_key(f):
-                return json.dumps(['filter', dim, f['op'], f['field'], f['value']])
-
-            def _pack(bool_array):
-                return str(np.packbits(bool_array).tobytes())
-
-            def _unpack(bitstring, sz):
-                res = np.fromstring(bitstring, dtype=np.uint8)
-                res = res[:sz]
-                return res
-
-            def _cache_filter(f):
-                filter_cache_key = _filter_cache_key(f)
-                cached = redis_client.exists(filter_cache_key)
-                if not cached:
-                    filtered = _do_search(f)
-                    redis_client.setnx(filter_cache_key, _pack(filtered))
-                return filter_cache_key
-
-            and_keys = []
-            for f in expanded_filters:
-                if isinstance(f, list):
-                    or_keys = []
-                    for o in f:
-                        key = _cache_filter(o)
-                        or_keys.append(key)
-                    or_cache_key = json.dumps(['filter_or', dim, or_keys])
-                    lua = '''
-                        local exists=redis.call('EXISTS', KEYS[1])
-                        if 0 == exists then
-                            redis.call('BITOP', 'OR', unpack(KEYS))
-                        end
-                        return redis.call('GET', KEYS[1])
-                    '''
-                    eval_keys = (or_cache_key,)+tuple(or_keys)
-                    redis_client.eval(lua, len(eval_keys), *eval_keys)
-                    and_keys.append(or_cache_key)
-                else:
-                    key = _cache_filter(f)
-                    and_keys.append(key)
-
-            and_cache_key = json.dumps(['filter_and', dim, and_keys])
-            lua = '''
-                local exists=redis.call('EXISTS', KEYS[1])
-                if 0 == exists then
-                    redis.call('BITOP', 'AND', unpack(KEYS))
-                end
-                return redis.call('GET', KEYS[1])
-            '''
-            eval_keys = (and_cache_key,)+tuple(and_keys)
-            res = redis_client.eval(lua, len(eval_keys), *eval_keys)
-            res = _unpack(res, df.dims[dim])
-            res = np.flatnonzero(res)
-            return res
+            return (df[res['inds']], res)
