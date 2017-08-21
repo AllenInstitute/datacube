@@ -6,7 +6,7 @@ System dependencies
 
 ::
    
-    yum install gcc openssl-devel libffi-devel
+    yum install gcc openssl-devel libffi-devel python-devel
 
 Install redis
 -------------

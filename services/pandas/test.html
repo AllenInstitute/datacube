@@ -3,97 +3,19 @@
 <head>
 </head>
 <body>
-<h3>pandas service test page</h3>
+<h3>datacube test page</h3>
 <noscript>You must enable JavaScript</noscript>
 <form>
     <div>call:</div>
-    <textarea id="call" cols="80">"org.alleninstitute.pandas_service.filter_cell_specimens"</textarea>
+    <textarea id="call" cols="80">"org.brain-map.api.datacube.info.cell_specimens"</textarea>
     <div>args:</div>
     <textarea id="args" cols="80">[]</textarea>
     <div>kwargs:</div>
     <textarea id="kwargs" style="width: 80%;" rows="15">
-function getRandomInt(min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-// get N random records
-var N = 100;
-var indexes = [];
-for(i = 0; i < N; ++i) {
-    indexes.push(getRandomInt(0, 27123));
-}
-JSON.parse(`
-    {
-        "indexes": ${JSON.stringify(indexes)}
-    }
-`);
-
-
-// get all indexes for a set of filters
-/*
-JSON.parse(`
-    {
-        "fields": "indexes_only",
-        "start": 0,
-        "stop": null,
-        "filters": [
-            {
-                "field": "p_sg",
-                "op": "<=",
-                "value": 0.01
-            },
-            {
-                "field": "pref_phase_sg",
-                "op": "=",
-                "value": 0.25
-            },
-            {
-                "field": "pref_sf_sg",
-                "op": "=",
-                "value": 0.02
-            },
-            {
-                "field": "p_dg",
-                "op": "<=",
-                "value": 0.01
-            },
-            {
-                "field": "pref_tf_dg",
-                "op": "=",
-                "value": 1
-            },
-            {
-                "field": "dsi_dg",
-                "op": "between",
-                "value": [
-                    0.7,
-                    2
-                ]
-            },
-            {
-                "field": "time_to_peak_ns",
-                "op": "between",
-                "value": [
-                    0,
-                    0.18
-                ]
-            },
-            {
-                "field": "area",
-                "op": "in",
-                "value": [
-                    "VISp",
-                    "VISal",
-                    "VISl"
-                ]
-            }
-        ]
-    }
-`);
-*/
+{}
 </textarea>
 </form>
-<div><button onclick="send()">send</button></div>
+<div><button id="send">send</button></div>
 <p>Elapsed time: <span id="elapsed"></span>, Message size: <span id="msg_size"></span></p>
 <p><textarea id="log" style="background-color: #faa; width: 80%;" rows="20" disabled></textarea></p>
 <hr />
@@ -104,143 +26,121 @@ JSON.parse(`
 <button onclick='load_test();'>execute</button>
 <p><textarea id="load_test_log" style="width: 80%;" rows="20" disabled></textarea></p>
 <script type="text/javascript" src="node_modules/autobahn-js-built/autobahn.min.js"></script>
-<script type="text/javascript" src="node_modules/pako/dist/pako.min.js"></script>
-<script type="text/javascript" src="node_modules/text-encoding/lib/encoding.js"></script>
-<script type="text/javascript" src="node_modules/datacube-js/lib/umd/common/structured_array.js"></script>
+<script type="text/javascript" src="node_modules/jquery/dist/jquery.min.js"></script>
 <script type="text/javascript">
-        var ellog = null;
-        ellog = document.getElementById('log');
+$(function() {
+    $('#send').click(send);
 
-        var connection = new autobahn.Connection({
-             url: 'ws://' + window.location.hostname + ':' + window.location.port + '/ws',
-             realm: 'aibs'
-        });
+    var ellog = null;
+    ellog = document.getElementById('log');
 
-        var session;
-        connection.onopen = function (s) {
-            session = s;
-        };
+    var connection = new autobahn.Connection({
+         url: 'ws://' + window.location.hostname + ':' + window.location.port + '/ws',
+         realm: 'aibs'
+    });
 
-        connection.open();
+    var session;
+    connection.onopen = function (s) {
+        session = s;
+    };
 
-        function log(m) {
-            if(m.length > 5000) {
-                m = m.substr(0, 5000) + " ... (truncated)";
-            }
-            ellog.innerHTML += m + '\n';
-            ellog.scrollTop = ellog.scrollHeight;
-        };
+    connection.open();
 
-        function decode_structured_array(res, callback) {
-            var zbuf = res.data;
-            var buf = pako.inflate(zbuf);
-            res.data = buf;
-            var sa = new structured_array.StructuredArray(res);
-            var records = sa.get_all();
-            callback(records);
-        };
+    function log(m) {
+        if(m.length > 5000) {
+            m = m.substr(0, 5000) + " ... (truncated)";
+        }
+        ellog.innerHTML += m + '\n';
+        ellog.scrollTop = ellog.scrollHeight;
+    };
 
-        function send() {
-            call = eval(document.getElementById('call').value);
-            args = eval(document.getElementById('args').value);
-            kwargs = eval(document.getElementById('kwargs').value);
+    function send() {
+        call = JSON.parse(document.getElementById('call').value);
+        args = JSON.parse(document.getElementById('args').value);
+        kwargs = JSON.parse(document.getElementById('kwargs').value);
 
-            var start_time = new Date()
-            session.call(call, args, kwargs).then(
-                function (res) {
-                    //document.getElementById('msg_size').innerHTML = res.length;
-                    if(res.data) {
-                        document.getElementById('msg_size').innerHTML = res.data.length;
-                    }
-                    if(kwargs.fields == "indexes_only") {
-                        var end_time = new Date();
-                        document.getElementById('elapsed').innerHTML = (end_time - start_time) + 'ms';
-                        log("Result:" + JSON.stringify(res));
-                    } else {
-                        //var zbuf = atob(res.data);
-                        var zbuf = res.data;
-                        var buf = pako.inflate(zbuf);
-                        res.data = buf;
-                        var sa = new structured_array.StructuredArray(res);
-                        var records = sa.get_all();
-                        var end_time = new Date();
-                        document.getElementById('elapsed').innerHTML = (end_time - start_time) + 'ms';
-                        log("Result:" + JSON.stringify(records));
-                        //log("Result:" + JSON.stringify(res));
-                    }
-                },
-                function (err) {
-                    log("Error:" + JSON.stringify(err));
+        var start_time = new Date()
+        session.call(call, args, kwargs).then(
+            function (res) {
+                //document.getElementById('msg_size').innerHTML = res.length;
+                if(res.data) {
+                    document.getElementById('msg_size').innerHTML = res.data.length;
                 }
-            );
-        };
+                var end_time = new Date();
+                document.getElementById('elapsed').innerHTML = (end_time - start_time) + 'ms';
+                log("Result:" + JSON.stringify(res));
+            },
+            function (err) {
+                log("Error: " + err.error + ': ' + err.args[0].toString('utf-8'));
+            }
+        );
+    };
 
-        function load_test() {
-            document.getElementById('load_test_log').innerHTML = '';
-            var num_repeats = parseInt(document.getElementById('num_repeats').value);
-            var num_connections = parseInt(document.getElementById('num_connections').value);
+    function load_test() {
+        document.getElementById('load_test_log').innerHTML = '';
+        var num_repeats = parseInt(document.getElementById('num_repeats').value);
+        var num_connections = parseInt(document.getElementById('num_connections').value);
 
-            var success_count = 0;
-            var avg_time = 0;
-            var error_count = 0;
+        var success_count = 0;
+        var avg_time = 0;
+        var error_count = 0;
 
-            var connections = [];
-            for(var i = 0; i < num_connections; ++i) {
-                (function() {
-                    var c = new autobahn.Connection({
-                         url: 'ws://' + window.location.hostname + ':' + window.location.port + '/ws',
-                         realm: 'aibs'
-                    });
+        var connections = [];
+        for(var i = 0; i < num_connections; ++i) {
+            (function() {
+                var c = new autobahn.Connection({
+                     url: 'ws://' + window.location.hostname + ':' + window.location.port + '/ws',
+                     realm: 'aibs'
+                });
 
-                    c.onopen = function(s) {
-                        var in_progress = false;
-                        var repeat = 0;
-                        setInterval(function() {
-                            if(!in_progress) {
-                                if(repeat < num_repeats) {
-                                    ++repeat;
-                                    var start_time = new Date()
-                                    call = eval(document.getElementById('call').value);
-                                    args = eval(document.getElementById('args').value);
-                                    kwargs = eval(document.getElementById('kwargs').value);
+                c.onopen = function(s) {
+                    var in_progress = false;
+                    var repeat = 0;
+                    setInterval(function() {
+                        if(!in_progress) {
+                            if(repeat < num_repeats) {
+                                ++repeat;
+                                var start_time = new Date()
+                                call = JSON.parse(document.getElementById('call').value);
+                                args = JSON.parse(document.getElementById('args').value);
+                                kwargs = JSON.parse(document.getElementById('kwargs').value);
 
-                                    in_progress = true;
-                                    s.call(call, args, kwargs).then(
-                                        function (res) {
-                                            decode_structured_array(res, function(records) {
-                                                var end_time = new Date();
-                                                avg_time = ((avg_time * success_count) + (end_time - start_time)) / (success_count + 1);
-                                                document.getElementById('avg_time').innerHTML = avg_time + ' ms';
-                                                document.getElementById('load_test_log').innerHTML += (end_time - start_time) + 'ms' + '\n';
-                                                success_count += 1;
-                                                document.getElementById('succeeded').innerHTML = success_count;
-                                                document.getElementById('total').innerHTML = success_count + error_count;
-                                                in_progress = false;
-                                            });
-                                        },
-                                        function (err) {
-                                            document.getElementById('load_test_log').innerHTML += "Error:" + JSON.stringify(err) + '\n';
-                                            error_count += 1;
-                                            document.getElementById('failed').innerHTML = error_count;
-                                            document.getElementById('total').innerHTML = success_count + error_count;
-                                            in_progress = false;
-                                        }
-                                    );
-                                } else if(repeat == num_repeats) {
-                                    ++repeat;
-                                    c.close();
-                                }
+                                in_progress = true;
+                                s.call(call, args, kwargs).then(
+                                    function (res) {
+                                        var end_time = new Date();
+                                        avg_time = ((avg_time * success_count) + (end_time - start_time)) / (success_count + 1);
+                                        document.getElementById('avg_time').innerHTML = avg_time + ' ms';
+                                        document.getElementById('load_test_log').innerHTML += (end_time - start_time) + 'ms' + '\n';
+                                        success_count += 1;
+                                        document.getElementById('succeeded').innerHTML = success_count;
+                                        document.getElementById('total').innerHTML = success_count + error_count;
+                                        in_progress = false;
+                                    },
+                                    function (err) {
+                                        document.getElementById('load_test_log').innerHTML += "Error:" + JSON.stringify(err) + '\n';
+                                        error_count += 1;
+                                        document.getElementById('failed').innerHTML = error_count;
+                                        document.getElementById('total').innerHTML = success_count + error_count;
+                                        in_progress = false;
+                                    }
+                                );
+                            } else if(repeat == num_repeats) {
+                                ++repeat;
+                                c.close();
                             }
-                        }, 100);
-                    };
+                        }
+                    }, 100);
+                };
 
-                    connections.push(c);
-                })();
-            }
-            for(var i = 0; i < num_connections; ++i) {
-                connections[i].open();
-            }
-        };
+                connections.push(c);
+            })();
+        }
+        for(var i = 0; i < num_connections; ++i) {
+            connections[i].open();
+        }
+    };
+});
 </script>
 </body>
 </html>

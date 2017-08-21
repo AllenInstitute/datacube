@@ -63,13 +63,13 @@ class PandasServiceComponent(ApplicationSession):
 
 
         @inlineCallbacks
-        def raw(fields, select, name=None):
+        def raw(fields=None, select=None, filters=None, name=None):
             try:
                 datacube = datacubes[name]
-                res = yield threads.deferToThread(datacube.raw, select, fields)
+                res = yield threads.deferToThread(datacube.raw, select, fields, filters)
                 returnValue(res.to_dict())
             except Exception as e:
-                print({'fields': fields, 'select': select, 'name': name})
+                print({'fields': fields, 'select': select, 'name': name, 'filters': filters})
                 _application_error(e)
 
 
@@ -81,6 +81,17 @@ class PandasServiceComponent(ApplicationSession):
                 returnValue(res)
             except Exception as e:
                 print({'field': field, 'select': select, 'dim_order': dim_order, 'image_format': image_format, 'name': name})
+                _application_error(e)
+
+
+        @inlineCallbacks
+        def corr(field, dim, seed_idx, select=None, filters=None, name=None):
+            try:
+                datacube = datacubes[name]
+                res = yield threads.deferToThread(datacube.corr, field, dim, seed_idx, select=select, filters=filters)
+                returnValue(res.to_dict())
+            except Exception as e:
+                print({'field': field, 'dim': dim, 'seed_idx': seed_idx, 'select': select, 'filters': filters, 'name': name})
                 _application_error(e)
 
 
@@ -163,7 +174,7 @@ class PandasServiceComponent(ApplicationSession):
 
         def _application_error(e):
             traceback.print_exc()
-            raise RuntimeError(str('org.brain-map.api.datacube.application_error'), e.__class__.__name__, e.message, e.args, e.__doc__)
+            raise ApplicationError(str('org.brain-map.api.datacube.application_error'), str(e) + '\n' + traceback.format_exc())
 
 
         try:
@@ -192,6 +203,9 @@ class PandasServiceComponent(ApplicationSession):
                                     options=RegisterOptions(invoke=u'roundrobin'))
                 yield self.register(functools.partial(image, name=name),
                                     u'org.brain-map.api.datacube.image.' + name,
+                                    options=RegisterOptions(invoke=u'roundrobin'))
+                yield self.register(functools.partial(corr, name=name),
+                                    u'org.brain-map.api.datacube.corr.' + name,
                                     options=RegisterOptions(invoke=u'roundrobin'))
                 yield self.register(functools.partial(select, name=name),
                                     u'org.brain-map.api.datacube.select.' + name,
@@ -252,7 +266,7 @@ if __name__ == '__main__':
                         exit(1)
                 nc_file = next(f for f in dataset['files'] if re.search('\.nc$', f['path']))
                 chunks = nc_file['chunks'] if nc_file['use_chunks'] else None
-                datacubes[dataset['name']] = Datacube(os.path.join(data_dir, nc_file['path']), chunks=chunks)
+                datacubes[dataset['name']] = Datacube(dataset['name'], os.path.join(data_dir, nc_file['path']), chunks=chunks)
 
     runner = ApplicationRunner(str(args.router), str(args.realm))
     runner.run(PandasServiceComponent, auto_reconnect=True)
