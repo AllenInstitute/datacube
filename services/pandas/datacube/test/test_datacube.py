@@ -29,7 +29,7 @@ def test_datacube(request, test_nd_netcdf, redisdb):
     chunks = None
     if use_chunks:
         chunks = {dim: 3 for dim in ds.dims}
-    d = Datacube('test', nc_file, chunks=chunks, max_cacheable_bytes=max_cacheable_bytes)
+    d = Datacube('test', nc_file, redis_client=redisdb, chunks=chunks, max_cacheable_bytes=max_cacheable_bytes)
     return d, ds
 
 
@@ -49,7 +49,7 @@ def test_raw(test_datacube):
 
 def test_raw_max_response_size(test_nd_netcdf, redisdb):
     with pytest.raises(ValueError):
-        d = Datacube('test', test_nd_netcdf[0], max_response_size=8*299)
+        d = Datacube('test', test_nd_netcdf[0], max_response_size=8*299, redis_client=redisdb)
         d.raw(select={'dim_0': {'start': 0, 'stop': 10}})
 
 

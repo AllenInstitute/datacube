@@ -60,7 +60,7 @@ class Datacube:
         return 1
 
 
-    def __init__(self, name, nc_file, chunks=None, max_response_size=10*1024*1024, max_cacheable_bytes=10*1024*1024):
+    def __init__(self, name, nc_file, redis_client=None, chunks=None, max_response_size=10*1024*1024, max_cacheable_bytes=10*1024*1024):
         self.name = name
         self.max_response_size = max_response_size
         self.max_cacheable_bytes = max_cacheable_bytes
@@ -70,7 +70,10 @@ class Datacube:
         #if reactor.running:
         #    self.redis_client = txredisapi.Connection('localhost', 6379)
         #else:
-        self.redis_client = redis.StrictRedis('localhost', 6379)
+        if redis_client:
+            self.redis_client = redis_client
+        else:
+            self.redis_client = redis.StrictRedis('localhost', 6379)
 
 
     def load(self, nc_file, chunks=None):
