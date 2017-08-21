@@ -15,7 +15,7 @@
     },
     {
         "name": "mni",
-        "enabled": false,
+        "enabled": true,
         "script": "./scripts/datasets/mni.py",
         "data-dir": "./data/",
         "files": [

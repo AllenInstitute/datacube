@@ -207,7 +207,7 @@ class Datacube:
                 if 'RGBA' in dim_order:
                     dim_order.remove('RGBA')
                 dim_order.append('RGBA')
-        data = self.raw(select, [field], dim_order)
+        data = self.raw(select=select, fields=[field], dim_order=dim_order)
         dims = list(data[field].dims)
         if 'RGBA' in dims:
             dims.remove('RGBA')
