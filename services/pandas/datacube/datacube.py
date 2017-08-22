@@ -304,7 +304,7 @@ class Datacube:
         data = data.fillna(0)
         if f['masks']:
             mdata = reduce(xr_ufuncs.logical_and, f['masks'], mdata)
-            #todo: add `any` reduction to any dims not in data[field]
+            mdata = mdata.any(dim=set(mdata.dims)-set(data.dims))
         axis = data.dims.index(dim)
         #todo: dask backend is being used regardless
         res = Datacube._corr(data, seed_idx, axis, mdata, backend=self.backend)

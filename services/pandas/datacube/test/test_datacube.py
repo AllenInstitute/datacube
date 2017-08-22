@@ -170,3 +170,8 @@ def test_corr_filters(test_datacube):
         cond = ds.foo_1 <= 0.5
         s = ds.where(cond, drop=True)
         assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.isel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]), equal_nan=True)
+
+        r = d.corr('foo_1', 'dim_0', 0, filters={'or': [{'field': 'foo_2', 'op': '<=', 'value': 0.01}]})
+        cond = ds.foo_2 <= 0.01
+        s = ds.where(cond.any(dim='dim_2'), drop=True)
+        assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.isel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]), equal_nan=True)
