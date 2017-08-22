@@ -304,6 +304,7 @@ class Datacube:
         data = data.fillna(0)
         if f['masks']:
             mdata = reduce(xr_ufuncs.logical_and, f['masks'], mdata)
+            #todo: add `any` reduction to any dims not in data[field]
         axis = data.dims.index(dim)
         #todo: dask backend is being used regardless
         res = Datacube._corr(data, seed_idx, axis, mdata, backend=self.backend)
@@ -361,7 +362,7 @@ class Datacube:
 
         seed_dev = backend.einsum(seed-seed_mean, sdims, mseed, sdims, sdims)
         numerator = backend.einsum(seed_dev, sdims, data, ddims, mdata, mdims, [axis])
-        numerator -= backend.einsum(seed_dev, sdims, data_mean, ddims, [axis])
+        numerator -= backend.einsum(seed_dev, sdims, data_mean, ddims, mdata, mdims, [axis])
 
         denominator = backend.einsum(data, ddims, data, ddims, mdata, mdims, [axis])
         # data_mean has already been masked
@@ -376,7 +377,7 @@ class Datacube:
         corr *= backend.sign(np.inf*(backend.sum(mdata*mseed, axis=sample_axes)>1))
         corr = backend.clip(corr, -1.0, 1.0)
         corr = backend.reshape(corr, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
-        
+
         return corr
 
 

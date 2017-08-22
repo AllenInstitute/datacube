@@ -9,7 +9,7 @@ from itertools import product
 import json
 
 
-@pytest.fixture(scope='session', params=[(20,30), (10,20,30)])
+@pytest.fixture(scope='session', params=[(10,20), (10,20,30)])
 def test_nd_netcdf(request, tmpdir_factory):
     np.random.seed(0)
     shape = request.param
@@ -49,7 +49,7 @@ def test_raw(test_datacube):
 
 def test_raw_max_response_size(test_nd_netcdf, redisdb):
     with pytest.raises(ValueError):
-        d = Datacube('test', test_nd_netcdf[0], max_response_size=8*299, redis_client=redisdb)
+        d = Datacube('test', test_nd_netcdf[0], max_response_size=8*199, redis_client=redisdb)
         d.raw(select={'dim_0': {'start': 0, 'stop': 10}})
 
 
@@ -149,7 +149,24 @@ def test_corr_select(test_datacube):
 def test_corr_filters(test_datacube):
     d, ds = test_datacube
 
+    #fixme: empty filter result
+    #r = d.corr('foo_1', 'dim_0', 0, filters={'or': [{'field': 'foo_0', 'op': '<=', 'value': 0.}]})
+    #cond = ds.foo_0 < 0.
+    #s = ds.where(cond, drop=True)
+    #assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.isel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]), equal_nan=True)
+
+    r = d.corr('foo_1', 'dim_0', 0, filters={'or': [{'field': 'foo_0', 'op': '<=', 'value': 0.75}]})
+    cond = ds.foo_0 <= 0.75
+    s = ds.where(cond, drop=True)
+    assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.isel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]), equal_nan=True)
+
     r = d.corr('foo_1', 'dim_0', 0, filters={'or': [{'field': 'foo_0', 'op': '<=', 'value': 0.25},{'field': 'foo_1', 'op': '<=', 'value': 0.1}]})
     cond = (ds.foo_0 <= 0.25) | (ds.foo_1 <= 0.1)
     s = ds.where(cond, drop=True)
     assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.isel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]), equal_nan=True)
+
+    if 'foo_2' in ds:
+        r = d.corr('foo_1', 'dim_0', 0, filters={'or': [{'field': 'foo_1', 'op': '<=', 'value': 0.5}]})
+        cond = ds.foo_1 <= 0.5
+        s = ds.where(cond, drop=True)
+        assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.isel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]), equal_nan=True)
