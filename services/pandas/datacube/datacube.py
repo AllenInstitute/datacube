@@ -302,24 +302,27 @@ class Datacube:
         data = data.astype(np.float32)
         mdata = self.backend.logical_not(self.backend.isnan(data))
         data = data.fillna(0)
-        if f['masks']:
-            mdata = reduce(xr_ufuncs.logical_and, f['masks'], mdata)
-            mdata = mdata.any(dim=set(mdata.dims)-set(data.dims))
-        axis = data.dims.index(dim)
-        #todo: dask backend is being used regardless
-        res = Datacube._corr(data, seed_idx, axis, mdata, backend=self.backend)
-        res = xr.Dataset({'corr': ([dim], res.squeeze())})
+        if seed_idx not in data.coords[dim].values:
+            res = xr.Dataset({'corr': ([dim], np.full((data.coords[dim].size,), np.nan))})
+        else:
+            if f['masks']:
+                mdata = reduce(xr_ufuncs.logical_and, f['masks'], mdata)
+                mdata = mdata.any(dim=set(mdata.dims)-set(data.dims))
+            axis = data.dims.index(dim)
+            #todo: dask backend is being used regardless
+            res = Datacube._corr(data, seed_idx, axis, mdata, backend=self.backend)
+            res = xr.Dataset({'corr': ([dim], res.squeeze())})
         if f['masks']:
             mask = reduce(xr_ufuncs.logical_and, f['masks'])
             reduce_dims = [d for d in mask.dims if d != dim]
-            res = res.where(mask.any(dim=reduce_dims), drop=True)
+            res = res.reindex_like(mask).where(mask.any(dim=reduce_dims), drop=True)
         return res
 
 
     # module `backend` is passed in; can be set to `np` or `da`
     @staticmethod
     def _get_seed(data, seed_idx, axis, mdata, backend=np):
-        seed = backend.take(data, seed_idx, axis=axis).data
+        seed = data.loc[{data.dims[axis]: seed_idx}].data
         #todo: will this work with dask arrays?
         seed = np.reshape(seed, tuple(data.shape[i] if i != axis else 1 for i in range(0,data.ndim))) # restore dims after take
         mseed = backend.take(mdata, seed_idx, axis=axis).data

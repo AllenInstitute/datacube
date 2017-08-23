@@ -111,6 +111,9 @@ def test_corr(test_datacube):
     r = d.corr('foo_0', 'dim_0', 0)
     assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_0.isel(dim_0=[0]), ds.foo_0.isel(dim_0=[i])) for i in range(ds.dims['dim_0'])]), equal_nan=True)
 
+    r = d.corr('foo_0', 'dim_0', -1)
+    assert np.all(np.isnan(r.corr.values)) and r.corr.values.shape == ds.coords['dim_0'].shape
+
     r = d.corr('foo_1', 'dim_0', 0)
     assert np.allclose(r.corr.values, np.array([pearsonr(ds.foo_1.isel(dim_0=0), ds.foo_1.isel(dim_0=i)) for i in range(ds.dims['dim_0'])]))
     #todo: upgrade xarray and use:
@@ -153,25 +156,40 @@ def test_corr_filters(test_datacube):
     #r = d.corr('foo_1', 'dim_0', 0, filters={'or': [{'field': 'foo_0', 'op': '<=', 'value': 0.}]})
     #cond = ds.foo_0 < 0.
     #s = ds.where(cond, drop=True)
-    #assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.isel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]), equal_nan=True)
+    #assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.sel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]), equal_nan=True)
 
     r = d.corr('foo_1', 'dim_0', 0, filters={'or': [{'field': 'foo_0', 'op': '<=', 'value': 0.75}]})
     cond = ds.foo_0 <= 0.75
     s = ds.where(cond, drop=True)
-    assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.isel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]), equal_nan=True)
+    assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.sel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]), equal_nan=True)
 
     r = d.corr('foo_1', 'dim_0', 0, filters={'or': [{'field': 'foo_0', 'op': '<=', 'value': 0.25},{'field': 'foo_1', 'op': '<=', 'value': 0.1}]})
     cond = (ds.foo_0 <= 0.25) | (ds.foo_1 <= 0.1)
     s = ds.where(cond, drop=True)
-    assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.isel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]), equal_nan=True)
+    assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.sel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]), equal_nan=True)
 
     if 'foo_2' in ds:
         r = d.corr('foo_1', 'dim_0', 0, filters={'or': [{'field': 'foo_1', 'op': '<=', 'value': 0.5}]})
         cond = ds.foo_1 <= 0.5
         s = ds.where(cond, drop=True)
-        assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.isel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]), equal_nan=True)
+        assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.sel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]), equal_nan=True)
 
         r = d.corr('foo_1', 'dim_0', 0, filters={'or': [{'field': 'foo_2', 'op': '<=', 'value': 0.01}]})
         cond = ds.foo_2 <= 0.01
         s = ds.where(cond.any(dim='dim_2'), drop=True)
-        assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.isel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]), equal_nan=True)
+        assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_1.sel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])]), equal_nan=True)
+
+        r = d.corr('foo_2', 'dim_2', 0, filters={'or': [{'field': 'foo_1', 'op': '<=', 'value': 0.1}]})
+        cond = ds.foo_1 <= 0.1
+        s = ds.where(cond, drop=True)
+        assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_2.sel(dim_2=0), s.foo_2.isel(dim_2=i)) for i in range(s.dims['dim_2'])]), equal_nan=True)
+
+        r = d.corr('foo_2', 'dim_1', 0, filters={'or': [{'field': 'foo_1', 'op': '<=', 'value': 0.1},{'field': 'dim_1', 'op': '=', 'value': 0}]})
+        cond = (ds.foo_1 <= 0.1) | (ds.dim_1 == 0)
+        s = ds.where(cond, drop=True)
+        assert np.allclose(r.corr.values, np.array([pearsonr(s.foo_2.sel(dim_1=0), s.foo_2.isel(dim_1=i)) for i in range(s.dims['dim_1'])]), equal_nan=True)
+
+        r = d.corr('foo_2', 'dim_1', -1, filters={'or': [{'field': 'foo_1', 'op': '<=', 'value': 0.1}]})
+        cond = (ds.foo_1 <= 0.1)
+        s = ds.where(cond, drop=True)
+        assert np.all(np.isnan(r.corr.values)) and r.corr.values.shape == s.coords['dim_1'].shape
