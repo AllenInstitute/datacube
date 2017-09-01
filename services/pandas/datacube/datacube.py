@@ -466,6 +466,8 @@ class Datacube:
         if not filters:
             return (df, {'inds': {}, 'masks': []})
         else:
+            #todo: add ability to filter on a boolean field without any op/value
+            #todo: add not-equals
             def _filter(f):
                 op = f['op']
                 field = f['field']
@@ -614,5 +616,18 @@ class Datacube:
 
             res = _reduce(filters)
             res['masks'] = [mask[res['inds']] for mask in res['masks']]
+
+            for dim in res['inds'].keys():
+                inds_min = res['inds'][dim].min().values.tolist()
+                inds_max = res['inds'][dim].max().values.tolist()+1
+                if inds_max-inds_min == res['inds'][dim].size:
+                    if inds_min == 0:
+                        inds_min = None
+                    if inds_max == df.dims[dim]:
+                        inds_max = None
+                    if inds_min or inds_max:
+                        res['inds'][dim] = slice(inds_min,inds_max)
+                    else:
+                        res['inds'].pop(dim, None)
 
             return (df[res['inds']], res)
