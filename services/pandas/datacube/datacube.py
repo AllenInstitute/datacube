@@ -382,6 +382,7 @@ class Datacube:
         num_samples, _ = Datacube._get_num_samples(data, axis, mdata, backend=backend)
         seed_num_samples, _ = Datacube._get_num_samples(seed, axis, mseed2, backend=backend)
         seed_mean = backend.einsum(seed, range(seed.ndim), mseed2, range(mseed2.ndim), []) / seed_num_samples
+        #data_mean = np.nanmean(data*backend.sign(np.inf*mdata), axis=tuple(sample_axes), keepdims=True)
         data_mean = backend.einsum(data, range(data.ndim), mdata, range(mdata.ndim), [axis]) / num_samples
         data_mean = backend.reshape(data_mean, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
 
@@ -617,17 +618,18 @@ class Datacube:
             res = _reduce(filters)
             res['masks'] = [mask[res['inds']] for mask in res['masks']]
 
-            for dim in res['inds'].keys():
-                inds_min = res['inds'][dim].min().values.tolist()
-                inds_max = res['inds'][dim].max().values.tolist()+1
-                if inds_max-inds_min == res['inds'][dim].size:
-                    if inds_min == 0:
-                        inds_min = None
-                    if inds_max == df.dims[dim]:
-                        inds_max = None
-                    if inds_min or inds_max:
-                        res['inds'][dim] = slice(inds_min,inds_max)
-                    else:
-                        res['inds'].pop(dim, None)
+            for dim in df.dims.keys():
+                if dim in res['inds'] and  res['inds'][dim].size > 0:
+                    inds_min = int(res['inds'][dim].min())
+                    inds_max = int(res['inds'][dim].max())+1
+                    if inds_max-inds_min == res['inds'][dim].size:
+                        if inds_min == 0:
+                            inds_min = None
+                        if inds_max == df.dims[dim]:
+                            inds_max = None
+                        if inds_min or inds_max:
+                            res['inds'][dim] = slice(inds_min,inds_max)
+                        else:
+                            res['inds'].pop(dim, None)
 
             return (df[res['inds']], res)
