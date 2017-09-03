@@ -326,7 +326,8 @@ class Datacube:
                 else:
                     mdata = f['masks'][0]
                 mdata = mdata.any(dim=set(mdata.dims)-set(data.dims))
-                mdata = mdata.chunk(data.chunks)
+                if data.chunks is not None:
+                    mdata = mdata.chunk(tuple(data.chunks[data.dims.index(dim)] for dim in mdata.dims))
                 mdata = mdata.expand_dims(set(data.dims)-set(mdata.dims))
                 mdata = mdata.transpose(*data.dims)
             axis = data.dims.index(dim)
@@ -351,6 +352,7 @@ class Datacube:
             dims = range(mdata.ndim)
             #num_samples = backend.einsum(mdata.astype(np.uint64), dims, [axis], dtype=np.uint64)
             num_samples = backend.count_nonzero(mdata, axis=tuple(sample_axes))
+            num_samples = backend.reshape(num_samples, tuple(mdata.shape[i] if i == axis else 1 for i in range(mdata.ndim)))
             mdata_args = [mdata, dims]
             num_samples *= np.prod(np.array([data.shape[i] for i in sample_axes if mdata.shape[i]==1 and data.shape[i]>1], dtype=np.uint64))
         return num_samples, mdata_args
@@ -370,6 +372,13 @@ class Datacube:
     def _corr(data, mdata, seed_idx, axis):
         np.seterr(divide='ignore', invalid='ignore')
 
+        def _compute(arr):
+            if isinstance(arr, da.Array):
+                tmp = arr.compute()
+                return da.from_array(tmp, chunks=arr.chunks)
+            else:
+                return arr
+
         if isinstance(data, da.Array):
             backend = da
         else:
@@ -382,29 +391,59 @@ class Datacube:
         num_samples, _ = Datacube._get_num_samples(data, axis, mdata, backend=backend)
         seed_num_samples, _ = Datacube._get_num_samples(seed, axis, mseed2, backend=backend)
         seed_mean = backend.einsum(seed, range(seed.ndim), mseed2, range(mseed2.ndim), []) / seed_num_samples
+        seed_dev = backend.einsum(seed-seed_mean, range(seed.ndim), mseed2, range(mseed2.ndim), range(seed.ndim))
+        seed_denominator = backend.sum(seed_dev**2, axis=tuple(sample_axes))
+
         #data_mean = np.nanmean(data*backend.sign(np.inf*mdata), axis=tuple(sample_axes), keepdims=True)
-        data_mean = backend.einsum(data, range(data.ndim), mdata, range(mdata.ndim), [axis]) / num_samples
-        data_mean = backend.reshape(data_mean, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
+
+        #data_mean = backend.einsum(data, range(data.ndim), mdata, range(mdata.ndim), [axis]) / num_samples
+        #data_mean = backend.reshape(data_mean, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
+
+        def _sum(data, mdata, axis):
+            sample_axes = np.array([i for i in range(data.ndim) if i != axis])
+            result_shape = tuple(data.shape[i] if i==axis else 1 for i in range(data.ndim))
+            if np.all(~mdata):
+                return np.zeros(result_shape, dtype=data.dtype)
+            else:
+                #return np.sum(data*mdata, axis=tuple(sample_axes), keepdims=True)
+                res = np.einsum(data, range(data.ndim), mdata, range(data.ndim), [axis])
+                res = np.reshape(res, result_shape)
+                return res
+
+        if isinstance(data, da.Array):
+            data_mean = da.map_blocks(_sum, data, mdata, axis, dtype=data.dtype)
+            data_mean = np.sum(data_mean, axis=tuple(sample_axes), keepdims=True)
+            data_mean = _compute(data_mean)
+        else:
+            data_mean = _sum(data, mdata, axis)
+        data_mean = data_mean / num_samples
 
         def _einsum_corr_chunk(data, data_mean, seed, axis, mdata, mseed, seed_mean):
-            np.seterr(divide='ignore', invalid='ignore')
+            if np.all(~mdata):
+                return np.zeros(data_mean.shape+(2,), dtype=data.dtype)
+            else:
+                np.seterr(divide='ignore', invalid='ignore')
 
-            sdims = range(seed.ndim)
-            ddims = range(data.ndim)
-            sample_axes = np.array([i for i in ddims if i != axis])
+                sdims = range(seed.ndim)
+                ddims = range(data.ndim)
+                sample_axes = tuple(i for i in ddims if i != axis)
 
-            seed_dev = np.einsum(seed-seed_mean, sdims, mseed, range(mseed.ndim), sdims)
-            numerator = np.einsum(seed_dev, ddims, data, ddims, mdata, range(mdata.ndim), [axis])
-            numerator -= np.einsum(seed_dev, ddims, data_mean, ddims, mdata, range(mdata.ndim), [axis])
+                seed_dev = np.einsum(seed-seed_mean, sdims, mseed, range(mseed.ndim), sdims)
+                numerator = np.einsum(seed_dev, ddims, data, ddims, mdata, range(mdata.ndim), [axis])
+                numerator -= np.einsum(seed_dev, ddims, data_mean, ddims, mdata, range(mdata.ndim), [axis])
+                #numerator = np.sum(ne.evaluate('(seed-seed_mean)*(data-data_mean)*mseed*mdata'), axis=sample_axes, keepdims=True)
 
-            data_denominator = np.einsum(data, ddims, data, ddims, mdata, range(mdata.ndim), [axis])
-            # data_mean has already been masked
-            data_denominator += -2.0*np.einsum(data, ddims, data_mean, ddims, mdata, range(mdata.ndim), [axis])
+                data_denominator = np.einsum(data, ddims, data, ddims, mdata, range(mdata.ndim), [axis])
+                # data_mean has already been masked
+                data_denominator += -2.0*np.einsum(data, ddims, data_mean, ddims, mdata, range(mdata.ndim), [axis])
+                #data_denominator = np.sum(ne.evaluate('(data-data_mean)**2*mdata'), axis=sample_axes, keepdims=True)
 
-            numerator = np.reshape(numerator, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
-            data_denominator = np.reshape(data_denominator, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
-            
-            return np.concatenate([numerator[...,np.newaxis], data_denominator[...,np.newaxis]], axis=data.ndim)
+                numerator = np.reshape(numerator, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
+                data_denominator = np.reshape(data_denominator, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
+                chunk_num_samples, _ = Datacube._get_num_samples(data, axis, mdata)
+                data_denominator = data_denominator + data_mean**2 * chunk_num_samples
+                
+                return np.concatenate([numerator[...,np.newaxis], data_denominator[...,np.newaxis]], axis=data.ndim)
 
         if isinstance(data, da.Array):
             result = da.map_blocks(_einsum_corr_chunk, data, data_mean, seed, axis, mdata, mseed, seed_mean, new_axis=data.ndim, dtype=data.dtype)
@@ -413,12 +452,10 @@ class Datacube:
             result = _einsum_corr_chunk(data, data_mean, seed, axis, mdata, mseed, seed_mean)
         numerator = result[..., 0]
         data_denominator = result[..., 1]
-        numerator = np.sum(numerator, axis=tuple(sample_axes))
-        data_denominator = np.sum(data_denominator, axis=tuple(sample_axes))
-        data_denominator = data_denominator + np.sum(data_mean**2, axis=tuple(sample_axes)) * num_samples
+        numerator = np.sum(numerator, axis=tuple(sample_axes), keepdims=True)
+        data_denominator = np.sum(data_denominator, axis=tuple(sample_axes), keepdims=True)
+        #data_denominator = data_denominator + np.sum(data_mean**2, axis=tuple(sample_axes)) * num_samples
 
-        seed_dev = np.einsum(seed-seed_mean, range(seed.ndim), mseed2, range(mseed2.ndim), range(seed.ndim))
-        seed_denominator = np.sum(seed_dev**2, axis=tuple(sample_axes))
         denominator = np.sqrt(seed_denominator*data_denominator)
         corr = np.clip(numerator/denominator, -1.0, 1.0)
         both_samples, _ = Datacube._get_num_samples(data, axis, mdata*mseed, backend=backend)
@@ -578,8 +615,10 @@ class Datacube:
                     else:
                         op, field, value = (f['op'], f['field'], f['value'])
                         if op == 'between':
-                            res[bool_op].append({'op': '>=', 'field': field, 'value': value[0]})
-                            res[bool_op].append({'op': '<=', 'field': field, 'value': value[1]})
+                            and_clause = {'and': []}
+                            and_clause['and'].append({'op': '>=', 'field': field, 'value': value[0]})
+                            and_clause['and'].append({'op': '<=', 'field': field, 'value': value[1]})
+                            res[bool_op].append(and_clause)
                         elif op == 'in':
                             or_clause = {'or': []}
                             for v in value:
