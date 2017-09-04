@@ -333,6 +333,10 @@ class Datacube:
             axis = data.dims.index(dim)
             if mdata.size<data.size:
                 mdata = mdata.astype(data.dtype)
+            if dim in mdata.dims and mdata.sizes[dim]==1:
+                bounds = tuple(slice(inds.min(), inds.max()+1) if mdata.shape[i]>1 and i!=axis else slice(None) for i,inds in enumerate(np.nonzero(mdata.values)))
+                data = data[bounds]
+                mdata = mdata[bounds]
             res = Datacube._corr(data.data, mdata.data, seed_idx, axis)
             res = xr.Dataset({'corr': ([dim], res.squeeze()), dim: data.coords[dim]})
         if f['masks']:
@@ -418,6 +422,7 @@ class Datacube:
             data_mean = _compute(data_mean)
         else:
             data_mean = _sum(data, mdata, axis)
+        data_sum = data_mean
         data_mean = data_mean / num_samples.astype(data.dtype)
 
         def _einsum_corr_chunk(data, data_mean, seed, axis, mdata, mseed, seed_mean):
@@ -426,7 +431,7 @@ class Datacube:
             else:
                 np.seterr(divide='ignore', invalid='ignore')
 
-                dtype=data.dtype
+                dtype = data.dtype
                 sdims = range(seed.ndim)
                 ddims = range(data.ndim)
                 sample_axes = tuple(i for i in ddims if i != axis)
@@ -434,17 +439,11 @@ class Datacube:
                 seed_dev = np.einsum(seed-seed_mean, sdims, mseed, range(mseed.ndim), sdims, dtype=dtype)
                 numerator = np.einsum(seed_dev, ddims, data, ddims, mdata, range(mdata.ndim), [axis], dtype=dtype)
                 numerator -= np.einsum(seed_dev, ddims, data_mean, ddims, mdata, range(mdata.ndim), [axis], dtype=dtype)
-                #numerator = np.sum(ne.evaluate('(seed-seed_mean)*(data-data_mean)*mseed*mdata'), axis=sample_axes, keepdims=True)
 
                 data_denominator = np.einsum(data, ddims, data, ddims, mdata, range(mdata.ndim), [axis], dtype=dtype)
-                # data_mean has already been masked
-                data_denominator += -2.0*np.einsum(data, ddims, data_mean, ddims, mdata, range(mdata.ndim), [axis], dtype=dtype)
-                #data_denominator = np.sum(ne.evaluate('(data-data_mean)**2*mdata'), axis=sample_axes, keepdims=True)
 
                 numerator = np.reshape(numerator, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
                 data_denominator = np.reshape(data_denominator, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
-                chunk_num_samples, _ = Datacube._get_num_samples(data, axis, mdata)
-                data_denominator = data_denominator + data_mean**2 * chunk_num_samples.astype(data.dtype)
                 
                 return np.concatenate([numerator[...,np.newaxis], data_denominator[...,np.newaxis]], axis=data.ndim)
 
@@ -457,7 +456,8 @@ class Datacube:
         data_denominator = result[..., 1]
         numerator = np.sum(numerator, axis=tuple(sample_axes), keepdims=True)
         data_denominator = np.sum(data_denominator, axis=tuple(sample_axes), keepdims=True)
-        #data_denominator = data_denominator + np.sum(data_mean**2, axis=tuple(sample_axes)) * num_samples
+        data_denominator = data_denominator+data_mean**2*num_samples
+        data_denominator = data_denominator-2.0*data_mean*data_sum
 
         denominator = np.sqrt(seed_denominator*data_denominator)
         corr = np.clip(numerator/denominator, -1.0, 1.0)
