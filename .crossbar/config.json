@@ -55,7 +55,8 @@
                     "type": "web",
                     "endpoint": {
                         "type": "tcp",
-                        "port": 8080
+                        "port": 8080,
+                        "shared": true
                     },
                     "paths": {
                         "ws": {
@@ -109,8 +110,348 @@
                 }
             ],
             "options":{
+                "cpu_affinity": [0],
                 "pythonpath": ["../services/"]
-            }  
+            }
+        },
+        {
+            "type": "router",
+            "realms": [
+                {
+                    "name": "aibs",
+                    "roles": [
+                        {
+                            "name": "anonymous",
+                            "permissions": [
+                                {
+                                    "uri": "",
+                                    "match": "prefix",
+                                    "allow": {
+                                        "call": true,
+                                        "register": false,
+                                        "publish": false,
+                                        "subscribe": true
+                                    },
+                                    "disclose": {
+                                        "caller": false,
+                                        "publisher": false
+                                    },
+                                    "cache": true
+                                }
+                            ]
+                        },
+                        {
+                            "name": "authenticated",
+                            "permissions": [
+                                {
+                                    "uri": "",
+                                    "match": "prefix",
+                                    "allow": {
+                                        "call": true,
+                                        "register": true,
+                                        "publish": true,
+                                        "subscribe": true
+                                    },
+                                    "disclose": {
+                                        "caller": false,
+                                        "publisher": false
+                                    },
+                                    "cache": true
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "transports": [
+                {
+                    "type": "web",
+                    "endpoint": {
+                        "type": "tcp",
+                        "port": 8080,
+                        "shared": true
+                    },
+                    "paths": {
+                        "ws": {
+                            "type": "websocket",
+                            "options": {
+                                "auto_ping_interval": 0,
+                                "auto_ping_timeout": 0
+                            },
+                            "serializers": ["msgpack"]
+                        },
+                        "auth_ws": {
+                            "type": "websocket",
+                            "auth": {
+                                "wampcra": {
+                                    "type": "static",
+                                    "users": {
+                                        "pandas_service": {
+                                            "secret": "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93",
+                                            "role": "authenticated"
+                                        }
+                                    }
+                                },
+                                "anonymous": {
+                                    "type": "static",
+                                    "role": "anonymous"
+                                }
+                            },
+                            "options": {
+                                "auto_ping_interval": 0,
+                                "auto_ping_timeout": 0
+                            },
+                            "serializers": ["msgpack"]
+                        },
+                        "call": {
+                            "type": "caller",
+                            "realm": "aibs",
+                            "role": "anonymous",
+                            "options": {
+                                "debug": true
+                            }
+                        }
+                    }
+                }
+            ],
+            "components": [
+                 {
+                    "type": "class",
+                    "classname": "locator.locator.LocatorServiceComponent",
+                    "realm": "aibs",
+                    "role": "authenticated"
+                }
+            ],
+            "options":{
+                "cpu_affinity": [1],
+                "pythonpath": ["../services/"]
+            }
+        },
+        {
+            "type": "router",
+            "realms": [
+                {
+                    "name": "aibs",
+                    "roles": [
+                        {
+                            "name": "anonymous",
+                            "permissions": [
+                                {
+                                    "uri": "",
+                                    "match": "prefix",
+                                    "allow": {
+                                        "call": true,
+                                        "register": false,
+                                        "publish": false,
+                                        "subscribe": true
+                                    },
+                                    "disclose": {
+                                        "caller": false,
+                                        "publisher": false
+                                    },
+                                    "cache": true
+                                }
+                            ]
+                        },
+                        {
+                            "name": "authenticated",
+                            "permissions": [
+                                {
+                                    "uri": "",
+                                    "match": "prefix",
+                                    "allow": {
+                                        "call": true,
+                                        "register": true,
+                                        "publish": true,
+                                        "subscribe": true
+                                    },
+                                    "disclose": {
+                                        "caller": false,
+                                        "publisher": false
+                                    },
+                                    "cache": true
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "transports": [
+                {
+                    "type": "web",
+                    "endpoint": {
+                        "type": "tcp",
+                        "port": 8080,
+                        "shared": true
+                    },
+                    "paths": {
+                        "ws": {
+                            "type": "websocket",
+                            "options": {
+                                "auto_ping_interval": 0,
+                                "auto_ping_timeout": 0
+                            },
+                            "serializers": ["msgpack"]
+                        },
+                        "auth_ws": {
+                            "type": "websocket",
+                            "auth": {
+                                "wampcra": {
+                                    "type": "static",
+                                    "users": {
+                                        "pandas_service": {
+                                            "secret": "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93",
+                                            "role": "authenticated"
+                                        }
+                                    }
+                                },
+                                "anonymous": {
+                                    "type": "static",
+                                    "role": "anonymous"
+                                }
+                            },
+                            "options": {
+                                "auto_ping_interval": 0,
+                                "auto_ping_timeout": 0
+                            },
+                            "serializers": ["msgpack"]
+                        },
+                        "call": {
+                            "type": "caller",
+                            "realm": "aibs",
+                            "role": "anonymous",
+                            "options": {
+                                "debug": true
+                            }
+                        }
+                    }
+                }
+            ],
+            "components": [
+                 {
+                    "type": "class",
+                    "classname": "locator.locator.LocatorServiceComponent",
+                    "realm": "aibs",
+                    "role": "authenticated"
+                }
+            ],
+            "options":{
+                "cpu_affinity": [2],
+                "pythonpath": ["../services/"]
+            }
+        },
+        {
+            "type": "router",
+            "realms": [
+                {
+                    "name": "aibs",
+                    "roles": [
+                        {
+                            "name": "anonymous",
+                            "permissions": [
+                                {
+                                    "uri": "",
+                                    "match": "prefix",
+                                    "allow": {
+                                        "call": true,
+                                        "register": false,
+                                        "publish": false,
+                                        "subscribe": true
+                                    },
+                                    "disclose": {
+                                        "caller": false,
+                                        "publisher": false
+                                    },
+                                    "cache": true
+                                }
+                            ]
+                        },
+                        {
+                            "name": "authenticated",
+                            "permissions": [
+                                {
+                                    "uri": "",
+                                    "match": "prefix",
+                                    "allow": {
+                                        "call": true,
+                                        "register": true,
+                                        "publish": true,
+                                        "subscribe": true
+                                    },
+                                    "disclose": {
+                                        "caller": false,
+                                        "publisher": false
+                                    },
+                                    "cache": true
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "transports": [
+                {
+                    "type": "web",
+                    "endpoint": {
+                        "type": "tcp",
+                        "port": 8080,
+                        "shared": true
+                    },
+                    "paths": {
+                        "ws": {
+                            "type": "websocket",
+                            "options": {
+                                "auto_ping_interval": 0,
+                                "auto_ping_timeout": 0
+                            },
+                            "serializers": ["msgpack"]
+                        },
+                        "auth_ws": {
+                            "type": "websocket",
+                            "auth": {
+                                "wampcra": {
+                                    "type": "static",
+                                    "users": {
+                                        "pandas_service": {
+                                            "secret": "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93",
+                                            "role": "authenticated"
+                                        }
+                                    }
+                                },
+                                "anonymous": {
+                                    "type": "static",
+                                    "role": "anonymous"
+                                }
+                            },
+                            "options": {
+                                "auto_ping_interval": 0,
+                                "auto_ping_timeout": 0
+                            },
+                            "serializers": ["msgpack"]
+                        },
+                        "call": {
+                            "type": "caller",
+                            "realm": "aibs",
+                            "role": "anonymous",
+                            "options": {
+                                "debug": true
+                            }
+                        }
+                    }
+                }
+            ],
+            "components": [
+                 {
+                    "type": "class",
+                    "classname": "locator.locator.LocatorServiceComponent",
+                    "realm": "aibs",
+                    "role": "authenticated"
+                }
+            ],
+            "options":{
+                "cpu_affinity": [3],
+                "pythonpath": ["../services/"]
+            }
         },
         {
             "id": "datacube",
