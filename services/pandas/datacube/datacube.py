@@ -337,7 +337,8 @@ class Datacube:
                 bounds = tuple(slice(inds.min(), inds.max()+1) if mdata.shape[i]>1 and i!=axis else slice(None) for i,inds in enumerate(np.nonzero(mdata.values)))
                 data = data[bounds]
                 mdata = mdata[bounds]
-            res = Datacube._corr(data.data, mdata.data, seed_idx, axis)
+            key = [self.name, 'mdata', field, select, filters]
+            res = self._corr(data.data, mdata.data, seed_idx, axis, cache_key=key)
             res = xr.Dataset({'corr': ([dim], res.squeeze()), dim: data.coords[dim]})
         if f['masks']:
             mask = reduce(xr_ufuncs.logical_and, f['masks'])
@@ -373,10 +374,22 @@ class Datacube:
         return seed, mseed
 
 
+    def _cache(self, fun, key, disable=False):
+        if disable:
+            return fun()
+        cached = self.redis_client.get(key)
+        if not cached:
+            res = fun()
+            self.redis_client.setnx(key, pickle.dumps(res))
+            return res
+        else:
+            return pickle.loads(cached)
+
+
     #todo: use xr.DataArray's as parameters to this function instead of just dask arrays
-    @staticmethod
-    def _corr(data, mdata, seed_idx, axis):
+    def _corr(self, data, mdata, seed_idx, axis, cache_key=None):
         np.seterr(divide='ignore', invalid='ignore')
+        use_cache = cache_key is not None
 
         def _compute(arr):
             if isinstance(arr, da.Array):
@@ -394,7 +407,10 @@ class Datacube:
         seed, mseed = Datacube._get_seed(data, seed_idx, axis, mdata, backend=backend)
 
         mseed2 = mseed * ~np.isnan(seed)
-        num_samples, _ = Datacube._get_num_samples(data, axis, mdata, backend=backend)
+
+        def _num_samples():
+            return Datacube._get_num_samples(data, axis, mdata, backend=backend)
+        num_samples, _ = self._cache(_num_samples, json.dumps(cache_key+['num_samples', axis]), disable=(not use_cache))
         seed_num_samples, _ = Datacube._get_num_samples(seed, axis, mseed2, backend=backend)
         seed_mean = backend.einsum(seed, range(seed.ndim), mseed2, range(mseed2.ndim), [], dtype=data.dtype) / seed_num_samples.astype(data.dtype)
         seed_dev = backend.einsum(seed-seed_mean, range(seed.ndim), mseed2, range(mseed2.ndim), range(seed.ndim), dtype=data.dtype)
@@ -416,16 +432,17 @@ class Datacube:
                 res = np.reshape(res, result_shape)
                 return res
 
-        if isinstance(data, da.Array):
-            data_mean = da.map_blocks(_sum, data, mdata, axis, dtype=data.dtype)
-            data_mean = np.sum(data_mean, axis=tuple(sample_axes), keepdims=True)
-            data_mean = _compute(data_mean)
-        else:
-            data_mean = _sum(data, mdata, axis)
-        data_sum = data_mean
-        data_mean = data_mean / num_samples.astype(data.dtype)
+        def _data_sum():
+            if isinstance(data, da.Array):
+                data_sum = da.map_blocks(_sum, data, mdata, axis, dtype=data.dtype)
+                data_sum = np.sum(data_sum, axis=tuple(sample_axes), keepdims=True)
+                return _compute(data_sum)
+            else:
+                return _sum(data, mdata, axis)
+        data_sum = self._cache(_data_sum, json.dumps(cache_key+['data_sum', axis]), disable=(not use_cache))
+        data_mean = data_sum / num_samples.astype(data.dtype)
 
-        def _einsum_corr_chunk(data, data_mean, seed, axis, mdata, mseed, seed_mean):
+        def _einsum_corr_chunk(data, data_mean, seed, axis, mdata, mseed, seed_mean, block_id=None):
             if mdata.size<data.size and np.all(0==mdata):
                 return np.zeros(data_mean.shape+(2,), dtype=data.dtype)
             else:
@@ -440,10 +457,12 @@ class Datacube:
                 numerator = np.einsum(seed_dev, ddims, data, ddims, mdata, range(mdata.ndim), [axis], dtype=dtype)
                 numerator -= np.einsum(seed_dev, ddims, data_mean, ddims, mdata, range(mdata.ndim), [axis], dtype=dtype)
 
-                data_denominator = np.einsum(data, ddims, data, ddims, mdata, range(mdata.ndim), [axis], dtype=dtype)
+                def _data_denominator():
+                    data_denominator = np.einsum(data, ddims, data, ddims, mdata, range(mdata.ndim), [axis], dtype=dtype)
+                    return np.reshape(data_denominator, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
+                data_denominator = self._cache(_data_denominator, json.dumps(cache_key+['data_denominator', axis, block_id]), disable=(not use_cache))
 
                 numerator = np.reshape(numerator, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
-                data_denominator = np.reshape(data_denominator, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
                 
                 return np.concatenate([numerator[...,np.newaxis], data_denominator[...,np.newaxis]], axis=data.ndim)
 
@@ -467,6 +486,7 @@ class Datacube:
         return corr
 
 
+    #todo: use _cache()
     def _sort(self, dim, sort, ascending):
         df = self.df
         sort_cache_key = json.dumps([self.name, 'sort', dim, sort, ascending])
