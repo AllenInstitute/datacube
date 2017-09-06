@@ -3,6 +3,7 @@
   "dependencies": {},
   "devDependencies": {
     "autobahn-js-built": "^0.11.1",
+    "babel-cli": "^6.26.0",
     "babel-standalone": "^6.25.0",
     "bluebird": "^3.5.0",
     "bulk": "^2.0.1",
@@ -12,12 +13,13 @@
     "jquery-ui-dist": "^1.12.1",
     "linklocal": "^2.8.0",
     "pako": "^1.0.5",
+    "rollup": "^0.49.2",
     "systemjs": "^0.20.12",
     "systemjs-plugin-babel": "0.0.25",
     "text-encoding": "^0.6.4"
   },
   "scripts": {
-    "dev": "linklocal link -r && linklocal list -r | bulk -c 'npm install'",
+    "dev": "linklocal && linklocal --list | bulk -c 'npm install'",
     "postinstall": "if [ \"$NODE_ENV\" != \"production\" ]; then npm run dev; (cd ../../clients/ && npm run build); fi"
   }
 }
