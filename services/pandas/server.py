@@ -255,6 +255,8 @@ if __name__ == '__main__':
         for dataset in datasets:
             if dataset['enabled']:
                 data_dir = os.path.join(os.path.dirname(args.dataset_manifest), dataset['data-dir'])
+                if not os.path.exists(data_dir):
+                    os.makedirs(data_dir)
                 existing = [os.path.isfile(os.path.join(data_dir, f['path'])) for f in dataset['files']]
                 if args.recache or sum(existing) == 0:
                     command = [dataset['script']] + dataset['arguments']

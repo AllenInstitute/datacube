@@ -5,7 +5,6 @@
     "autobahn-js-built": "^0.11.1",
     "babel-standalone": "^6.25.0",
     "bluebird": "^3.5.0",
-    "bulk": "^2.0.1",
     "core-js": "^2.4.1",
     "datacube-js": "../../clients/",
     "jquery": "^3.2.1",
@@ -17,7 +16,7 @@
     "text-encoding": "^0.6.4"
   },
   "scripts": {
-    "dev": "linklocal link -r && linklocal list -r | bulk -c 'npm install'",
-    "postinstall": "if [ \"$NODE_ENV\" != \"production\" ]; then npm run dev; (cd ../../clients/ && npm run build); fi"
+    "dev": "linklocal && linklocal --list | xargs -I '(cd {} && npm install --unsafe-perm)'",
+    "postinstall": "if [ \"$NODE_ENV\" != \"production\" ]; then npm run dev; (cd ../../clients/ && npm install --unsafe-perm && npm run build); fi"
   }
 }

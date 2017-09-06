@@ -1,7 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "postinstall": "bash nested-npm-install.sh"
+    "postinstall": "./nested-npm-install.sh"
   },
   "devDependencies": {
     "autobahn": "^17.5.2"
