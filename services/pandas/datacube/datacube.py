@@ -374,13 +374,14 @@ class Datacube:
         return seed, mseed
 
 
-    def _cache(self, fun, key, disable=False):
+    @staticmethod
+    def _cache(fun, key, redis_client, disable=False):
         if disable:
             return fun()
-        cached = self.redis_client.get(key)
+        cached = redis_client.get(key)
         if not cached:
             res = fun()
-            self.redis_client.setnx(key, pickle.dumps(res))
+            redis_client.setnx(key, pickle.dumps(res))
             return res
         else:
             return pickle.loads(cached)
@@ -390,6 +391,10 @@ class Datacube:
     def _corr(self, data, mdata, seed_idx, axis, cache_key=None):
         np.seterr(divide='ignore', invalid='ignore')
         use_cache = cache_key is not None
+        if use_cache:
+            redis_client = self.redis_client
+        else:
+            redis_client = None
 
         def _compute(arr):
             if isinstance(arr, da.Array):
@@ -410,7 +415,7 @@ class Datacube:
 
         def _num_samples():
             return Datacube._get_num_samples(data, axis, mdata, backend=backend)
-        num_samples, _ = self._cache(_num_samples, json.dumps(cache_key+['num_samples', axis]), disable=(not use_cache))
+        num_samples, _ = self._cache(_num_samples, json.dumps(cache_key+['num_samples', axis]), redis_client, disable=(not use_cache))
         seed_num_samples, _ = Datacube._get_num_samples(seed, axis, mseed2, backend=backend)
         seed_mean = backend.einsum(seed, range(seed.ndim), mseed2, range(mseed2.ndim), [], dtype=data.dtype) / seed_num_samples.astype(data.dtype)
         seed_dev = backend.einsum(seed-seed_mean, range(seed.ndim), mseed2, range(mseed2.ndim), range(seed.ndim), dtype=data.dtype)
@@ -439,10 +444,10 @@ class Datacube:
                 return _compute(data_sum)
             else:
                 return _sum(data, mdata, axis)
-        data_sum = self._cache(_data_sum, json.dumps(cache_key+['data_sum', axis]), disable=(not use_cache))
+        data_sum = self._cache(_data_sum, json.dumps(cache_key+['data_sum', axis]), redis_client, disable=(not use_cache))
         data_mean = data_sum / num_samples.astype(data.dtype)
 
-        def _einsum_corr_chunk(data, data_mean, seed, axis, mdata, mseed, seed_mean, block_id=None):
+        def _einsum_corr_chunk(data, data_mean, seed, axis, mdata, mseed, seed_mean, block_id=None, redis_client=None):
             if mdata.size<data.size and np.all(0==mdata):
                 return np.zeros(data_mean.shape+(2,), dtype=data.dtype)
             else:
@@ -460,17 +465,17 @@ class Datacube:
                 def _data_denominator():
                     data_denominator = np.einsum(data, ddims, data, ddims, mdata, range(mdata.ndim), [axis], dtype=dtype)
                     return np.reshape(data_denominator, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
-                data_denominator = self._cache(_data_denominator, json.dumps(cache_key+['data_denominator', axis, block_id]), disable=(not use_cache))
+                data_denominator = Datacube._cache(_data_denominator, json.dumps(cache_key+['data_denominator', axis, block_id]), redis_client, disable=(redis_client is None))
 
                 numerator = np.reshape(numerator, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
                 
                 return np.concatenate([numerator[...,np.newaxis], data_denominator[...,np.newaxis]], axis=data.ndim)
 
         if isinstance(data, da.Array):
-            result = da.map_blocks(_einsum_corr_chunk, data, data_mean, seed, axis, mdata, mseed, seed_mean, new_axis=data.ndim, dtype=data.dtype)
+            result = da.map_blocks(_einsum_corr_chunk, data, data_mean, seed, axis, mdata, mseed, seed_mean, redis_client=redis_client, new_axis=data.ndim, dtype=data.dtype)
             result = result.compute()
         else:
-            result = _einsum_corr_chunk(data, data_mean, seed, axis, mdata, mseed, seed_mean)
+            result = _einsum_corr_chunk(data, data_mean, seed, axis, mdata, mseed, seed_mean, redis_client=redis_client)
         numerator = result[..., 0]
         data_denominator = result[..., 1]
         numerator = np.sum(numerator, axis=tuple(sample_axes), keepdims=True)
