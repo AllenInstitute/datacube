@@ -17,6 +17,6 @@
   },
   "scripts": {
     "dev": "linklocal && linklocal --list | xargs -I '(cd {} && npm install --unsafe-perm)'",
-    "postinstall": "if [ \"$NODE_ENV\" != \"production\" ]; then npm run dev; (cd ../../clients/ && npm run build); fi"
+    "postinstall": "if [ \"$NODE_ENV\" != \"production\" ]; then npm run dev; (cd ../../clients/ && npm install --unsafe-perm && npm run build); fi"
   }
 }
