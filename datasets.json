@@ -40,5 +40,19 @@
             }
         ],
         "arguments": ["--data-src", "http://iwarehouse/", "--data-dir", "./data/", "--data-name", "mouse_ccf"]
+    },
+    {
+        "name": "connectivity",
+        "enabled": true,
+        "script": "./scripts/datasets/connectivity.py",
+        "data-dir": "./data/",
+        "files": [
+            {
+                "path": "connectivity.nc",
+                "use_chunks": true,
+                "chunks": {"experiment": 637}
+            }
+        ],
+        "arguments": ["--data-src", "http://testwarehouse:9000/", "--data-dir", "./data/", "--data-name", "connectivity"]
     }
 ]
