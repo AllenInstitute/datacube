@@ -90,6 +90,22 @@ def test_raw_filters(test_datacube):
     if 'foo_2' in ds: assert r.foo_2.equals(ds.where(cond, drop=True).foo_2)
 
 
+@pytest.mark.filterwarnings('ignore')
+def test_raw_filters_coords(test_datacube):
+    d, ds = test_datacube
+
+    r = d.raw(filters={'or': [{'field': 'foo_0', 'op': '<=', 'value': 0.25},{'field': 'foo_1', 'coords': {'dim_0': 5}, 'op': '<=', 'value': 0.1}]})
+    cond = (ds.foo_0 <= 0.25) | (ds.foo_1.loc[dict(dim_0=5)] <= 0.1)
+    assert r.foo_0.equals(ds.where(cond.any(dim='dim_1'), drop=True).foo_0)
+    assert r.foo_1.equals(ds.where(cond, drop=True).foo_1)
+    if 'foo_2' in ds: assert r.foo_2.equals(ds.where(cond, drop=True).foo_2)
+
+    r = d.raw(filters={'or': [{'field': 'foo_0', 'op': '<=', 'value': 0.25},{'field': 'foo_1', 'coords': {'dim_1': 7}, 'op': '<=', 'value': 0.1}]})
+    cond = (ds.foo_0 <= 0.25) | (ds.foo_1.loc[dict(dim_1=7)] <= 0.1)
+    assert r.foo_0.equals(ds.where(cond.any(dim='dim_1'), drop=True).foo_0)
+    assert r.foo_1.equals(ds.where(cond, drop=True).foo_1)
+    if 'foo_2' in ds: assert r.foo_2.equals(ds.where(cond, drop=True).foo_2)
+
 def pearsonr(x, y):
     mx = np.ma.array(x, mask=np.isnan(x))
     my = np.ma.array(y, mask=np.isnan(y))

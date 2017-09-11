@@ -63,13 +63,13 @@ class PandasServiceComponent(ApplicationSession):
 
 
         @inlineCallbacks
-        def raw(fields=None, select=None, filters=None, name=None):
+        def raw(fields=None, select=None, coords=None, filters=None, name=None):
             try:
                 datacube = datacubes[name]
-                res = yield threads.deferToThread(datacube.raw, select, fields, filters)
+                res = yield threads.deferToThread(datacube.raw, select, coords, fields, filters)
                 returnValue(res.to_dict())
             except Exception as e:
-                print({'fields': fields, 'select': select, 'name': name, 'filters': filters})
+                print({'fields': fields, 'select': select, 'coords': coords, 'name': name, 'filters': filters})
                 _application_error(e)
 
 
@@ -85,10 +85,10 @@ class PandasServiceComponent(ApplicationSession):
 
 
         @inlineCallbacks
-        def corr(field, dim, seed_idx, select=None, filters=None, name=None):
+        def corr(field, dim, seed_idx, select=None, coords=None, filters=None, name=None):
             try:
                 datacube = datacubes[name]
-                res = yield threads.deferToThread(datacube.corr, field, dim, seed_idx, select=select, filters=filters)
+                res = yield threads.deferToThread(datacube.corr, field, dim, seed_idx, select=select, coords=coords, filters=filters)
                 returnValue(res.to_dict())
             except Exception as e:
                 print({'field': field, 'dim': dim, 'seed_idx': seed_idx, 'select': select, 'filters': filters, 'name': name})
