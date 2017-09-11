@@ -60,7 +60,15 @@ class Datacube:
         return 1
 
 
-    def __init__(self, name, nc_file, redis_client=None, chunks=None, max_response_size=10*1024*1024, max_cacheable_bytes=100*1024*1024):
+    def __init__(self,
+                 name,
+                 nc_file,
+                 redis_client=None,
+                 missing_data=False,
+                 calculate_stats=True,
+                 chunks=None,
+                 max_response_size=10*1024*1024,
+                 max_cacheable_bytes=100*1024*1024):
         self.name = name
         self.max_response_size = max_response_size
         self.max_cacheable_bytes = max_cacheable_bytes

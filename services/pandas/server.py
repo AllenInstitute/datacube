@@ -25,6 +25,7 @@ import re
 import functools
 
 from six import text_type as str
+from six import iteritems
 from builtins import bytes
 
 from datacube import Datacube
@@ -267,8 +268,15 @@ if __name__ == '__main__':
                         raise RuntimeError('Refusing to run with ' + str(sum(existing)) + ' files when expecting ' + str(len(dataset['files'])) + ', for dataset "' + dataset['name'] + '". Specify --recache option to generate files (will overwrite existing files).')
                         exit(1)
                 nc_file = next(f for f in dataset['files'] if re.search('\.nc$', f['path']))
-                chunks = nc_file['chunks'] if nc_file['use_chunks'] else None
-                datacubes[dataset['name']] = Datacube(dataset['name'], os.path.join(data_dir, nc_file['path']), chunks=chunks)
+                option_keys = ['chunks', 'max_response_size', 'max_cacheable_bytes']
+                options = {k:v for k,v in iteritems(nc_file) if k in option_keys}
+                if not nc_file['use_chunks']:
+                    del options['chunks']
+
+                datacubes[dataset['name']] = Datacube(
+                    dataset['name'],
+                    os.path.join(data_dir, nc_file['path']),
+                    **options)
 
     runner = ApplicationRunner(str(args.router), str(args.realm))
     runner.run(PandasServiceComponent, auto_reconnect=True)

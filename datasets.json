@@ -50,7 +50,8 @@
             {
                 "path": "connectivity.nc",
                 "use_chunks": true,
-                "chunks": {"experiment": 637}
+                "chunks": {"experiment": 637},
+                "max_cacheable_bytes": 104857600
             }
         ],
         "arguments": ["--data-src", "http://testwarehouse:9000/", "--data-dir", "./data/", "--data-name", "connectivity"]
