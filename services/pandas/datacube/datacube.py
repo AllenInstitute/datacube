@@ -72,7 +72,7 @@ class Datacube:
         self.name = name
         self.max_response_size = max_response_size
         self.max_cacheable_bytes = max_cacheable_bytes
-        if nc_file: self.load(nc_file, chunks)
+        if nc_file: self.load(nc_file, chunks, missing_data, calculate_stats)
         #todo: would be nice to find a way to swap these out,
         # and also to be able to run without redis (numpy-only)
         #if reactor.running:
@@ -84,7 +84,7 @@ class Datacube:
             self.redis_client = redis.StrictRedis('localhost', 6379)
 
 
-    def load(self, nc_file, chunks=None):
+    def load(self, nc_file, chunks=None, missing_data=False, calculate_stats=True):
         #todo: rename df
         #todo: argsorts need to be cached to a file (?)
         self.df = xr.open_dataset(nc_file, chunks=chunks)
@@ -93,30 +93,34 @@ class Datacube:
             if dim not in self.df.keys():
                 self.df.coords[dim] = range(self.df.dims[dim])
         #todo: add option whether to create mdata
-        #self.mdata = xr.ufuncs.logical_not(xr.ufuncs.isnan(self.df))
-        #self.mdata = self.mdata.persist()
-        #todo: can nan-only chunks be dropped?
-        self.df = self.df.fillna(0.)
-        self.df = self.df.persist()
+        if missing_data:
+            #todo: need to reintroduce this and test
+            #self.mdata = xr.ufuncs.logical_not(xr.ufuncs.isnan(self.df))
+            #self.mdata = self.mdata.persist()
+            #todo: can nan-only chunks be dropped?
+            self.df = self.df.fillna(0.)
         if chunks:
             self.backend = da
+            self.df = self.df.persist()
         else:
             self.backend = np
+            self.df = self.df.load()
         self.argsorts = {}
         for field in self.df.keys():
             if self.df[field].size*np.dtype('int64').itemsize <= self.max_cacheable_bytes:
                 self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
         #todo: would be nice to cache these instead of computing on every startup
-        self.mins = {}
-        self.maxes = {}
-        self.means = {}
-        self.stds = {}
-        for field in self.df.keys():
-            self.mins[field] = self.df[field].min().values
-            self.maxes[field] = self.df[field].max().values
-            if not self.df[field].dtype.kind in 'OSU':
-                self.means[field] = self.df[field].mean().values
-                self.stds[field] = self.df[field].std().values
+        if calculate_stats:
+            self.mins = {}
+            self.maxes = {}
+            self.means = {}
+            self.stds = {}
+            for field in self.df.keys():
+                self.mins[field] = self.df[field].min().values
+                self.maxes[field] = self.df[field].max().values
+                if not self.df[field].dtype.kind in 'OSU':
+                    self.means[field] = self.df[field].mean().values
+                    self.stds[field] = self.df[field].std().values
 
 
     def _validate_select(self, select):

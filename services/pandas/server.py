@@ -268,7 +268,7 @@ if __name__ == '__main__':
                         raise RuntimeError('Refusing to run with ' + str(sum(existing)) + ' files when expecting ' + str(len(dataset['files'])) + ', for dataset "' + dataset['name'] + '". Specify --recache option to generate files (will overwrite existing files).')
                         exit(1)
                 nc_file = next(f for f in dataset['files'] if re.search('\.nc$', f['path']))
-                option_keys = ['chunks', 'max_response_size', 'max_cacheable_bytes']
+                option_keys = ['chunks', 'max_response_size', 'max_cacheable_bytes', 'missing_data', 'calculate_stats']
                 options = {k:v for k,v in iteritems(nc_file) if k in option_keys}
                 if not nc_file['use_chunks']:
                     del options['chunks']
