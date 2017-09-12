@@ -1,23 +1,29 @@
+#!/usr/bin/env python
+
 import sys
 import os
+import txaio
+import argparse
 
 from os import environ
 from twisted.internet import threads
 from twisted.internet.defer import inlineCallbacks
-from autobahn.twisted.wamp import ApplicationSession, ApplicationRunner
+#from autobahn.twisted.wamp import ApplicationSession, ApplicationRunner
+from wamp import ApplicationSession, ApplicationRunner # copy of stock wamp.py with modified timeouts
 from twisted.internet.defer import inlineCallbacks, returnValue
+from autobahn.wamp.auth import compute_wcs
 
-from .configuration_manager import ConfigurationManager
+from configuration_manager import ConfigurationManager
 
-from .classes.surface_projection import SurfacePoint
-from .classes.projection_point import ProjectionPoint
-from .classes.filmstrip_locator import FilmStripLocator
-from .classes.model_loader import ModelLoader
-from .classes.voxel_lookup import VoxelLookup
-from .classes.line_finder import LineFinder
-from .classes.spacial_search import SpacialSearch
-from .classes.ontology_service import OntologyService
-from .classes.model_loader import ModelLoader
+from classes.surface_projection import SurfacePoint
+from classes.projection_point import ProjectionPoint
+from classes.filmstrip_locator import FilmStripLocator
+from classes.model_loader import ModelLoader
+from classes.voxel_lookup import VoxelLookup
+from classes.line_finder import LineFinder
+from classes.spacial_search import SpacialSearch
+from classes.ontology_service import OntologyService
+from classes.model_loader import ModelLoader
 
 
 
@@ -36,6 +42,15 @@ from .classes.model_loader import ModelLoader
 #  }
 
 class LocatorServiceComponent(ApplicationSession):
+
+    def onConnect(self):
+        self.join(str(args.realm), [u'wampcra'], str(args.username))
+
+
+    def onChallenge(self, challenge):
+        if challenge.method == u'wampcra':
+            signature = compute_wcs(str(args.password).encode('utf8'), challenge.extra['challenge'].encode('utf8'))
+            return signature.decode('ascii')
 
     @inlineCallbacks
     def onJoin(self, details):
@@ -182,3 +197,19 @@ class LocatorServiceComponent(ApplicationSession):
             print ("Locator Ready!")
         else:
             print("Could not ready Locator Component")
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Locator Service')
+    parser.add_argument('router', help='url of WAMP router to connect to e.g. ws://localhost:9000/ws')
+    parser.add_argument('realm', help='WAMP realm name to join')
+    parser.add_argument('username', help='WAMP-CRA username')
+    parser.add_argument('password', help='WAMP-CRA secret')
+    args = parser.parse_args()
+
+    txaio.use_twisted()
+    log = txaio.make_logger()
+    txaio.start_logging()
+
+    runner = ApplicationRunner(str(args.router), str(args.realm))
+    runner.run(LocatorServiceComponent, auto_reconnect=True)

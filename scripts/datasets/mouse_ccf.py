@@ -33,6 +33,7 @@ def generate(data_src=None, data_dir='./', data_name='mouse_ccf'):
             annotated_structures = np.unique(ccf_anno)
             structure_colors = dict()
             structure_colors[0] = np.array([0, 0, 0, 0], dtype=np.uint8)
+            #todo: maybe could use allensdk OntologiesApi and StructureTree.get_colormap() instead of this
             for structure_id in annotated_structures:
                 if structure_id:
                     STRUCTURE_API = data_src + '/api/v2/data/Structure/query.json?id='

@@ -15,7 +15,7 @@
     },
     {
         "name": "mni",
-        "enabled": true,
+        "enabled": false,
         "script": "./scripts/datasets/mni.py",
         "data-dir": "./data/",
         "files": [
@@ -40,5 +40,22 @@
             }
         ],
         "arguments": ["--data-src", "http://iwarehouse/", "--data-dir", "./data/", "--data-name", "mouse_ccf"]
+    },
+    {
+        "name": "connectivity",
+        "enabled": true,
+        "script": "./scripts/datasets/connectivity.py",
+        "data-dir": "./data/",
+        "files": [
+            {
+                "path": "connectivity.nc",
+                "use_chunks": true,
+                "chunks": {"experiment": 637},
+                "max_cacheable_bytes": 104857600,
+                "missing_data": false,
+                "calculate_stats": false
+            }
+        ],
+        "arguments": ["--data-src", "http://testwarehouse:9000/", "--data-dir", "./data/", "--data-name", "connectivity"]
     }
 ]

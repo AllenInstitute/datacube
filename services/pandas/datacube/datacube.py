@@ -60,11 +60,19 @@ class Datacube:
         return 1
 
 
-    def __init__(self, name, nc_file, redis_client=None, chunks=None, max_response_size=10*1024*1024, max_cacheable_bytes=10*1024*1024):
+    def __init__(self,
+                 name,
+                 nc_file,
+                 redis_client=None,
+                 missing_data=False,
+                 calculate_stats=True,
+                 chunks=None,
+                 max_response_size=10*1024*1024,
+                 max_cacheable_bytes=100*1024*1024):
         self.name = name
         self.max_response_size = max_response_size
         self.max_cacheable_bytes = max_cacheable_bytes
-        if nc_file: self.load(nc_file, chunks)
+        if nc_file: self.load(nc_file, chunks, missing_data, calculate_stats)
         #todo: would be nice to find a way to swap these out,
         # and also to be able to run without redis (numpy-only)
         #if reactor.running:
@@ -76,7 +84,7 @@ class Datacube:
             self.redis_client = redis.StrictRedis('localhost', 6379)
 
 
-    def load(self, nc_file, chunks=None):
+    def load(self, nc_file, chunks=None, missing_data=False, calculate_stats=True):
         #todo: rename df
         #todo: argsorts need to be cached to a file (?)
         self.df = xr.open_dataset(nc_file, chunks=chunks)
@@ -85,30 +93,34 @@ class Datacube:
             if dim not in self.df.keys():
                 self.df.coords[dim] = range(self.df.dims[dim])
         #todo: add option whether to create mdata
-        #self.mdata = xr.ufuncs.logical_not(xr.ufuncs.isnan(self.df))
-        #self.mdata = self.mdata.persist()
-        #todo: can nan-only chunks be dropped?
-        self.df = self.df.fillna(0.)
-        self.df = self.df.persist()
+        if missing_data:
+            #todo: need to reintroduce this and test
+            #self.mdata = xr.ufuncs.logical_not(xr.ufuncs.isnan(self.df))
+            #self.mdata = self.mdata.persist()
+            #todo: can nan-only chunks be dropped?
+            self.df = self.df.fillna(0.)
         if chunks:
             self.backend = da
+            self.df = self.df.persist()
         else:
             self.backend = np
+            self.df = self.df.load()
         self.argsorts = {}
         for field in self.df.keys():
             if self.df[field].size*np.dtype('int64').itemsize <= self.max_cacheable_bytes:
                 self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
         #todo: would be nice to cache these instead of computing on every startup
-        self.mins = {}
-        self.maxes = {}
-        self.means = {}
-        self.stds = {}
-        for field in self.df.keys():
-            self.mins[field] = self.df[field].min().values
-            self.maxes[field] = self.df[field].max().values
-            if not self.df[field].dtype.kind in 'OSU':
-                self.means[field] = self.df[field].mean().values
-                self.stds[field] = self.df[field].std().values
+        if calculate_stats:
+            self.mins = {}
+            self.maxes = {}
+            self.means = {}
+            self.stds = {}
+            for field in self.df.keys():
+                self.mins[field] = self.df[field].min().values
+                self.maxes[field] = self.df[field].max().values
+                if not self.df[field].dtype.kind in 'OSU':
+                    self.means[field] = self.df[field].mean().values
+                    self.stds[field] = self.df[field].std().values
 
 
     def _validate_select(self, select):
@@ -167,7 +179,7 @@ class Datacube:
         return subscripts
 
 
-    def _get_data(self, select=None, fields=None, filters=None, dim_order=None, df=None):
+    def _get_data(self, select=None, coords=None, fields=None, filters=None, dim_order=None, df=None):
         if df is not None:
             res = df
         else:
@@ -182,19 +194,23 @@ class Datacube:
             subscripts = self._get_subscripts_from_select(select)
         if subscripts:
             res = res[subscripts]
+        if coords:
+            #todo: validate coords
+            res = res.loc[coords]
         if filters:
             res, f = self._query(filters, df=res)
-            if f['masks']:
-                ds = res.load()
-                res = xr.Dataset()
-                mask = reduce(xr_ufuncs.logical_and, f['masks'])
-                for field in ds.data_vars:
-                    reduce_dims = [dim for dim in mask.dims if dim not in ds[field].dims]
-                    res[field] = ds[field].where(mask.any(dim=reduce_dims), drop=True)
-                    for coord in res[field].coords:
-                        res.coords[coord] = res[field].coords[coord]
         if fields:
             res = res[fields]
+        if filters and f['masks']:
+            #ds = res.load()
+            ds = res
+            res = xr.Dataset()
+            mask = reduce(xr_ufuncs.logical_and, f['masks'])
+            for field in ds.data_vars:
+                reduce_dims = [dim for dim in mask.dims if dim not in ds[field].dims]
+                res[field] = ds[field].where(mask.any(dim=reduce_dims), drop=True)
+                for coord in res[field].coords:
+                    res.coords[coord] = res[field].coords[coord]
         if dim_order:
             res = res.transpose(*dim_order)
         return res
@@ -210,9 +226,9 @@ class Datacube:
 
 
     #todo: add sort and deprecate select()
-    def raw(self, select=None, fields=None, filters=None, dim_order=None):
-        res = self._get_data(select, fields, filters, dim_order)
-        size = sum([res[field].size*res[field].dtype.itemsize for field in res.keys()])
+    def raw(self, select=None, coords=None, fields=None, filters=None, dim_order=None):
+        res = self._get_data(select, coords, fields, filters, dim_order)
+        size = sum([res[field].nbytes for field in res.keys()])
         if size > self.max_response_size:
             raise ValueError('Requested would return ' + str(size) + ' bytes; please limit request to ' + str(self.max_response_size) + '.')
         return res
@@ -308,8 +324,8 @@ class Datacube:
             return res
 
 
-    def corr(self, field, dim, seed_idx, select=None, filters=None):
-        data = self._get_data(select=select)
+    def corr(self, field, dim, seed_idx, select=None, coords=None, filters=None):
+        data = self._get_data(select=select, coords=coords)
         data, f = self._query(filters, df=data)
         #todo: use self.mdata if it exists
         #mdata = self.mdata[field].reindex_like(data)
@@ -369,8 +385,11 @@ class Datacube:
     def _get_seed(data, seed_idx, axis, mdata, backend=np):
         seed = backend.take(data, seed_idx, axis=axis)
         seed = backend.reshape(seed, tuple(data.shape[i] if i != axis else 1 for i in range(data.ndim)))
-        mseed = backend.take(mdata, seed_idx, axis=axis)
-        mseed = backend.reshape(mseed, tuple(mdata.shape[i] if i != axis else 1 for i in range(data.ndim)))
+        if mdata.shape[axis]>1:
+            mseed = backend.take(mdata, seed_idx, axis=axis)
+            mseed = backend.reshape(mseed, tuple(mdata.shape[i] if i != axis else 1 for i in range(data.ndim)))
+        else:
+            mseed = mdata
         return seed, mseed
 
 
@@ -538,22 +557,26 @@ class Datacube:
                 op = f['op']
                 field = f['field']
                 value = f['value']
+                select = f.get('select', None)
+                coords = f.get('coords', None)
 
                 def _filter_key(f):
-                    return json.dumps([self.name, 'filter', f['op'], f['field'], f['value']])
+                    return json.dumps([self.name, 'filter', f['op'], f['field'], f['value'], select, coords])
 
                 res = {'inds': {}, 'masks': []}
-                if df is not self.df or field not in self.argsorts:
+                if df is not self.df or field not in self.argsorts or select or coords:
+                    lhs = self._get_data(fields=field, select=select, coords=coords)
                     if op == '=' or op == 'is':
-                        mask = (df[field] == value)
+                        mask = (lhs == value)
                     elif op == '<':
-                        mask = (df[field] < value)
+                        mask = (lhs < value)
                     elif op == '>':
-                        mask = (df[field] > value)
+                        mask = (lhs > value)
                     elif op == '<=':
-                        mask = (df[field] <= value)
+                        mask = (lhs <= value)
                     elif op == '>=':
-                        mask = (df[field] >= value)
+                        mask = (lhs >= value)
+                    #todo: if df is self.df, could cache depending size of mask
                     #todo: convert 1-d masks to inds (?)
                     res['masks'].append(mask)
                 else:
@@ -611,10 +634,12 @@ class Datacube:
 
                 for dim, inds in iteritems(m1['inds']):
                     mask = xr.DataArray(np.zeros((df.dims[dim],), dtype=np.bool), dims=[dim])
+                    mask.coords[dim] = df.coords[dim]
                     mask[inds] = True
                     m1['masks'].append(mask)
                 for dim, inds in iteritems(m2['inds']):
                     mask = xr.DataArray(np.zeros((df.dims[dim],), dtype=np.bool), dims=[dim])
+                    mask.coords[dim] = df.coords[dim]
                     mask[inds] = True
                     m2['masks'].append(mask)
 

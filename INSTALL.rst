@@ -32,8 +32,21 @@ Run :code:`redis-server` and heed these warnings if they are present::
     # WARNING overcommit_memory is set to 0! Background save may fail under low memory condition. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
     # WARNING you have Transparent Huge Pages (THP) support enabled in your kernel. This will create latency and memory usage issues with Redis. To fix this issue run the command 'echo never > /sys/kernel/mm/transparent_hugepage/enabled' as root, and add it to your /etc/rc.local in order to retain the setting after a reboot. Redis must be restarted after THP is disabled.
 
-Run Crossbar under Pypy (optional)
-----------------------------------
+Running the Router
+------------------
+
+To run the router::
+
+    cd router
+    crossbar start --config config-router-1-core.json
+
+On CentOS 7, the router can take advantage of multiple cores. Use the supplied dual-core or quad-core config::
+
+    cd router
+    crossbar start --config config-router-4-core.json
+
+Run Crossbar Router under Pypy (optional)
+-----------------------------------------
 
 Download and unzip portable pypy::
 
@@ -46,6 +59,11 @@ Install crossbar under pypy::
     pypy-5.8-linux_x86_64-portable/bin/pypy -m pip install -U pip
     pypy-5.8-linux_x86_64-portable/bin/pip install crossbar
     pypy-5.8-linux_x86_64-portable/bin/crossbar version
+
+Run the router under pypy::
+
+    cd router
+    ./run.sh --config config-router-4-core.json
 
 Install Miniconda
 -----------------
@@ -66,19 +84,19 @@ The :code:`--ignore-installed` option is a workaround for https://github.com/Con
     source activate datacube
     pip install --ignore-installed -r requirements.txt
 
-Verify Install
---------------
+Running the Server
+------------------
 
-Verify the environment and install by running the server::
+Run all services::
 
-    ./run.sh
+    crossbar start
 
-Wait for the "Server ready." message in the log output.
+Wait for the various ready-messages in the log output.
 
 Running the Demo
 ----------------
 
-A Node.js installation is needed in order to install npm packages and to build the client javascript for the demos::
+The demo config contains its own router. A Node.js installation is needed in order to install npm packages and to build the client javascript for the demos::
 
     yum install nodejs
 

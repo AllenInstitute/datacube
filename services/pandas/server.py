@@ -25,6 +25,7 @@ import re
 import functools
 
 from six import text_type as str
+from six import iteritems
 from builtins import bytes
 
 from datacube import Datacube
@@ -63,13 +64,13 @@ class PandasServiceComponent(ApplicationSession):
 
 
         @inlineCallbacks
-        def raw(fields=None, select=None, filters=None, name=None):
+        def raw(fields=None, select=None, coords=None, filters=None, name=None):
             try:
                 datacube = datacubes[name]
-                res = yield threads.deferToThread(datacube.raw, select, fields, filters)
+                res = yield threads.deferToThread(datacube.raw, select, coords, fields, filters)
                 returnValue(res.to_dict())
             except Exception as e:
-                print({'fields': fields, 'select': select, 'name': name, 'filters': filters})
+                print({'fields': fields, 'select': select, 'coords': coords, 'name': name, 'filters': filters})
                 _application_error(e)
 
 
@@ -85,10 +86,10 @@ class PandasServiceComponent(ApplicationSession):
 
 
         @inlineCallbacks
-        def corr(field, dim, seed_idx, select=None, filters=None, name=None):
+        def corr(field, dim, seed_idx, select=None, coords=None, filters=None, name=None):
             try:
                 datacube = datacubes[name]
-                res = yield threads.deferToThread(datacube.corr, field, dim, seed_idx, select=select, filters=filters)
+                res = yield threads.deferToThread(datacube.corr, field, dim, seed_idx, select=select, coords=coords, filters=filters)
                 returnValue(res.to_dict())
             except Exception as e:
                 print({'field': field, 'dim': dim, 'seed_idx': seed_idx, 'select': select, 'filters': filters, 'name': name})
@@ -267,8 +268,15 @@ if __name__ == '__main__':
                         raise RuntimeError('Refusing to run with ' + str(sum(existing)) + ' files when expecting ' + str(len(dataset['files'])) + ', for dataset "' + dataset['name'] + '". Specify --recache option to generate files (will overwrite existing files).')
                         exit(1)
                 nc_file = next(f for f in dataset['files'] if re.search('\.nc$', f['path']))
-                chunks = nc_file['chunks'] if nc_file['use_chunks'] else None
-                datacubes[dataset['name']] = Datacube(dataset['name'], os.path.join(data_dir, nc_file['path']), chunks=chunks)
+                option_keys = ['chunks', 'max_response_size', 'max_cacheable_bytes', 'missing_data', 'calculate_stats']
+                options = {k:v for k,v in iteritems(nc_file) if k in option_keys}
+                if not nc_file['use_chunks']:
+                    del options['chunks']
+
+                datacubes[dataset['name']] = Datacube(
+                    dataset['name'],
+                    os.path.join(data_dir, nc_file['path']),
+                    **options)
 
     runner = ApplicationRunner(str(args.router), str(args.realm))
     runner.run(PandasServiceComponent, auto_reconnect=True)
