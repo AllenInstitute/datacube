@@ -101,7 +101,7 @@ class Datacube:
             self.df = self.df.fillna(0.)
         if chunks:
             self.backend = da
-            #self.df = self.df.persist()
+            self.df = self.df.persist()
         else:
             self.backend = np
             self.df = self.df.load()
