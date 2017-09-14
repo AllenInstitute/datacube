@@ -195,6 +195,7 @@ class Datacube:
         if subscripts:
             res = res[subscripts]
         if coords:
+            coords = {dim: np.array(v, dtype=res.coords[dim].dtype) for dim,v in iteritems(coords)}
             #todo: validate coords
             res = res.loc[coords]
         if filters:
@@ -565,7 +566,7 @@ class Datacube:
 
                 res = {'inds': {}, 'masks': []}
                 if df is not self.df or field not in self.argsorts or select or coords:
-                    lhs = self._get_data(fields=field, select=select, coords=coords)
+                    lhs = self._get_data(fields=field, select=select, coords=coords, df=df)
                     if op == '=' or op == 'is':
                         mask = (lhs == value)
                     elif op == '<':
