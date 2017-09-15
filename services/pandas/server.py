@@ -12,6 +12,7 @@ from autobahn.wamp.auth import compute_wcs
 #from autobahn.twisted.wamp import ApplicationSession, ApplicationRunner
 from wamp import ApplicationSession, ApplicationRunner # copy of stock wamp.py with modified timeouts
 import numpy as np
+import xarray as xr
 import traceback
 import json
 import zlib
@@ -93,6 +94,35 @@ class PandasServiceComponent(ApplicationSession):
                 returnValue(res.to_dict())
             except Exception as e:
                 print({'field': field, 'dim': dim, 'seed_idx': seed_idx, 'select': select, 'filters': filters, 'name': name})
+                _application_error(e)
+
+
+        @inlineCallbacks
+        def conn_spatial_search(voxel, fields=None, select=None, coords=None, filters=None):
+            try:
+                name = 'connectivity'
+                conn_datacube = datacubes[name]
+                conn = conn_datacube.df
+                voxel['anterior_posterior'] = int(conn.anterior_posterior[np.searchsorted(conn.anterior_posterior, voxel['anterior_posterior'])])
+                voxel['superior_inferior'] = int(conn.superior_inferior[np.searchsorted(conn.superior_inferior, voxel['superior_inferior'])])
+                voxel['left_right'] = int(conn.left_right[np.searchsorted(conn.left_right, voxel['left_right'])])
+                voxel_xyz = [voxel['anterior_posterior'], voxel['superior_inferior'], voxel['left_right']]
+                projection_map_dir = args.projection_map_dir
+                res = yield self.call(u'org.brain_map.locator.get_streamlines_at_voxel', voxel=voxel_xyz, map_dir=projection_map_dir)
+                streamlines_list = res['results']
+                experiment_ids = np.array([e['data_set_id'] for e in streamlines_list])
+                coords = coords or {}
+                if 'experiment' in coords:
+                    coords['experiment'] = np.intersect1d(experiment_ids, coords['experiment'])
+                else:
+                    coords['experiment'] = experiment_ids
+                coords['experiment'] = np.intersect1d(conn.experiment.values, coords['experiment']) #todo: shouldn't need this if the data lines up
+                res = yield threads.deferToThread(conn_datacube.raw, select=select, coords=coords, fields=fields, filters=filters)
+                streamlines = xr.Dataset({'streamline': (['experiment'], streamlines_list), 'experiment': experiment_ids})
+                res = xr.merge([res, streamlines])
+                returnValue(res.to_dict())
+            except Exception as e:
+                print({'voxel': voxel, 'fields': fields, 'select': select, 'coords': coords, 'filters': filters})
                 _application_error(e)
 
 
@@ -195,6 +225,9 @@ class PandasServiceComponent(ApplicationSession):
             #        else:
             #            raise RuntimeError('Must specify datacube name when server has more than one datacube loaded (' + ', '.join(datacubes.keys()) + ').')
             #    return datacubes[name]
+            yield self.register(conn_spatial_search,
+                                u'org.brain-map.api.datacube.conn_spatial_search',
+                                options=RegisterOptions(invoke=u'roundrobin'))
             for name in datacubes.keys():
                 yield self.register(functools.partial(info, name=name),
                                     u'org.brain-map.api.datacube.info.' + name,
@@ -239,8 +272,8 @@ if __name__ == '__main__':
     parser.add_argument('dataset_manifest', help='JSON dataset manifest')
     parser.add_argument('--max-records', default=1000, help='maximum records to serve in a single request (default: %(default)s)')
     parser.add_argument('--recache', action='store_true', help='overwrite existing data files')
+    parser.add_argument('--projection-map-dir', help='path to root of projection map directory structure e.g. /data/informatics/heatmap/mouseconn_projection_maps_2017_09_11/P56/')
     args = parser.parse_args()
-
     txaio.use_twisted()
     log = txaio.make_logger()
     txaio.start_logging()

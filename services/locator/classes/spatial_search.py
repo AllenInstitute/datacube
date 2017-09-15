@@ -3,7 +3,7 @@ import numpy as np
 import struct
 import collections
 
-class SpacialSearch():
+class SpatialSearch():
     def __init__(self, config):
         self.config = config
         self.header_size = 20
@@ -37,7 +37,7 @@ class SpacialSearch():
     def get_projection_map_file (self, voxel, map_dir):
         voxel = np.round(voxel, decimals = -2)
         map_file = os.path.join(map_dir, "%d" % voxel[0], "%d_%d_%d" % (voxel[0], voxel[1], voxel[2]))
-        
+
         return map_file
 
     def read_projection_map_header(self, map_file):
