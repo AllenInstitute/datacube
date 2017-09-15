@@ -361,8 +361,7 @@ class Datacube:
             mask = reduce(xr_ufuncs.logical_and, f['masks'])
             reduce_dims = [d for d in mask.dims if d != dim]
             res = res.reindex_like(mask).where(mask.any(dim=reduce_dims), drop=True)
-        res = res.where(res.corr.notnull(), drop=True)
-        return res.sortby('corr', ascending=False)
+        return res
 
 
     @staticmethod

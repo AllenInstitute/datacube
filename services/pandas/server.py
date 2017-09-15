@@ -91,6 +91,8 @@ class PandasServiceComponent(ApplicationSession):
             try:
                 datacube = datacubes[name]
                 res = yield threads.deferToThread(datacube.corr, field, dim, seed_idx, select=select, coords=coords, filters=filters)
+                res = res.where(res.corr.notnull(), drop=True)
+                res = res.sortby('corr', ascending=False)
                 returnValue(res.to_dict())
             except Exception as e:
                 print({'field': field, 'dim': dim, 'seed_idx': seed_idx, 'select': select, 'filters': filters, 'name': name})
