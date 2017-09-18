@@ -121,7 +121,7 @@ class PandasServiceComponent(ApplicationSession):
                 coords['experiment'] = np.intersect1d(conn.experiment.values, coords['experiment']) #todo: shouldn't need this if the data lines up
                 res = yield threads.deferToThread(conn_datacube.raw, select=select, coords=coords, fields=fields, filters=filters)
                 streamlines = xr.Dataset({'streamline': (['experiment'], streamlines_list), 'experiment': experiment_ids})
-                res = xr.merge([res, streamlines])
+                res = xr.merge([res, streamlines], join='left')
                 returnValue(res.to_dict())
             except Exception as e:
                 print({'voxel': voxel, 'fields': fields, 'select': select, 'coords': coords, 'filters': filters})

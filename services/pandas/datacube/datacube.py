@@ -543,7 +543,6 @@ class Datacube:
             return pickle.loads(cached)
 
 
-    #todo: 'select' clauses could be pretty easily added into each filter as in {'field': ..., 'select': ..., 'op': ..., 'value': ...}
     def _query(self, filters, df=None):
         if df is None:
             df = self.df
