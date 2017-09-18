@@ -21,7 +21,7 @@ from classes.filmstrip_locator import FilmStripLocator
 from classes.model_loader import ModelLoader
 from classes.voxel_lookup import VoxelLookup
 from classes.line_finder import LineFinder
-from classes.spacial_search import SpacialSearch
+from classes.spatial_search import SpatialSearch
 from classes.ontology_service import OntologyService
 from classes.model_loader import ModelLoader
 
@@ -154,9 +154,9 @@ class LocatorServiceComponent(ApplicationSession):
             
             returnValue(d)
 
-        def spacial_search(voxel = None, map_dir = None):
+        def spatial_search(voxel = None, map_dir = None):
 
-            search = SpacialSearch(config)
+            search = SpatialSearch(config)
 
             d = search.get(voxel, map_dir)
 
@@ -185,7 +185,7 @@ class LocatorServiceComponent(ApplicationSession):
             yield self.register(filmstrip_location, u"org.brain_map.locator.get_filmstrip_location")
             yield self.register(voxel_lookup,       u"org.brain_map.locator.get_voxel_structure")
             yield self.register(get_lines,          u"org.brain_map.locator.get_lines")
-            yield self.register(spacial_search,     u"org.brain_map.locator.get_streamlines_at_voxel")
+            yield self.register(spatial_search,     u"org.brain_map.locator.get_streamlines_at_voxel")
             yield self.register(ccf_ontology,       u"org.brain_map.locator.get_ccf_ontology")
             yield self.register(ccf_model,          u"org.brain_map.locator.get_ccf_model")
         

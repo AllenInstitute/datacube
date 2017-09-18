@@ -38,12 +38,7 @@ Running the Router
 To run the router::
 
     cd router
-    crossbar start --config config-router-1-core.json
-
-On CentOS 7, the router can take advantage of multiple cores. Use the supplied dual-core or quad-core config::
-
-    cd router
-    crossbar start --config config-router-4-core.json
+    crossbar start
 
 Run Crossbar Router under Pypy (optional)
 -----------------------------------------
@@ -63,7 +58,7 @@ Install crossbar under pypy::
 Run the router under pypy::
 
     cd router
-    ./run.sh --config config-router-4-core.json
+    ./run.sh
 
 Install Miniconda
 -----------------

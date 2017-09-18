@@ -5,7 +5,7 @@
             "id": "datacube",
             "type": "guest",
             "executable": "run.sh",
-            "arguments": ["ws://localhost:8080/auth_ws", "aibs", "services", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "../../datasets.json"],
+            "arguments": ["ws://localhost:8080/auth_ws", "aibs", "services", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "../../datasets.json", "--projection-map-dir", "/data/informatics/heatmap/mouseconn_projection_maps_2017_09_11/P56/"],
             "options": {
                 "workdir": "../services/pandas/"
             }
