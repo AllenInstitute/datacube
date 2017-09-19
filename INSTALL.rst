@@ -52,7 +52,7 @@ Install crossbar under pypy::
 
     pypy-5.8-linux_x86_64-portable/bin/pypy -m ensurepip
     pypy-5.8-linux_x86_64-portable/bin/pypy -m pip install -U pip
-    pypy-5.8-linux_x86_64-portable/bin/pip install crossbar
+    pypy-5.8-linux_x86_64-portable/bin/pip install $(grep crossbar requirements.txt)
     pypy-5.8-linux_x86_64-portable/bin/crossbar version
 
 Run the router under pypy::
