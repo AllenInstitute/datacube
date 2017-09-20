@@ -135,7 +135,30 @@ class PandasServiceComponent(ApplicationSession):
                                   stop=None,
                                   indexes=None,
                                   fields=None):
-            return select('cell_specimens', filters, sort, ascending, start, stop, indexes, fields)
+            #todo: optimize xarray single-row access, and remove this
+            if filters is None and sort is None and (start is None or start==0) and stop is None and isinstance(indexes, list) and len(indexes)==1:
+                sa=np.load('../../data/cell_specimens.npy', mmap_mode='r')
+
+                def _format_structured_array_response(sa):
+                    data = []
+                    for field in sa.dtype.names:
+                        col = sa[field]
+                        # ensure network byte order
+                        col = col.astype(col.dtype.str.replace('<', '>').replace('=', '>'))
+                        data.append(col.tobytes())
+                    data = b''.join(data)
+                    return {'num_rows': sa.size,
+                            'col_names': [str(name) for name in sa.dtype.names],
+                            'col_types': [str(sa[name].dtype.name).replace('bytes', 'string') for name in sa.dtype.names],
+                            'item_sizes': [sa[name].dtype.itemsize for name in sa.dtype.names],
+                            'data': bytes(zlib.compress(data))}
+
+                ret = np.copy(sa[indexes[0]])
+                if fields:
+                    ret = ret[fields]
+                return _format_structured_array_response(ret)
+            else:
+                return select('cell_specimens', filters, sort, ascending, start, stop, indexes, fields)
 
 
         #todo: this is the 1-d-only analog of "raw", with filtering; these should be combined
