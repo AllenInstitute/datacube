@@ -696,7 +696,7 @@ class Datacube:
                             bool_func = _or
                         else:
                             assert False
-                        return reduce(bool_func, _reduce(filters))
+                        return reduce(bool_func, _reduce(filters), {'inds': {}, 'masks': []})
                     elif 'any' in filters or 'all' in filters or 'count' in filters:
                         dims = filters['dims']
                         if not isinstance(dims, list):
