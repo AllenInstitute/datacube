@@ -188,6 +188,8 @@ class Datacube:
             assert(all(f in list(res.keys()) for f in fields))
         elif fields:
             assert(fields in list(res.keys()))
+        if filters:
+            res, f = self._query(filters, df=res)
         subscripts=None
         if select:
             self._validate_select(select)
@@ -198,8 +200,6 @@ class Datacube:
             coords = {dim: np.array(v, dtype=res.coords[dim].dtype) for dim,v in iteritems(coords)}
             #todo: validate coords
             res = res.loc[coords]
-        if filters:
-            res, f = self._query(filters, df=res)
         if fields:
             res = res[fields]
         if filters and f['masks']:
@@ -543,7 +543,6 @@ class Datacube:
             return pickle.loads(cached)
 
 
-    #todo: 'select' clauses could be pretty easily added into each filter as in {'field': ..., 'select': ..., 'op': ..., 'value': ...}
     def _query(self, filters, df=None):
         if df is None:
             df = self.df
@@ -656,57 +655,104 @@ class Datacube:
                 return res
 
             def _expand_filters(filters):
-                bool_op = None
-                if 'and' in filters:
-                    bool_op = 'and'
-                elif 'or' in filters:
-                    bool_op = 'or'
+                if isinstance(filters, dict):
+                    for op in ['and', 'or', 'any', 'all', 'count']:
+                        if op in filters:
+                            ret = filters
+                            ret[op] = _expand_filters(ret[op])
+                            return ret
 
-                res = {bool_op: []}
-                for f in filters[bool_op]:
-                    if 'and' in f or 'or' in f:
-                        res[bool_op].append(_expand_filters(f))
+                    op, field, value = (filters['op'], filters['field'], filters['value'])
+                    if op == 'between':
+                        and_clause = {'and': []}
+                        and_clause['and'].append({'op': '>=', 'field': field, 'value': value[0]})
+                        and_clause['and'].append({'op': '<=', 'field': field, 'value': value[1]})
+                        return and_clause
+                    elif op == 'in':
+                        or_clause = {'or': []}
+                        for v in value:
+                            or_clause['or'].append({'op': '=', 'field': field, 'value': v})
+                        return or_clause
                     else:
-                        op, field, value = (f['op'], f['field'], f['value'])
-                        if op == 'between':
-                            and_clause = {'and': []}
-                            and_clause['and'].append({'op': '>=', 'field': field, 'value': value[0]})
-                            and_clause['and'].append({'op': '<=', 'field': field, 'value': value[1]})
-                            res[bool_op].append(and_clause)
-                        elif op == 'in':
-                            or_clause = {'or': []}
-                            for v in value:
-                                or_clause['or'].append({'op': '=', 'field': field, 'value': v})
-                            res[bool_op].append(or_clause)
-                        else:
-                            res[bool_op].append(f)
-                return res
+                        return filters
+                    return res
+                elif isinstance(filters, list):
+                    return list(map(_expand_filters, filters))
+                else:
+                    assert False
             
             filters = _expand_filters(filters)
 
             def _reduce(filters):
-                res = None
-                bool_op = None
-                bool_func = None
-                if 'and' in filters:
-                    bool_op = 'and'
-                    bool_func = _and
-                elif 'or' in filters:
-                    bool_op = 'or'
-                    bool_func = _or
-                else:
+                if isinstance(filters, dict):
                     if 'inds' in filters or 'masks' in filters:
                         return filters
+                    elif 'and' in filters or 'or' in filters:
+                        if 'and' in filters:
+                            filters = filters['and']
+                            bool_func = _and
+                        elif 'or' in filters:
+                            filters = filters['or']
+                            bool_func = _or
+                        else:
+                            assert False
+                        return reduce(bool_func, _reduce(filters), {'inds': {}, 'masks': []})
+                    elif 'any' in filters or 'all' in filters or 'count' in filters:
+                        dims = filters['dims']
+                        if not isinstance(dims, list):
+                            dims = [dims]
+                        if 'any' in filters:
+                            filters = filters['any']
+                            def _any(m):
+                                res = {'inds': {dim: m['inds'][dim] for dim in m['inds'] if dim not in dims}, 'masks': []}
+                                for mask in m['masks']:
+                                    if not set(dims).isdisjoint(mask.dims):
+                                        mask = mask.any(dim=set(dims).intersection(mask.dims))
+                                    res['masks'].append(mask)
+                                return res
+                            agg_func = _any
+                        elif 'all' in filters:
+                            filters = filters['all']
+                            def _all(m):
+                                res = {'inds': {dim: m['inds'][dim] for dim in m['inds'] if dim not in dims}, 'masks': []}
+                                for mask in m['masks']:
+                                    if not set(dims).isdisjoint(mask.dims):
+                                        mask = mask.all(dim=set(dims).intersection(mask.dims))
+                                    res['masks'].append(mask)
+                                return res
+                            agg_func = _all
+                        elif 'count' in filters:
+                            op = filters['op']
+                            value = filters['value']
+                            filters = filters['count']
+                            def _count(m):
+                                res = {'inds': {dim: m['inds'][dim] for dim in m['inds'] if dim not in dims}, 'masks': []}
+                                for mask in m['masks']:
+                                    if not set(dims).isdisjoint(mask.dims):
+                                        count = mask.sum(dim=set(dims).intersection(mask.dims))
+                                        if op == '=' or op == 'is':
+                                            mask = (count == value)
+                                        elif op == '<':
+                                            mask = (count < value)
+                                        elif op == '>':
+                                            mask = (count > value)
+                                        elif op == '<=':
+                                            mask = (count <= value)
+                                        elif op == '>=':
+                                            mask = (count >= value)
+                                    res['masks'].append(mask)
+                                return res
+                            agg_func = _count
+                        else:
+                            assert False
+                        return agg_func(_reduce(filters))
                     else:
                         return _filter(filters)
-
-                if not filters[bool_op]:
-                    res = {'inds': {}, 'masks': []}
-                elif any(isinstance(x, dict) and 'and' in x or 'or' in x for x in filters[bool_op]):
-                    res = _reduce({bool_op: list(map(_reduce, filters[bool_op]))})
+                elif isinstance(filters, list):
+                    return list(map(_reduce, filters))
                 else:
-                    res = reduce(bool_func, list(map(_reduce, filters[bool_op])))
-                return res
+                    return {'inds': {}, 'masks': []}
+
 
             res = _reduce(filters)
             res['masks'] = [mask[res['inds']] for mask in res['masks']]

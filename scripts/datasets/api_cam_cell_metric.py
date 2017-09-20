@@ -47,7 +47,9 @@ def generate(data_src=None, data_dir='./', data_name='cell_specimens'):
     df = pd.DataFrame.from_dict(data)
 
     nc_file = re.sub('\.csv', '.nc', csv_file, flags=re.I)
+    npy_file = re.sub('\.csv', '.npy', csv_file, flags=re.I)
     sa = pd_dataframe_to_np_structured_array(df)
+    np.save(npy_file, sa)
     del df
     ds = np_structured_array_to_xr_dataset(sa)
     del sa
