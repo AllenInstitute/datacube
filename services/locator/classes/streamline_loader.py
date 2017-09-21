@@ -18,11 +18,11 @@ class StreamlineLoader():
             version = struct.unpack('H', f.read(2))[0]
             num_lines = struct.unpack('I', f.read(4))[0]
 
-            for i in xrange(num_lines):
+            for i in range(num_lines):
                 num_points = struct.unpack('H', f.read(2))[0]
                 points = []
 
-                for j in xrange(num_points):
+                for j in range(num_points):
                     x,y,z,density,intensity, = struct.unpack('fffff', f.read(20))
                     points.append({
                         'x': int(x * 100),
