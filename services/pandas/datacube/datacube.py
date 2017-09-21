@@ -13,6 +13,7 @@ from PIL import Image
 from io import BytesIO
 import base64
 from functools import reduce
+import operator
 
 from six import iteritems
 from builtins import int, map
@@ -554,6 +555,33 @@ class Datacube:
             #todo: add ability to filter on a boolean field without any op/value
             #todo: add not-equals
             def _filter(f):
+                #todo: refactor out as a custom filter type
+                if f['op'] == 'distance':
+                    fields = f['fields']
+                    point = f['point']
+                    value = f['value']
+
+                    operands = []
+                    for operand, coord in zip(fields, point):
+                        if not isinstance(operand, dict):
+                            operand = {'field': operand}
+                        field = operand['field']
+                        select = operand.get('select', None)
+                        coords = operand.get('coords', None)
+                        data = self._get_data(fields=field, select=select, coords=coords, df=df)
+                        if df[field] is not self.df[field] or field not in self.argsorts or select or coords:
+                            data = data.where(xr_ufuncs.logical_and(data>=(coord-value), data<=(coord+value)), drop=True)
+                        else:
+                            min_point_ind = np.searchsorted(df[field].values.flat, coord-value, side='left', sorter=self.argsorts[field])
+                            max_point_ind = np.searchsorted(df[field].values.flat, coord+value, side='right', sorter=self.argsorts[field])
+                            min_point = np.unravel_index(self.argsorts[field][min_point_ind], df[field].shape)
+                            max_point = np.unravel_index(self.argsorts[field][max_point_ind], df[field].shape)
+                            data = df[field][{dim: slice(min_point[i], max_point[i]) for i,dim in enumerate(df[field].dims)}]
+                        operands.append(data-coord)
+
+                    mask = (reduce(operator.add, map(xr_ufuncs.square, operands)) ** 0.5) <= value
+                    return {'inds': {}, 'masks': [mask]}
+
                 op = f['op']
                 field = f['field']
                 value = f['value']
@@ -576,7 +604,7 @@ class Datacube:
                         mask = (lhs <= value)
                     elif op == '>=':
                         mask = (lhs >= value)
-                    #todo: if df is self.df, could cache depending size of mask
+                    #todo: if df is self.df, could cache depending on size of mask
                     #todo: convert 1-d masks to inds (?)
                     res['masks'].append(mask)
                 else:
@@ -662,16 +690,16 @@ class Datacube:
                             ret[op] = _expand_filters(ret[op])
                             return ret
 
-                    op, field, value = (filters['op'], filters['field'], filters['value'])
+                    op = filters['op']
                     if op == 'between':
                         and_clause = {'and': []}
-                        and_clause['and'].append({'op': '>=', 'field': field, 'value': value[0]})
-                        and_clause['and'].append({'op': '<=', 'field': field, 'value': value[1]})
+                        and_clause['and'].append({'op': '>=', 'field': filters['field'], 'value': filters['value'][0]})
+                        and_clause['and'].append({'op': '<=', 'field': filters['field'], 'value': filters['value'][1]})
                         return and_clause
                     elif op == 'in':
                         or_clause = {'or': []}
-                        for v in value:
-                            or_clause['or'].append({'op': '=', 'field': field, 'value': v})
+                        for v in filters['value']:
+                            or_clause['or'].append({'op': '=', 'field': filters['field'], 'value': v})
                         return or_clause
                     else:
                         return filters
