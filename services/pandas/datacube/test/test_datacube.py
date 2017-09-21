@@ -107,6 +107,60 @@ def test_raw_filters_coords(test_datacube):
     if 'foo_2' in ds: assert r.foo_2.equals(ds.where(cond, drop=True).foo_2)
 
 
+@pytest.mark.filterwarnings('ignore')
+def test_raw_distance_filter(test_datacube):
+    d, ds = test_datacube
+
+    r = d.raw(filters=[{'op': 'distance', 'fields': ['foo_0'], 'point': [.5], 'value': .166}])
+    cond = ((ds.foo_0-.5)**2.)**.5<=.166
+    assert r.foo_0.equals(ds.where(cond, drop=True).foo_0)
+    assert r.foo_1.equals(ds.where(cond, drop=True).foo_1)
+    if 'foo_2' in ds: assert r.foo_2.equals(ds.where(cond, drop=True).foo_2)
+
+    r = d.raw(filters=[{'op': 'distance', 'fields': ['dim_0'], 'point': [5.], 'value': 3.}])
+    cond = ((ds.dim_0-5.)**2.)**.5<=3.
+    assert r.foo_0.equals(ds.where(cond, drop=True).foo_0)
+    assert r.foo_1.equals(ds.where(cond, drop=True).foo_1)
+    if 'foo_2' in ds: assert r.foo_2.equals(ds.where(cond, drop=True).foo_2)
+
+    r = d.raw(filters=[{'op': 'distance', 'fields': ['dim_0', 'dim_0'], 'point': [5.,5.], 'value': 3.}])
+    cond = ((ds.dim_0-5.)**2.+(ds.dim_0-5.)**2.)**.5<=3.
+    assert r.foo_0.equals(ds.where(cond, drop=True).foo_0)
+    assert r.foo_1.equals(ds.where(cond, drop=True).foo_1)
+    if 'foo_2' in ds: assert r.foo_2.equals(ds.where(cond, drop=True).foo_2)
+
+    r = d.raw(filters=[{'op': 'distance', 'fields': ['dim_0', 'dim_0', 'dim_0'], 'point': [5.,5.,5.], 'value': 3.}])
+    cond = ((ds.dim_0-5.)**2.+(ds.dim_0-5.)**2.+(ds.dim_0-5.)**2.)**.5<=3.
+    assert r.foo_0.equals(ds.where(cond, drop=True).foo_0)
+    assert r.foo_1.equals(ds.where(cond, drop=True).foo_1)
+    if 'foo_2' in ds: assert r.foo_2.equals(ds.where(cond, drop=True).foo_2)
+
+    r = d.raw(filters=[{'op': 'distance', 'fields': ['dim_0', 'dim_1'], 'point': [5.,10.], 'value': 3.}])
+    cond = ((ds.dim_0-5.)**2.+(ds.dim_1-10.)**2.)**.5<=3.
+    assert r.foo_0.equals(ds.where(cond.any(dim='dim_1'), drop=True).foo_0)
+    assert r.foo_1.equals(ds.where(cond, drop=True).foo_1)
+    if 'foo_2' in ds: assert r.foo_2.equals(ds.where(cond, drop=True).foo_2)
+
+    r = d.raw(filters=[{'op': 'distance', 'fields': ['foo_0', {'field': 'foo_1', 'coords': {'dim_1': 6}}], 'point': [.5,.3], 'value': .166}])
+    cond = ((ds.foo_0-.5)**2.+(ds.foo_1.sel(dim_1=6)-.3)**2.)**.5<=.166
+    assert r.foo_0.equals(ds.where(cond, drop=True).foo_0)
+    assert r.foo_1.equals(ds.where(cond, drop=True).foo_1)
+    if 'foo_2' in ds: assert r.foo_2.equals(ds.where(cond, drop=True).foo_2)
+
+    r = d.raw(filters=[{'op': 'distance', 'fields': ['foo_0', {'field': 'foo_1', 'coords': {'dim_0': 7}}], 'point': [.5,.3], 'value': .166}])
+    cond = ((ds.foo_0-.5)**2.+(ds.foo_1.sel(dim_0=7)-.3)**2.)**.5<=.166
+    assert r.foo_0.equals(ds.where(cond.any(dim='dim_1'), drop=True).foo_0)
+    assert r.foo_1.equals(ds.where(cond, drop=True).foo_1)
+    if 'foo_2' in ds: assert r.foo_2.equals(ds.where(cond, drop=True).foo_2)
+
+    if 'foo_2' in ds:
+        r = d.raw(filters=[{'op': 'distance', 'fields': ['dim_0', 'dim_1', 'dim_2'], 'point': [5.,10.,15.], 'value': 3.}])
+        cond = ((ds.dim_0-5.)**2.+(ds.dim_1-10.)**2.+(ds.dim_2-15.)**2.)**.5<=3.
+        assert r.foo_0.equals(ds.where(cond.any(dim=['dim_1', 'dim_2']), drop=True).foo_0)
+        assert r.foo_1.equals(ds.where(cond.any(dim='dim_2'), drop=True).foo_1)
+        assert r.foo_2.equals(ds.where(cond, drop=True).foo_2)
+
+
 def pearsonr(x, y):
     mx = np.ma.array(x, mask=np.isnan(x))
     my = np.ma.array(y, mask=np.isnan(y))
