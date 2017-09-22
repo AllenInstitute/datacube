@@ -13,6 +13,7 @@ import pandas as pd
 
 from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 from allensdk.config.manifest import Manifest
+from allensdk.api.queries.rma_api import RmaApi
 
 
 HEMISPHERE_IDS = [1, 2, 3]
@@ -63,8 +64,14 @@ def main():
     all_unionizes_path = os.path.join(mcc_dir, 'all_unionizes.csv')
     mcc = MouseConnectivityCache(manifest_file=manifest_path, resolution=args.resolution, base_uri=args.data_src)
 
-    #todo: this gets secondary structures using source search (backed by existing conn-service). don't do this.
-    experiments = mcc.get_experiments()
+    rma_api = RmaApi(base_uri=args.data_src)
+    experiments = rma_api.model_query(
+        model='SectionDataSet', criteria='[storage_directory$nenull][failed$eqfalse],products[id$in5,31,35,36,42,44,45]',
+        include='specimen(injections(structure),donor(transgenic_mouse(transgenic_lines))),products,projection_structure_unionizes[hemisphere_id$eq3][structure_id$eq997][is_injection$eqtrue]',
+        only='specimens.name,structures.id,structures.acronym,structures.name,transgenic_lines.id,transgenic_lines.name,products.id,data_sets.id,injections.injection_materials,injections.structure_id,injections.specimen_id,injections.primary_injection_structure_id,donors.strain,donors.sex,projection_structure_unionizes.max_voxel_x,projection_structure_unionizes.max_voxel_y,projection_structure_unionizes.max_voxel_z'.split(','),
+        num_rows='all'
+    )
+    experiments = [exp for exp in experiments if len(exp['specimen']['injections'])>0] #todo: can be revomed when data is better
     experiment_ids = [exp['id'] for exp in experiments]
     unionizes = get_all_unionizes(mcc, all_unionizes_path, experiment_ids)
     tree = mcc.get_structure_tree()
@@ -167,7 +174,7 @@ def main():
 
     root_volume = projection_unionize.sel(injection=True, normalized=False, structure=997, hemisphere='bilateral').values
     retina_volume = projection_unionize.sel(injection=True, normalized=False, structure=117, hemisphere='bilateral').values
-    injection_volume = np.choose([1 if e['structure-name'] == 'retina' else 0 for e in experiments], [root_volume, retina_volume])
+    injection_volume = np.choose([1 if e['specimen']['injections'][0]['primary_injection_structure_id'] == 304325711 else 0 for e in experiments], [root_volume, retina_volume])
 
     ccf_dims = ['anterior_posterior', 'superior_inferior', 'left_right']
     ds = xr.Dataset(
@@ -176,13 +183,13 @@ def main():
             'ccf_structures': (ccf_dims+['depth'], ccf_anno_paths),
             'projection': (ccf_dims+['experiment'], volume),
             'volume': projection_unionize,
-            'mouse_line': (['experiment'], [e['transgenic-line'] for e in experiments]),
-            'product_id': (['experiment'], [e['product-id'] for e in experiments]),
-            'primary_injection_structure': (['experiment'], [e['structure-id'] for e in experiments]),
+            'mouse_line': (['experiment'], [e['specimen']['donor']['transgenic_mouse']['transgenic_lines'][0]['name'] if 'transgenic_mouse' in e['specimen']['donor'] else '' for e in experiments]),
+            'product_id': (['experiment'], [e['products'][0]['id'] for e in experiments]),
+            'primary_injection_structure': (['experiment'], [e['specimen']['injections'][0]['primary_injection_structure_id'] for e in experiments]),
             'injection_volume': (['experiment'], injection_volume),
-            'injection_coord_a_p': (['experiment'], [e['injection-coordinates'][0] for e in experiments]),
-            'injection_coord_s_i': (['experiment'], [e['injection-coordinates'][1] for e in experiments]),
-            'injection_coord_l_r': (['experiment'], [e['injection-coordinates'][2] for e in experiments])
+            'injection_coord_a_p': (['experiment'], [e['projection_structure_unionizes'][0]['max_voxel_x'] for e in experiments]),
+            'injection_coord_s_i': (['experiment'], [e['projection_structure_unionizes'][0]['max_voxel_y'] for e in experiments]),
+            'injection_coord_l_r': (['experiment'], [e['projection_structure_unionizes'][0]['max_voxel_z'] for e in experiments])
         },
         coords={
             'experiment': experiment_ids,
