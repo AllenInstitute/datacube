@@ -16,45 +16,6 @@ from allensdk.config.manifest import Manifest
 from allensdk.api.queries.rma_api import RmaApi
 
 
-HEMISPHERE_IDS = [1, 2, 3]
-HEMISPHERE_MAP = {1: 'left', 2: 'right', 3: 'bilateral'}
-
-
-def get_projection_table(unionizes, experiment_ids, structure_ids, data_field):
-
-    unionizes = unionizes.pivot(index='experiment_id', columns='structure_id', values=data_field)
-    unionizes = unionizes.reindex(index=experiment_ids, columns=structure_ids, fill_value=0.0)
-    unionizes = unionizes.fillna(0.0)
-
-    return unionizes
-
-
-def get_specified_projection_table(mcc, unionizes, experiment_ids, structure_ids,
-                                   is_injection, hemisphere_id, data_field):
-    unionizes = mcc.filter_structure_unionizes(unionizes, is_injection=bool(is_injection),
-                                               structure_ids=structure_ids, include_descendants=True,
-                                               hemisphere_ids=[hemisphere_id])
-
-    return get_projection_table(unionizes, experiment_ids, structure_ids, data_field)
-
-
-def get_all_unionizes(mcc, all_unionizes_path, experiment_ids):
-
-    try:
-        unionizes = pd.read_csv(all_unionizes_path)
-
-    except (IOError, ValueError) as err:
-        unionizes = mcc.get_structure_unionizes(experiment_ids)
-
-        unionizes.to_csv(all_unionizes_path)
-
-    return unionizes
-
-
-def map_hemisphere_id(hem_id):
-   return HEMISPHERE_MAP[hem_id]
-
-
 def main():
 
     mcc_dir = os.path.join(args.data_dir, 'mouse_connectivity_cache')
@@ -73,7 +34,6 @@ def main():
     )
     experiments = [exp for exp in experiments if len(exp['specimen']['injections'])>0] #todo: can be revomed when data is better
     experiment_ids = [exp['id'] for exp in experiments]
-    unionizes = get_all_unionizes(mcc, all_unionizes_path, experiment_ids)
     tree = mcc.get_structure_tree()
     structure_ids = list(tree.node_ids())
 
@@ -120,6 +80,8 @@ def main():
 
         def map_hemisphere_id(hem_id):
            return HEMISPHERE_MAP[hem_id]
+
+        unionizes = get_all_unionizes(mcc, all_unionizes_path, experiment_ids)
 
         nstructures = len(structure_ids)
         nhemispheres = len(HEMISPHERE_IDS)
