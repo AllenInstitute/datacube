@@ -50,7 +50,7 @@
             {
                 "path": "connectivity.nc",
                 "use_chunks": true,
-                "chunks": {"experiment": 735},
+                "chunks": {"experiment": 729},
                 "max_cacheable_bytes": 104857600,
                 "missing_data": false,
                 "calculate_stats": false
