@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
 from __future__ import division
 import argparse
@@ -6,6 +6,8 @@ import os
 import logging
 import json
 import urllib
+import requests
+from io import StringIO
 
 import nrrd
 import numpy as np
@@ -26,9 +28,8 @@ def main():
     all_unionizes_path = os.path.join(mcc_dir, 'all_unionizes.csv')
     mcc = MouseConnectivityCache(manifest_file=manifest_path, resolution=args.resolution, base_uri=args.data_src)
 
-    csv_file = os.path.join(args.data_dir, 'api_connectivity.csv')
-    urllib.urlretrieve(args.data_src + '/api/v2/data/ApiConnectivity/query.csv?num_rows=all', csv_file)
-    experiments = pd.read_csv(csv_file, true_values=['t'], false_values=['f'])
+    r=requests.get(args.data_src + '/api/v2/data/ApiConnectivity/query.csv?num_rows=all')
+    experiments = pd.read_csv(StringIO(r.text), true_values=['t'], false_values=['f'])
 
     experiment_ids = list(experiments['data_set_id'])
     tree = mcc.get_structure_tree()
