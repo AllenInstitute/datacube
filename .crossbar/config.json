@@ -23,7 +23,7 @@
             "id": "redis",
             "type": "guest",
             "executable": "redis-server",
-            "arguments": [],
+            "arguments": ["./redis.conf"],
             "options": {
                 "workdir": ".."
             }
