@@ -5,6 +5,7 @@ import argparse
 import os
 import logging
 import json
+import urllib
 
 import nrrd
 import numpy as np
@@ -14,7 +15,6 @@ import pandas as pd
 from util import pd_dataframe_to_np_structured_array, np_structured_array_to_xr_dataset
 from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 from allensdk.config.manifest import Manifest
-from allensdk.api.queries.rma_api import RmaApi
 
 
 def main():
@@ -26,12 +26,9 @@ def main():
     all_unionizes_path = os.path.join(mcc_dir, 'all_unionizes.csv')
     mcc = MouseConnectivityCache(manifest_file=manifest_path, resolution=args.resolution, base_uri=args.data_src)
 
-    #todo: swap this out with rma call
-    import sqlalchemy as sa
-    import pandas as pd
-    sql = 'select * from api_connectivity where data_set_id != 636803027' #todo
-    con = sa.create_engine('postgresql://postgres:postgres@testwarehouse:5432/warehouse-R193')
-    experiments = pd.read_sql(sql, con)
+    csv_file = os.path.join(args.data_dir, 'api_connectivity.csv')
+    urllib.urlretrieve(args.data_src + '/api/v2/data/ApiConnectivity/query.csv?num_rows=all', csv_file)
+    experiments = pd.read_csv(csv_file, true_values=['t'], false_values=['f'])
 
     experiment_ids = list(experiments['data_set_id'])
     tree = mcc.get_structure_tree()
