@@ -37,7 +37,10 @@ def main():
     tree = mcc.get_structure_tree()
     structure_ids = list(tree.node_ids())
 
-    ccf_anno = mcc.get_annotation_volume(file_name=os.path.join(mcc_dir, 'annotation_100.nrrd'))[0]
+    if not args.annotation_volume_dir:
+        ccf_anno = mcc.get_annotation_volume(file_name=os.path.join(mcc_dir, 'annotation_100.nrrd'))[0]
+    else:
+        ccf_anno = nrrd.read(os.path.join(args.annotation_volume_dir, 'annotation_100.nrrd'))[0]
     structure_paths = {s['id']: s['structure_id_path'] for s in tree.filter_nodes(lambda x: True)}
     ontology_depth = max([len(p) for p in structure_paths.values()])
 
@@ -165,6 +168,7 @@ if __name__ == '__main__':
     parser.add_argument('--data-src', default='http://api.brain-map.org/', help='base RMA url from which to load data')
     parser.add_argument('--data-dir', default='./', help='save file(s) in this directory')
     parser.add_argument('--data-name', default='mouse_ccf', help="base name with which to create files")
+    parser.add_argument('--annotation-volume-dir', default=None, help="directory from which to get the CCF annotation NRRD; get from the sdk if omitted")
     parser.add_argument('--manifest_filename', type=str, default='mouse_connectivity_manifest.json')
     parser.add_argument('--resolution', type=int, default=100)
 
