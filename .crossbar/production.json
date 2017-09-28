@@ -96,11 +96,18 @@
                             "options": {
                                 "debug": true
                             }
+                        },
+                        "status": {
+                            "classname": "status.StatusResource",
+                            "type": "resource"
                         }
                     }
                 }
             ],
             "options":{
+                "pythonpath": [
+                    ".."
+                ]
             }
         },
         {

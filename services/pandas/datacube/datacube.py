@@ -732,12 +732,15 @@ class Datacube:
                         if 'any' in filters:
                             filters = filters['any']
                             def _any(m):
-                                res = {'inds': {dim: m['inds'][dim] for dim in m['inds'] if dim not in dims}, 'masks': []}
-                                for mask in m['masks']:
-                                    if not set(dims).isdisjoint(mask.dims):
-                                        mask = mask.any(dim=set(dims).intersection(mask.dims))
-                                    res['masks'].append(mask)
-                                return res
+                                for dim, inds in iteritems(m['inds']):
+                                    mask = xr.DataArray(np.zeros((df.dims[dim],), dtype=np.bool), dims=[dim])
+                                    mask.coords[dim] = df.coords[dim]
+                                    mask[inds] = True
+                                    m['masks'].append(mask)
+                                mask = reduce(xr_ufuncs.logical_and, m['masks'])
+                                if not set(dims).isdisjoint(mask.dims):
+                                    mask = mask.any(dim=set(dims).intersection(mask.dims))
+                                return {'inds': {}, 'masks': [mask]}
                             agg_func = _any
                         elif 'all' in filters:
                             filters = filters['all']
@@ -783,7 +786,7 @@ class Datacube:
 
 
             res = _reduce(filters)
-            res['masks'] = [mask[res['inds']] for mask in res['masks']]
+            res['masks'] = [mask[{dim: res['inds'][dim] for dim in set(res['inds'].keys()).intersection(mask.dims)}] for mask in res['masks']]
 
             for dim in df.dims.keys():
                 if dim in res['inds'] and res['inds'][dim].size > 0:

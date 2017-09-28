@@ -35,6 +35,9 @@ def main():
     tree = mcc.get_structure_tree()
     structure_ids = list(tree.node_ids())
 
+    r=requests.get(args.data_src + '/api/v2/data/query.json?criteria=model::StructureSet,rma::criteria,[id$eq167587189],rma::include,structures[id$ne1009]')
+    summary_structures = [structure['id'] for structure in json.loads(r.text)['msg'][0]['structures']]
+
     if not args.annotation_volume_dir:
         ccf_anno = mcc.get_annotation_volume(file_name=os.path.join(mcc_dir, 'annotation_100.nrrd'))[0]
     else:
@@ -119,6 +122,17 @@ def main():
         return structure_paths_array
     structure_paths_array = make_structure_paths_array()
 
+    primary_structures = experiments['structure_id']
+    def make_primary_structure_paths():
+        primary_structure_paths = np.zeros((len(primary_structures), ontology_depth), dtype=primary_structures.dtype)
+        for i in range(len(primary_structures)):
+            structure_id = int(primary_structures[i])
+            if structure_id > 0:
+                path = structure_paths[structure_id]
+                primary_structure_paths[i,:len(path)] = path
+        return primary_structure_paths
+    primary_structure_paths = make_primary_structure_paths()
+
     def make_projection_volume():
         for ii, eid in enumerate(experiment_ids):
 
@@ -141,11 +155,13 @@ def main():
             'ccf_structure': (ccf_dims, ccf_anno),
             'ccf_structures': (ccf_dims+['depth'], ccf_anno_paths),
             'projection': (ccf_dims+['experiment'], volume),
-            'volume': projection_unionize
+            'volume': projection_unionize,
+            'primary_structures': (['experiment', 'depth'], primary_structure_paths)
         },
         coords={
             'experiment': experiment_ids,
             'structures': (['structure', 'depth'], structure_paths_array),
+            'is_summary_structure': (['structure'], [structure in summary_structures for structure in projection_unionize.structure]),
             'anterior_posterior': 100*np.arange(ccf_anno.shape[0]),
             'superior_inferior': 100*np.arange(ccf_anno.shape[1]),
             'left_right': 100*np.arange(ccf_anno.shape[2])
@@ -155,6 +171,7 @@ def main():
     experiments_ds = np_structured_array_to_xr_dataset(experiments_sa)
     experiments_ds.rename({'dim_0': 'experiment'}, inplace=True)
     ds.merge(experiments_ds, inplace=True)
+    ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly
     ds.to_netcdf(os.path.join(args.data_dir, args.data_name + '.nc'), format='NETCDF4')
 
 
