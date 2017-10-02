@@ -2,9 +2,9 @@
     {
         "name": "cell_specimens",
         "enabled": true,
-        "auto-generate": true,
+        "auto-generate": false,
         "script": "./scripts/datasets/api_cam_cell_metric.py",
-        "data-dir": "./data/",
+        "data-dir": "./bob_data/",
         "files": [
             {
                 "path": "cell_specimens.nc",
@@ -17,7 +17,7 @@
     {
         "name": "mni",
         "enabled": false,
-        "auto-generate": true,
+        "auto-generate": false,
         "script": "./scripts/datasets/mni.py",
         "data-dir": "./data/",
         "files": [
@@ -31,8 +31,8 @@
     },
     {
         "name": "mouse_ccf",
-        "enabled": true,
-        "auto-generate": true,
+        "enabled": false,
+        "auto-generate": false,
         "script": "./scripts/datasets/mouse_ccf.py",
         "data-dir": "./data/",
         "files": [
@@ -47,9 +47,9 @@
     {
         "name": "connectivity",
         "enabled": true,
-        "auto-generate": true,
+        "auto-generate": false,
         "script": "./scripts/datasets/connectivity.py",
-        "data-dir": "./data/",
+        "data-dir": "./conn_data/",
         "files": [
             {
                 "path": "connectivity.nc",
