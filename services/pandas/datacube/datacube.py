@@ -89,6 +89,9 @@ class Datacube:
         #todo: rename df
         #todo: argsorts need to be cached to a file (?)
         self.df = xr.open_dataset(nc_file, chunks=chunks)
+        for field in self.df.keys():
+            if self.df[field].dtype.name.startswith('bytes'):
+                self.df[field] = self.df[field].astype('str')
         #todo: rework _query so this is not needed:
         for dim in self.df.dims:
             if dim not in self.df.keys():
