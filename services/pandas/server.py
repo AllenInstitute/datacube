@@ -254,6 +254,9 @@ class PandasServiceComponent(ApplicationSession):
                                 u'org.brain-map.api.datacube.conn_spatial_search',
                                 options=RegisterOptions(invoke=u'roundrobin'))
             for name in datacubes.keys():
+                yield self.register(lambda: True,
+                                    u'org.brain-map.api.datacube.status.' + name + '.' + str(details.session),
+                                    options=RegisterOptions())
                 yield self.register(functools.partial(info, name=name),
                                     u'org.brain-map.api.datacube.info.' + name,
                                     options=RegisterOptions(invoke=u'roundrobin'))
@@ -285,7 +288,7 @@ class PandasServiceComponent(ApplicationSession):
         except Exception as e:
             print("could not register procedure: {0}".format(e))
 
-        print('Server ready.')
+        print('Server ready. ({})'.format(','.join(datacubes.keys())))
 
 
 if __name__ == '__main__':
