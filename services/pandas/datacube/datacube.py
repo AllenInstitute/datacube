@@ -333,16 +333,23 @@ class Datacube:
         #mdata = self.mdata[field].reindex_like(data)
         data = self._get_data(fields=field, df=data)
         mdata = xr.DataArray(da.from_array(np.ones((1,)*data.ndim, dtype=np.bool), chunks=1), dims=['mdim_{0}'.format(i) for i in range(data.ndim)])
+        masks = []
+        row_masks = []
+        for m in f['masks']:
+            if 1==m.ndim and dim==m.dims[0]:
+                row_masks.append(m)
+            else:
+                masks.append(m)
         if seed_idx not in data.coords[dim].values:
             res = xr.Dataset({'corr': ([dim], np.full((data.coords[dim].size,), np.nan))})
         else:
             #todo: more xarray-esque way of doing the following:
             seed_idx = np.where(data.coords[dim].values==seed_idx)[0][0]
-            if f['masks']:
-                if len(f['masks'])>1:
-                    mdata = reduce(xr_ufuncs.logical_and, f['masks'], mdata)
+            if masks:
+                if len(masks)>1:
+                    mdata = reduce(xr_ufuncs.logical_and, masks, mdata)
                 else:
-                    mdata = f['masks'][0]
+                    mdata = masks[0]
                 mdata = mdata.any(dim=set(mdata.dims)-set(data.dims))
                 if data.chunks is not None:
                     mdata = mdata.chunk(tuple(data.chunks[data.dims.index(dim)] for dim in mdata.dims))
@@ -358,10 +365,13 @@ class Datacube:
             key = [self.name, 'mdata', field, select, filters]
             res = self._corr(data.data, mdata.data, seed_idx, axis, cache_key=key)
             res = xr.Dataset({'corr': ([dim], res.squeeze()), dim: data.coords[dim]})
-        if f['masks']:
-            mask = reduce(xr_ufuncs.logical_and, f['masks'])
+        if masks:
+            mask = reduce(xr_ufuncs.logical_and, masks)
             reduce_dims = [d for d in mask.dims if d != dim]
             res = res.reindex_like(mask).where(mask.any(dim=reduce_dims), drop=True)
+        if row_masks:
+            mask = reduce(xr_ufuncs.logical_and, row_masks)
+            res = res.reindex_like(mask).where(mask, drop=True)
         return res
 
 
@@ -732,12 +742,15 @@ class Datacube:
                         if 'any' in filters:
                             filters = filters['any']
                             def _any(m):
-                                res = {'inds': {dim: m['inds'][dim] for dim in m['inds'] if dim not in dims}, 'masks': []}
-                                for mask in m['masks']:
-                                    if not set(dims).isdisjoint(mask.dims):
-                                        mask = mask.any(dim=set(dims).intersection(mask.dims))
-                                    res['masks'].append(mask)
-                                return res
+                                for dim, inds in iteritems(m['inds']):
+                                    mask = xr.DataArray(np.zeros((df.dims[dim],), dtype=np.bool), dims=[dim])
+                                    mask.coords[dim] = df.coords[dim]
+                                    mask[inds] = True
+                                    m['masks'].append(mask)
+                                mask = reduce(xr_ufuncs.logical_and, m['masks'])
+                                if not set(dims).isdisjoint(mask.dims):
+                                    mask = mask.any(dim=set(dims).intersection(mask.dims))
+                                return {'inds': {}, 'masks': [mask]}
                             agg_func = _any
                         elif 'all' in filters:
                             filters = filters['all']
@@ -783,7 +796,7 @@ class Datacube:
 
 
             res = _reduce(filters)
-            res['masks'] = [mask[res['inds']] for mask in res['masks']]
+            res['masks'] = [mask[{dim: res['inds'][dim] for dim in set(res['inds'].keys()).intersection(mask.dims)}] for mask in res['masks']]
 
             for dim in df.dims.keys():
                 if dim in res['inds'] and res['inds'][dim].size > 0:

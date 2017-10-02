@@ -179,6 +179,7 @@ class LocatorServiceComponent(ApplicationSession):
             ###################### Endpoint Registration #######################
             ####################################################################
 
+            yield self.register(lambda: True,       u"org.brain_map.locator.status")
             yield self.register(describe,           u"org.brain_map.locator.describe")
             yield self.register(surface_point,      u"org.brain_map.locator.get_surface_point")
             yield self.register(projection_point,   u"org.brain_map.locator.get_projection_point")

@@ -254,6 +254,9 @@ class PandasServiceComponent(ApplicationSession):
                                 u'org.brain-map.api.datacube.conn_spatial_search',
                                 options=RegisterOptions(invoke=u'roundrobin'))
             for name in datacubes.keys():
+                yield self.register(lambda: True,
+                                    u'org.brain-map.api.datacube.status.' + name + '.' + str(details.session),
+                                    options=RegisterOptions())
                 yield self.register(functools.partial(info, name=name),
                                     u'org.brain-map.api.datacube.info.' + name,
                                     options=RegisterOptions(invoke=u'roundrobin'))
@@ -285,11 +288,11 @@ class PandasServiceComponent(ApplicationSession):
         except Exception as e:
             print("could not register procedure: {0}".format(e))
 
-        print('Server ready.')
+        print('Server ready. ({})'.format(','.join(datacubes.keys())))
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Pandas Service')
+    parser = argparse.ArgumentParser(description='Datacube Service')
     parser.add_argument('router', help='url of WAMP router to connect to e.g. ws://localhost:9000/ws')
     parser.add_argument('realm', help='WAMP realm name to join')
     parser.add_argument('username', help='WAMP-CRA username')
@@ -317,7 +320,7 @@ if __name__ == '__main__':
                 if not os.path.exists(data_dir):
                     os.makedirs(data_dir)
                 existing = [os.path.isfile(os.path.join(data_dir, f['path'])) for f in dataset['files']]
-                if args.recache or sum(existing) == 0:
+                if args.recache or (dataset['auto-generate'] and sum(existing) == 0):
                     command = [dataset['script']] + dataset['arguments']
                     print(' '.join(command))
                     subprocess.call(command, cwd=basepath)
@@ -336,5 +339,9 @@ if __name__ == '__main__':
                     os.path.join(data_dir, nc_file['path']),
                     **options)
 
-    runner = ApplicationRunner(str(args.router), str(args.realm))
-    runner.run(PandasServiceComponent, auto_reconnect=True)
+    if args.recache:
+        print('data recached... restart server without --recache option.')
+        exit(0)
+    else:
+        runner = ApplicationRunner(str(args.router), str(args.realm))
+        runner.run(PandasServiceComponent, auto_reconnect=True)
