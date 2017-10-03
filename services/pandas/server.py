@@ -250,9 +250,10 @@ class PandasServiceComponent(ApplicationSession):
             #        else:
             #            raise RuntimeError('Must specify datacube name when server has more than one datacube loaded (' + ', '.join(datacubes.keys()) + ').')
             #    return datacubes[name]
-            yield self.register(conn_spatial_search,
-                                u'org.brain-map.api.datacube.conn_spatial_search',
-                                options=RegisterOptions(invoke=u'roundrobin'))
+            if 'connectivity' in datacubes:
+                yield self.register(conn_spatial_search,
+                                    u'org.brain-map.api.datacube.conn_spatial_search',
+                                    options=RegisterOptions(invoke=u'roundrobin'))
             for name in datacubes.keys():
                 yield self.register(lambda: True,
                                     u'org.brain-map.api.datacube.status.' + name + '.' + str(details.session),
