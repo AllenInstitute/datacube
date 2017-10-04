@@ -398,10 +398,10 @@ class Datacube:
 
     @staticmethod
     def _get_seed(data, seed_idx, axis, mdata, backend=np):
-        seed = backend.take(data, seed_idx, axis=axis)
+        seed = backend.take(data, int(seed_idx), axis=axis)
         seed = backend.reshape(seed, tuple(data.shape[i] if i != axis else 1 for i in range(data.ndim)))
         if mdata.shape[axis]>1:
-            mseed = backend.take(mdata, seed_idx, axis=axis)
+            mseed = backend.take(mdata, int(seed_idx), axis=axis)
             mseed = backend.reshape(mseed, tuple(mdata.shape[i] if i != axis else 1 for i in range(data.ndim)))
         else:
             mseed = mdata
