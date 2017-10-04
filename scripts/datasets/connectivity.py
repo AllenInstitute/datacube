@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 from __future__ import division
 import argparse
@@ -14,7 +14,6 @@ import numpy as np
 import xarray as xr
 import pandas as pd
 
-from util import pd_dataframe_to_np_structured_array, np_structured_array_to_xr_dataset
 from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 from allensdk.config.manifest import Manifest
 
@@ -167,10 +166,11 @@ def main():
             'left_right': 100*np.arange(ccf_anno.shape[2])
         }
     )
-    experiments_sa = pd_dataframe_to_np_structured_array(experiments)
-    experiments_ds = np_structured_array_to_xr_dataset(experiments_sa)
-    experiments_ds.rename({'dim_0': 'experiment'}, inplace=True)
-    ds.merge(experiments_ds, inplace=True)
+
+    experiments_ds = xr.Dataset.from_dataframe(experiments)
+    experiments_ds.rename({'index': 'experiment'}, inplace=True)
+    experiments_ds.coords['experiment'] = experiments_ds.data_set_id
+    ds.merge(experiments_ds, inplace=True, join='exact')
     ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly
     ds.to_netcdf(os.path.join(args.data_dir, args.data_name + '.nc'), format='NETCDF4')
 
