@@ -15,6 +15,6 @@
                 "calculate_stats": false
             }
         ],
-        "arguments": ["--data-src", "http://testwarehouse:9000/", "--data-dir", "./data/", "--data-name", "connectivity", "--annotation-volume-dir", "/allen/programs/celltypes/production/0378/informatics/model/P56/annotation/Mouse/"]
+        "arguments": ["--data-src", "http://iwarehouse/", "--data-dir", "./data/", "--data-name", "connectivity", "--annotation-volume-dir", "/allen/programs/celltypes/production/0378/informatics/model/P56/annotation/Mouse/"]
     }
 ]
