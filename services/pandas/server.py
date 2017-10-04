@@ -223,7 +223,7 @@ class PandasServiceComponent(ApplicationSession):
             data = b''.join(data)
             return {'num_rows': x.dims['dim_0'],
                     'col_names': [str(name) for name in x.keys()],
-                    'col_types': [str(x[name].dtype.name).replace('bytes', 'string') for name in x.keys()],
+                    'col_types': [str(x[name].dtype.name).replace('str', 'string').replace('bytes', 'string') for name in x.keys()],
                     'item_sizes': [x[name].dtype.itemsize for name in x.keys()],
                     'data': bytes(zlib.compress(data))}
 
@@ -275,9 +275,10 @@ class PandasServiceComponent(ApplicationSession):
                                     options=RegisterOptions(invoke=u'roundrobin'))
 
             # legacy
-            yield self.register(filter_cell_specimens,
-                                u'org.alleninstitute.pandas_service.filter_cell_specimens',
-                                options=RegisterOptions(invoke=u'roundrobin'))
+            if 'cell_specimens' in datacubes:
+                yield self.register(filter_cell_specimens,
+                                    u'org.alleninstitute.pandas_service.filter_cell_specimens',
+                                    options=RegisterOptions(invoke=u'roundrobin'))
 
             def _print_stats():
                 thread_pool = reactor.getThreadPool()
