@@ -137,7 +137,7 @@ class PandasServiceComponent(ApplicationSession):
                                   fields=None):
             #todo: optimize xarray single-row access, and remove this
             if filters is None and sort is None and (start is None or start==0) and stop is None and isinstance(indexes, list) and len(indexes)==1:
-                sa=np.load('../../data/cell_specimens.npy', mmap_mode='r')
+                sa=np.load(npy_file, mmap_mode='r')
 
                 def _format_structured_array_response(sa):
                     data = []
@@ -312,6 +312,8 @@ if __name__ == '__main__':
     #txpool.pool.WorkerProtocol.MAX_LENGTH = sys.maxsize
     #process_pool = txpool.Pool(size=4, log=logging, init_call='datacube.worker.instance.load', init_args=(args.data_dir + 'cell_specimens.npy',))
 
+    npy_file = ''
+
     datacubes={}
     basepath = os.path.dirname(args.dataset_manifest)
     with open(args.dataset_manifest, 'r') as datasets_json:
@@ -319,6 +321,10 @@ if __name__ == '__main__':
         for dataset in datasets:
             if dataset['enabled']:
                 data_dir = os.path.join(os.path.dirname(args.dataset_manifest), dataset['data-dir'])
+
+                if dataset['name'] == 'cell_specimens':
+                    npy_file = os.path.join(data_dir, 'cell_specimens.npy')
+
                 if not os.path.exists(data_dir):
                     os.makedirs(data_dir)
                 existing = [os.path.isfile(os.path.join(data_dir, f['path'])) for f in dataset['files']]
