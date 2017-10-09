@@ -57,7 +57,7 @@ class LocatorServiceComponent(ApplicationSession):
         global ready
         
         try:
-            path = os.path.join(os.path.dirname(__file__), "env_vars.json")
+            path = args.env_vars_path
             config = ConfigurationManager(path)
         except (IOError) as e:
             print(e.message)
@@ -206,6 +206,7 @@ if __name__ == '__main__':
     parser.add_argument('realm', help='WAMP realm name to join')
     parser.add_argument('username', help='WAMP-CRA username')
     parser.add_argument('password', help='WAMP-CRA secret')
+    parser.add_argument('env_vars_path', help='Path to JSON file for ConfigurationManager')
     args = parser.parse_args()
 
     txaio.use_twisted()
