@@ -130,7 +130,7 @@
             "id": "locator",
             "type": "guest",
             "executable": "run.sh",
-            "arguments": ["ws://localhost:8080/auth_ws", "aibs", "services", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93"],
+            "arguments": ["ws://localhost:8080/auth_ws", "aibs", "services", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "env_vars-prod.json"],
             "options": {
                 "workdir": "../services/locator/"
             }
