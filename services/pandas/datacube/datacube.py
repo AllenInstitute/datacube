@@ -300,6 +300,9 @@ class Datacube:
             _, mask = self._query(filters)
             if 'dim_0' in mask['inds']:
                 inds = np.array(mask['inds']['dim_0'])
+            if mask['masks']:
+                m = reduce(np.logical_and, mask['masks'])
+                inds = inds[m]
         if indexes is not None:
             indexes = [x for x in indexes if x != None]
             if inds is not None:
