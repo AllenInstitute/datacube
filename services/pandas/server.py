@@ -136,7 +136,7 @@ class PandasServiceComponent(ApplicationSession):
                                   indexes=None,
                                   fields=None):
             #todo: optimize xarray single-row access, and remove this
-            if filters is None and sort is None and (start is None or start==0) and stop is None and isinstance(indexes, list) and len(indexes)==1:
+            if filters is None and sort is None and (start is None or start==0) and stop is None and isinstance(indexes, list):
                 sa=np.load(npy_file, mmap_mode='r')
 
                 def _format_structured_array_response(sa):
@@ -153,7 +153,7 @@ class PandasServiceComponent(ApplicationSession):
                             'item_sizes': [sa[name].dtype.itemsize for name in sa.dtype.names],
                             'data': bytes(zlib.compress(data))}
 
-                ret = np.copy(sa[indexes[0]])
+                ret = np.copy(sa[indexes])
                 if fields:
                     ret = ret[fields]
                 return _format_structured_array_response(ret)
