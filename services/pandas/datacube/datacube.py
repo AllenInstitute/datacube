@@ -299,7 +299,11 @@ class Datacube:
         if filters is not None:
             _, mask = self._query(filters)
             if 'dim_0' in mask['inds']:
-                inds = np.array(mask['inds']['dim_0'])
+                inds_elem = mask['inds']['dim_0']
+                if isinstance(inds_elem, slice):
+                    inds = inds[inds_elem]
+                else:
+                    inds = np.array(inds_elem)
             if mask['masks']:
                 m = reduce(np.logical_and, mask['masks'])
                 inds = inds[m]
