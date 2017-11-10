@@ -201,7 +201,7 @@ class Datacube:
         if subscripts:
             res = res[subscripts]
         if coords:
-            coords = {dim: np.array(v, dtype=res.coords[dim].dtype) for dim,v in iteritems(coords)}
+            coords = {dim: np.intersect1d(res.coords[dim].values, np.array(v, dtype=res.coords[dim].dtype)) for dim,v in iteritems(coords)}
             #todo: validate coords
             res = res.loc[coords]
         if fields:
