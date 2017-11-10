@@ -16,5 +16,20 @@
             }
         ],
         "arguments": ["--data-src", "http://iwarehouse/", "--data-dir", "./data/", "--data-name", "connectivity", "--annotation-volume-dir", "/allen/programs/celltypes/production/0378/informatics/model/P56/annotation/Mouse/"]
+    },
+    {
+        "name": "mouse_ccf",
+        "enabled": true,
+        "auto-generate": false,
+        "script": "./scripts/datasets/mouse_ccf.py",
+        "data-dir": "./mouse_ccf_data/",
+        "files": [
+            {
+                "path": "mouse_ccf.nc",
+                "use_chunks": false,
+                "chunks": {"left_right": 100, "anterior_posterior": 100, "superior_inferior": 100}
+            }
+        ],
+        "arguments": ["--data-src", "http://iwarehouse/", "--data-dir", "./data/", "--data-name", "mouse_ccf"]
     }
 ]
