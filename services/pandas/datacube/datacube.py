@@ -201,8 +201,18 @@ class Datacube:
         if subscripts:
             res = res[subscripts]
         if coords:
-            coords = {dim: np.intersect1d(res.coords[dim].values, np.array(v, dtype=res.coords[dim].dtype)) for dim,v in iteritems(coords)}
-            #todo: validate coords
+            # validate coords
+            new_coords = {}
+            for dim,v in iteritems(coords):
+                if isinstance(v, list):
+                    new_coords[dim] = [x for x in v if x in res.coords[dim].values]
+                else:
+                    if v in res.coords[dim].values:
+                        new_coords[dim] = v
+                    else:
+                        new_coords[dim] = []
+            # cast coords to correct type
+            coords = {dim: np.array(v, dtype=res.coords[dim].dtype) for dim,v in iteritems(new_coords)}
             res = res.loc[coords]
         if fields:
             res = res[fields]
