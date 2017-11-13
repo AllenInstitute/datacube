@@ -249,13 +249,13 @@ class Datacube:
         return res
 
 
-    def image(self, select, field, dim_order=None, image_format='jpeg'):
+    def image(self, select, coords, field, dim_order=None, image_format='jpeg'):
         if dim_order:
             if 'RGBA' in self.df[field].dims:
                 if 'RGBA' in dim_order:
                     dim_order.remove('RGBA')
                 dim_order.append('RGBA')
-        data = self.raw(select=select, fields=[field], dim_order=dim_order)
+        data = self.raw(select=select, coords=coords, fields=[field], dim_order=dim_order)
         dims = list(data[field].dims)
         if 'RGBA' in dims:
             dims.remove('RGBA')
@@ -268,7 +268,7 @@ class Datacube:
             raise RuntimeError('Non 2-d region selected when requesting image')
 
         #todo: probably ought to make normalization configurable in the request in some manner
-        if data.ndim == 2 and data.dtype != np.uint8:
+        if data.ndim == 2 and data.dtype != np.uint8 and hasattr(self, 'maxes') and field in self.maxes:
             data = ((data / self.maxes[field]) * 255.0).astype(np.uint8)
 
         image = Image.fromarray(data)

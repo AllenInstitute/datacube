@@ -76,10 +76,10 @@ class PandasServiceComponent(ApplicationSession):
 
 
         @inlineCallbacks
-        def image(field, select, image_format='jpeg', dim_order=None, name=None):
+        def image(field, select=None, coords=None, image_format='jpeg', dim_order=None, name=None):
             try:
                 datacube = datacubes[name]
-                res = yield threads.deferToThread(datacube.image, select, field, dim_order, image_format)
+                res = yield threads.deferToThread(datacube.image, select, coords, field, dim_order, image_format)
                 returnValue(res)
             except Exception as e:
                 print({'field': field, 'select': select, 'dim_order': dim_order, 'image_format': image_format, 'name': name})
