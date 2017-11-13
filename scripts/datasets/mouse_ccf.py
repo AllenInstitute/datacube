@@ -59,7 +59,18 @@ def generate(data_src=None, data_dir='./', data_name='mouse_ccf'):
         colorize(ccf_anno, ids, colors, ccf_anno_color)
 
         dims = ['anterior_posterior', 'superior_inferior', 'left_right']
-        ds = xr.Dataset(data_vars={'ccf': (dims, ccf), 'annotation': (dims, ccf_anno), 'color': (dims+['RGBA'], ccf_anno_color)})
+        ds = xr.Dataset(
+            data_vars={
+                'ccf': (dims, ccf),
+                'annotation': (dims, ccf_anno),
+                'color': (dims+['RGBA'], ccf_anno_color)
+            },
+            coords={
+                'anterior_posterior': 25*np.arange(ccf.shape[0]),
+                'superior_inferior': 25*np.arange(ccf.shape[1]),
+                'left_right': 25*np.arange(ccf.shape[2])
+            }
+        )
         ds.to_netcdf(data_path, format='NETCDF4')
     print('Data created in data_dir.')
 
