@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+</head>
+<body>
+<noscript>You must enable JavaScript</noscript>
+<p><a href="http://connectivity.brain-map.org/mouseconn/data/P56/search/injection_rows?showDetail=1&transgenic_lines=266649644,286615058&primary_structure_only=true&injection_structures=453,677&product_ids=45,35,31,5">http://connectivity.brain-map.org/mouseconn/data/P56/search/injection_rows?showDetail=1&transgenic_lines=266649644,286615058&primary_structure_only=true&injection_structures=453,677&product_ids=45,35,31,5</a></p>
+<p><button onclick="do_search1()">do_search1</button></p>
+<hr />
+<p><a href="http://connectivity.brain-map.org/mouseconn/data/P56/search/injection_rows?target_domain=R:688&showDetail=1&transgenic_lines=266649644,286615058&primary_structure_only=true&injection_structures=453,677&product_ids=45,35,31,5">http://connectivity.brain-map.org/mouseconn/data/P56/search/injection_rows?target_domain=R:688&showDetail=1&transgenic_lines=266649644,286615058&primary_structure_only=true&injection_structures=453,677&product_ids=45,35,31,5</a></p>
+<p><button onclick="do_search2()">do_search2</button></p>
+<hr />
+<p><a href="http://connectivity.brain-map.org/mouseconn/data/P56/search/injection_coordinates?showDetail=1&transgenic_lines=266649644&seedPoint=7100,1400,8950&primary_structure_only=true&injection_structures=453,677&product_ids=45,35,31,5">http://connectivity.brain-map.org/mouseconn/data/P56/search/injection_coordinates?showDetail=1&transgenic_lines=266649644&seedPoint=7100,1400,8950&primary_structure_only=true&injection_structures=453,677&product_ids=45,35,31,5</a></p>
+<p>Same as search1, compute distance from seed point to (injection_x, injection_y, injection_z) on client.</p>
+<hr />
+<p><a href="http://connectivity.brain-map.org/mouseconn/data/P56/projection_map/target?showDetail=1&transgenic_lines=266649644&seedPoint=7100,3050,9150&primary_structure_only=true&injection_structures=453,677&product_ids=45,35,31,5">http://connectivity.brain-map.org/mouseconn/data/P56/projection_map/target?showDetail=1&transgenic_lines=266649644&seedPoint=7100,3050,9150&primary_structure_only=true&injection_structures=453,677&product_ids=45,35,31,5</a></p>
+<p><button onclick="do_search4()">do_search4</button></p>
+<hr />
+<script type="text/javascript">
+
+function call(request) {
+    xmlhttp = new XMLHttpRequest();
+    xmlhttp.open("POST", "http://datacube.brain-map.org/call", true);
+    xmlhttp.setRequestHeader("Content-type", "application/json");
+    xmlhttp.onreadystatechange = function () {
+        if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
+            console.log(xmlhttp.responseText);
+        }
+    };
+    xmlhttp.send(JSON.stringify(request));
+}
+
+function init_request() {
+    return {
+        "procedure": "org.brain-map.api.datacube.raw.connectivity",
+        "args": [],
+        "kwargs": {
+            "fields": ["experiment", "transgenic_line", "product_id", "structure_id", "injection_volume", "injection_structures", "injection_x", "injection_y", "injection_z"],
+            "coords": {},
+            "select": {},
+            "filters": []
+        }
+    };
+}
+
+function init_streamline_request(anterior_posterior, superior_inferior, left_right) {
+    return {
+        "procedure": "org.brain-map.api.datacube.conn_spatial_search",
+        "args": [{"anterior_posterior": anterior_posterior, "superior_inferior": superior_inferior, "left_right": left_right}],
+        "kwargs": {
+            "fields": ["experiment", "transgenic_line", "product_id", "structure_id", "injection_volume", "injection_structures", "injection_x", "injection_y", "injection_z"],
+            "coords": {},
+            "select": {},
+            "filters": []
+        }
+    };
+}
+
+function metadata_search(request, filters) {
+    request.kwargs.filters = request.kwargs.filters.concat(filters);
+}
+
+function source_search(request, structures_left, structures_right, structures_both, primary_only) {
+    clauses = []
+
+    function add_clause(structures, hemisphere) {
+        if (structures !== undefined && structures.length > 0) {
+            if(structures.every(function(x) {return Number.isInteger(x)})) {
+                clause = {
+                    "dims": "structure",
+                    "any": {"and": [{
+                        "field": "volume",
+                        "coords": {
+                            "injection": true,
+                            "hemisphere": hemisphere,
+                            "normalized": true},
+                        "op": ">=", "value": 0.005},
+                        {"field": "is_summary_structure", "op": "=", "value": true},                                                                                                                                                                                 {"dims": "depth", "any": {"field": "structures", "op": "in", "value": [453, 677]}},
+                        {"dims": "depth", "any": {"field": "structures", "op": "in", "value": structures}}]}};
+                if(typeof primary_only !== "boolean") {
+                    throw new Error("primary_only must be boolean");
+                } else {
+                    if(primary_only) {
+                        clause.any.and.push({"field": "is_primary", "op": "=", "value": true})
+                    }
+                }
+                clauses.push(clause);
+            } else {
+                throw new Error("structures must be given as an array of ints");
+            }
+        }
+    }
+
+    add_clause(structures_left, "left");
+    add_clause(structures_right, "right");
+    add_clause(structures_both, "bilateral");
+
+    filt = {"or": clauses};
+    request.kwargs.filters.push(filt);
+}
+
+function include_target_volumes(request, structures, hemisphere) {
+    if(hemisphere === "both" || hemisphere === "either") {
+        hemisphere = "bilateral";
+    }
+    if(hemisphere !== "left" && hemisphere !== "right" && hemisphere !== "bilateral") {
+        throw new Error("invalid hemisphere");
+    }
+
+    if(structures.every(function(x) {return Number.isInteger(x)})) {
+        request.kwargs.fields.push("volume");
+        request.kwargs.coords["normalized"] = false;
+        request.kwargs.coords["injection"] = false;
+        request.kwargs.coords["hemisphere"] = hemisphere;
+
+        request.kwargs.filters.push({"and": [
+            {"field": "structure", "op": "in", "value": structures},
+            {
+                "count": {"field": "structures", "op": "in", "value": structures},
+                "dims": ["depth"],
+                "op": "=", "value": 1
+            }
+        ]});
+    } else {
+        throw new Error("structures must be given as an array of ints");
+    }
+}
+
+function do_search1() {
+    request = init_request();
+    metadata_search(request, [
+        {
+            "field": "transgenic_line_id",
+            "op": "in",
+            "value": [266649644, 286615058]
+        },
+        {
+            "field": "product_id",
+            "op": "in",
+            "value": [45, 35, 31, 5]
+        }
+    ]);
+
+    source_search(request, [], [], [453, 677], true);
+    console.log(JSON.stringify(request));
+    call(request);
+}
+
+function do_search2() {
+    request = init_request();
+    metadata_search(request, [
+        {
+            "field": "transgenic_line_id",
+            "op": "in",
+            "value": [266649644, 286615058]
+        },
+        {
+            "field": "product_id",
+            "op": "in",
+            "value": [45, 35, 31, 5]
+        }
+    ]);
+
+    source_search(request, [], [], [453, 677], true);
+    include_target_volumes(request, [688], "right");
+    console.log(JSON.stringify(request));
+    call(request);
+}
+
+function do_search4() {
+    request = init_streamline_request(7100, 3050, 9150);
+    metadata_search(request, [
+        {
+            "field": "transgenic_line_id",
+            "op": "=",
+            "value": 266649644
+        },
+        {
+            "field": "product_id",
+            "op": "in",
+            "value": [45, 35, 31, 5]
+        }
+    ]);
+
+    source_search(request, [], [], [453, 677], true);
+    console.log(JSON.stringify(request));
+    call(request);
+}
+
+</script>
+</body>
+</html>

@@ -2,10 +2,19 @@
     "version": 2,
     "workers": [
         {
-            "id": "datacube",
+            "id": "bob_datacube",
             "type": "guest",
             "executable": "run.sh",
-            "arguments": ["ws://localhost:8080/auth_ws", "aibs", "services", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "../../datasets.json", "--projection-map-dir", "/data/informatics/heatmap/mouseconn_projection_maps/P56/"],
+            "arguments": ["ws://localhost:8080/auth_ws", "aibs", "services", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "../../datasets-bob.json", "--projection-map-dir", "/data/informatics/heatmap/mouseconn_projection_maps/P56/"],
+            "options": {
+                "workdir": "../services/pandas/"
+            }
+        },
+        {
+            "id": "conn_datacube",
+            "type": "guest",
+            "executable": "run.sh",
+            "arguments": ["ws://localhost:8080/auth_ws", "aibs", "services", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "../../datasets-conn.json", "--projection-map-dir", "/data/informatics/heatmap/mouseconn_projection_maps/P56/"],
             "options": {
                 "workdir": "../services/pandas/"
             }
@@ -14,7 +23,7 @@
             "id": "locator",
             "type": "guest",
             "executable": "run.sh",
-            "arguments": ["ws://localhost:8080/auth_ws", "aibs", "services", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93"],
+            "arguments": ["ws://localhost:8080/auth_ws", "aibs", "services", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "env_vars.json"],
             "options": {
                 "workdir": "../services/locator/"
             }
