@@ -16,6 +16,18 @@
 <p><a href="http://connectivity.brain-map.org/mouseconn/data/P56/projection_map/target?showDetail=1&transgenic_lines=266649644&seedPoint=7100,3050,9150&primary_structure_only=true&injection_structures=453,677&product_ids=45,35,31,5">http://connectivity.brain-map.org/mouseconn/data/P56/projection_map/target?showDetail=1&transgenic_lines=266649644&seedPoint=7100,3050,9150&primary_structure_only=true&injection_structures=453,677&product_ids=45,35,31,5</a></p>
 <p><button onclick="do_search4()">do_search4</button></p>
 <hr />
+<p><a href="http://connectivity.brain-map.org/mouseconn/data/P56/search/correlated_rows?seed=301122593">http://connectivity.brain-map.org/mouseconn/data/P56/search/correlated_rows?seed=301122593</a></p>
+<p><button onclick="do_search5()">do_search5</button></p>
+<hr />
+<p><a href="http://connectivity.brain-map.org/mouseconn/data/P56/search/correlated_rows?domain=771,315&seed=301122593">http://connectivity.brain-map.org/mouseconn/data/P56/search/correlated_rows?domain=771,315&seed=301122593</a></p>
+<p><button onclick="do_search6()">do_search6</button></p>
+<hr />
+<p><a href="http://connectivity.brain-map.org/mouseconn/data/P56/search/correlated_rows?domain=771,315&seed=301122593&primary_structure_only=true&injection_structures=8,304325711">http://connectivity.brain-map.org/mouseconn/data/P56/search/correlated_rows?domain=771,315&seed=301122593&primary_structure_only=true&injection_structures=8,304325711</a></p>
+<p><button onclick="do_search7()">do_search7</button></p>
+<hr />
+<p><a href="http://connectivity.brain-map.org/mouseconn/data/P56/search/correlated_rows?domain=771,315&seed=301122593&primary_structure_only=true&injection_structures=8,304325711&transgenic_lines=266649644">http://connectivity.brain-map.org/mouseconn/data/P56/search/correlated_rows?domain=771,315&seed=301122593&primary_structure_only=true&injection_structures=8,304325711&transgenic_lines=266649644</a></p>
+<p><button onclick="do_search8()">do_search8</button></p>
+<hr />
 <script type="text/javascript">
 
 function call(request) {
@@ -75,7 +87,7 @@ function source_search(request, structures_left, structures_right, structures_bo
                             "hemisphere": hemisphere,
                             "normalized": true},
                         "op": ">=", "value": 0.005},
-                        {"field": "is_summary_structure", "op": "=", "value": true},                                                                                                                                                                                 {"dims": "depth", "any": {"field": "structures", "op": "in", "value": [453, 677]}},
+                        {"field": "is_summary_structure", "op": "=", "value": true},
                         {"dims": "depth", "any": {"field": "structures", "op": "in", "value": structures}}]}};
                 if(typeof primary_only !== "boolean") {
                     throw new Error("primary_only must be boolean");
@@ -183,6 +195,78 @@ function do_search4() {
     ]);
 
     source_search(request, [], [], [453, 677], true);
+    console.log(JSON.stringify(request));
+    call(request);
+}
+
+function init_correlation_search(seed) {
+    if(Number.isInteger(seed)) {
+        return {
+            "procedure": "org.brain-map.api.datacube.corr.connectivity",
+            "args": ["projection", "experiment", seed],
+            "kwargs": {
+                "filters": []
+            }
+        }
+    } else {
+        throw new Error("seed must be given as an int");
+    }
+}
+
+function correlation_search_domain(request, structures) {
+    if (structures !== undefined && structures.length > 0) {
+        if(structures.every(function(x) {return Number.isInteger(x)})) {
+            request.kwargs.filters.push({
+                "field": "ccf_structures",
+                "op": "in",
+                "value": structures
+            });
+        } else {
+            throw new Error("structures must be given as an array of ints");
+        }
+    } else {
+        if(Number.isInteger(structures)) {
+            request.kwargs.filters.push({
+                "field": "ccf_structures",
+                "op": "=",
+                "value": structures
+            });
+        }
+    }
+}
+
+function do_search5() {
+    request = init_correlation_search(301122593);
+    console.log(JSON.stringify(request));
+    call(request);
+}
+
+function do_search6() {
+    request = init_correlation_search(301122593);
+    correlation_search_domain(request, [315, 771]);
+    console.log(JSON.stringify(request));
+    call(request);
+}
+
+function do_search7() {
+    request = init_correlation_search(301122593);
+    correlation_search_domain(request, [315, 771]);
+    source_search(request, [], [], [8, 304325711], true);
+    console.log(JSON.stringify(request));
+    call(request);
+}
+
+function do_search8() {
+    request = init_correlation_search(301122593);
+    correlation_search_domain(request, [315, 771]);
+    source_search(request, [], [], [8, 304325711], true);
+    metadata_search(request, [
+        {
+            "field": "transgenic_line_id",
+            "op": "in",
+            "value": [266649644]
+        }
+    ]);
     console.log(JSON.stringify(request));
     call(request);
 }
