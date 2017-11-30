@@ -707,7 +707,7 @@ class Datacube:
                     else:
                         res['masks'] = [reduce(xr_ufuncs.logical_and, m2['masks'])]
                 elif not m2['masks']:
-                    res['masks'] = []
+                    res['masks'] = [reduce(xr_ufuncs.logical_and, m1['masks'])]
                 else:
                     res['masks'] = [xr_ufuncs.logical_or(reduce(xr_ufuncs.logical_and, m1['masks']), reduce(xr_ufuncs.logical_and, m2['masks']))]
                 return res
