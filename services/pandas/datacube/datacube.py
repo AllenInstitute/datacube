@@ -9,6 +9,7 @@ import xarray as xr
 import xarray.ufuncs as xr_ufuncs
 import dask
 import dask.array as da
+import zarr
 from PIL import Image
 from io import BytesIO
 import base64
@@ -105,7 +106,13 @@ class Datacube:
             self.df = self.df.fillna(0.)
         if chunks:
             self.backend = da
-            self.df = self.df.persist()
+            for field in self.df:
+                if self.df[field].nbytes < (1./3.)*self.df.nbytes:
+                    self.df[field] = self.df[field].persist()
+                else:
+                    z = zarr.array(self.df[field], chunks=tuple(chunks[dim] for dim in self.df[field].dims))
+                    d = da.from_array(z, chunks=z.chunks)
+                    self.df[field] = xr.DataArray(d, dims=self.df[field].dims)
         else:
             self.backend = np
             self.df = self.df.load()
