@@ -126,6 +126,14 @@ function include_target_volumes(request, structures, hemisphere) {
         request.kwargs.coords["hemisphere"] = hemisphere;
 
         request.kwargs.filters.push({"and": [
+            {"dims": "structure", "any": 
+                {"field": "volume", "coords": {
+                    "normalized": false,
+                    "injection": false,
+                    "hemisphere": hemisphere,
+                    "structure": structures
+                }, "op": ">", "value": 0.}
+            },
             {"field": "structure", "op": "in", "value": structures},
             {
                 "count": {"field": "structures", "op": "in", "value": structures},
