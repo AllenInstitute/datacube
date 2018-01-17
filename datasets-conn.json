@@ -12,7 +12,7 @@
                 "chunks": {"experiment": 729},
                 "max_cacheable_bytes": 104857600,
                 "missing_data": false,
-                "calculate_stats": false
+                "calculate_stats": true
             }
         ],
         "arguments": ["--data-src", "http://iwarehouse/", "--data-dir", "./data/", "--data-name", "connectivity", "--annotation-volume-dir", "/allen/programs/celltypes/production/0378/informatics/model/P56/annotation/Mouse/"]
