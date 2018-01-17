@@ -15,4 +15,3 @@ six
 allensdk
 Pillow
 numba
-zarr
