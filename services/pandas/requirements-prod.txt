@@ -2,7 +2,7 @@ autobahn
 crossbar
 Twisted
 pandas
-numpy
+numpy==1.13.0
 scipy
 txaio
 xarray
