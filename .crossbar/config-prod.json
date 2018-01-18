@@ -8,7 +8,7 @@
                     "name": "aibs",
                     "options": {
                         "enable_meta_api": false
-                    }
+                    },
                     "roles": [
                         {
                             "name": "anonymous",
