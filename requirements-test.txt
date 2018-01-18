@@ -1,2 +1,1 @@
--r services/datacube/requirements-test.txt
 -r services/pandas/requirements-test.txt
