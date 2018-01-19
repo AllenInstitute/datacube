@@ -7,7 +7,7 @@ from twisted.python.threadpool import ThreadPool
 #import txpool
 import sys
 from autobahn.wamp.exception import ApplicationError
-from autobahn.wamp.types import RegisterOptions
+from autobahn.wamp.types import RegisterOptions, CallOptions
 from autobahn.wamp.auth import compute_wcs
 #from autobahn.twisted.wamp import ApplicationSession, ApplicationRunner
 from wamp import ApplicationSession, ApplicationRunner # copy of stock wamp.py with modified timeouts
@@ -110,7 +110,14 @@ class PandasServiceComponent(ApplicationSession):
                 voxel['left_right'] = int(conn.left_right[np.searchsorted(conn.left_right, voxel['left_right'])])
                 voxel_xyz = [voxel['anterior_posterior'], voxel['superior_inferior'], voxel['left_right']]
                 projection_map_dir = args.projection_map_dir
-                res = yield self.call(u'org.brain_map.locator.get_streamlines_at_voxel', voxel=voxel_xyz, map_dir=projection_map_dir)
+
+                # timeout should be possible with options=CallOptions(timeout=XYZ), but this won't work until
+                #   https://github.com/crossbario/crossbar/issues/299 is implemented.
+                # relying on twisted instead.
+                d = self.call(u'org.brain_map.locator.get_streamlines_at_voxel', voxel=voxel_xyz, map_dir=projection_map_dir)
+                d.addTimeout(10, reactor)
+                res = yield d
+
                 streamlines_list = res['results']
                 experiment_ids = np.array([e['data_set_id'] for e in streamlines_list])
                 coords = coords or {}
