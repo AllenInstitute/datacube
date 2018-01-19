@@ -89,12 +89,12 @@ class Datacube:
         #todo: rename df
         #todo: argsorts need to be cached to a file (?)
         self.df = xr.open_dataset(nc_file, chunks=chunks)
-        for field in self.df.keys():
+        for field in self.df.variables:
             if self.df[field].dtype.name.startswith('bytes'):
                 self.df[field] = self.df[field].astype('str')
         #todo: rework _query so this is not needed:
         for dim in self.df.dims:
-            if dim not in self.df.keys():
+            if dim not in self.df.dims:
                 self.df.coords[dim] = range(self.df.dims[dim])
         #todo: add option whether to create mdata
         if missing_data:
@@ -110,7 +110,7 @@ class Datacube:
             self.backend = np
             self.df = self.df.load()
         self.argsorts = {}
-        for field in self.df.keys():
+        for field in self.df.variables:
             if self.df[field].size*np.dtype('int64').itemsize <= self.max_cacheable_bytes:
                 self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
         #todo: would be nice to cache these instead of computing on every startup
@@ -119,7 +119,7 @@ class Datacube:
             self.maxes = {}
             self.means = {}
             self.stds = {}
-            for field in self.df.keys():
+            for field in self.df.variables:
                 self.mins[field] = self.df[field].min().values
                 self.maxes[field] = self.df[field].max().values
                 if not self.df[field].dtype.kind in 'OSU':
@@ -189,9 +189,9 @@ class Datacube:
         else:
             res = self.df
         if isinstance(fields, list):
-            assert(all(f in list(res.keys()) for f in fields))
+            assert(all(f in list(res.variables) for f in fields))
         elif fields:
-            assert(fields in list(res.keys()))
+            assert(fields in list(res.variables))
         if filters:
             res, f = self._query(filters, df=res)
         subscripts=None
@@ -243,7 +243,7 @@ class Datacube:
     #todo: add sort and deprecate select()
     def raw(self, select=None, coords=None, fields=None, filters=None, dim_order=None):
         res = self._get_data(select, coords, fields, filters, dim_order)
-        size = sum([res[field].nbytes for field in res.keys()])
+        size = sum([res[field].nbytes for field in res.variables])
         if size > self.max_response_size:
             raise ValueError('Requested would return ' + str(size) + ' bytes; please limit request to ' + str(self.max_response_size) + '.')
         return res
@@ -338,8 +338,8 @@ class Datacube:
                 raise ValueError('Requested would return ' + str(inds.size) + ' records; please limit request to ' + str(options['max_records']) + ' records.')
             if fields and type(fields) is list:
                 for field in fields:
-                    if field not in r.keys():
-                        raise ValueError('Requested field \'' + str(field) + '\' does not exist. Allowable fields are: ' + str(r.keys()))
+                    if field not in r.variables:
+                        raise ValueError('Requested field \'' + str(field) + '\' does not exist. Allowable fields are: ' + str(r.variables))
                 res = r[{dim: inds}][fields]
             else:
                 res = r[{dim: inds}]
@@ -551,10 +551,10 @@ class Datacube:
             if not ascending:
                 ascending = [True] * len(sort)
             for field in sort:
-                if field not in df.keys():
-                    raise ValueError('Requested sort field \'' + str(field) + '\' does not exist. Allowable fields are: ' + str(df.keys()))
+                if field not in df.variables:
+                    raise ValueError('Requested sort field \'' + str(field) + '\' does not exist. Allowable fields are: ' + str(df.variables))
             s = df[sort]
-            ranks = np.zeros((s.dims[dim], len(s.keys())), dtype=np.int)
+            ranks = np.zeros((s.dims[dim], len(s.variables)), dtype=np.int)
             for idx, (field, asc) in enumerate(zip(sort[::-1], ascending[::-1])):
                 if s[field].dtype.name.startswith('string') or s[field].dtype.name.startswith('unicode') or s[field].dtype.name.startswith('bytes'):
                     blank_count = np.count_nonzero(s[field] == '')

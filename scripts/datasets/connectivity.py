@@ -93,7 +93,7 @@ def main():
         tables = xr.DataArray(np.zeros([nexperiments, nstructures, nhemispheres, 2]),
                               dims=['experiment', 'structure', 'hemisphere', 'injection'],
                               coords={'experiment': experiment_ids, 'structure': structure_ids,
-                                      'hemisphere': list(map(map_hemisphere_id, HEMISPHERE_IDS)), 'injection': [0, 1]})
+                                      'hemisphere': list(map(map_hemisphere_id, HEMISPHERE_IDS)), 'injection': [False, True]})
         print(tables.coords)
 
         for hid in HEMISPHERE_IDS:
@@ -109,8 +109,9 @@ def main():
     npv = make_unionize_tables('normalized_projection_volume')
 
     projection_unionize = xr.concat([pv,npv],xr.DataArray([False,True],dims=['normalized'],name='normalized'))
-    projection_unionize['injection'] = xr.DataArray([False,True], dims=['injection'],name='injection')
-
+    #projection_unionize['injection'] = xr.DataArray([False,True], dims=['injection'],name='injection')
+    structure_volumes = make_unionize_tables('volume')
+   
     def make_structure_paths_array():
         structure_paths_array = np.zeros(projection_unionize.structure.shape+(ontology_depth,), dtype=projection_unionize.structure.dtype)
         for i in range(projection_unionize.structure.shape[0]):
@@ -155,6 +156,7 @@ def main():
             'ccf_structures': (ccf_dims+['depth'], ccf_anno_paths),
             'projection': (ccf_dims+['experiment'], volume),
             'volume': projection_unionize,
+            'structure_volumes': structure_volumes,
             'primary_structures': (['experiment', 'depth'], primary_structure_paths)
         },
         coords={

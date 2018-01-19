@@ -74,6 +74,7 @@ class LocatorServiceComponent(ApplicationSession):
             return result
 
 
+        @inlineCallbacks
         def surface_point (seedPoint = None):
             results = dict()
             results.setdefault("success", False)
@@ -83,18 +84,21 @@ class LocatorServiceComponent(ApplicationSession):
                 status = results.setdefault("status", dict())
                 status.setdefault("message", "requires seed point")
                 
-                return results
+                returnValue(results)
             
             try:
                 projector = SurfacePoint(config)
-                results.setdefault("coordinate", projector.get(seedPoint))
+                coordinate = yield threads.deferToThread(projector.get, seedPoint)
+                results.setdefault("coordinate", coordinate)
                 results['success'] = True
 
             except (IOError) as e:
                 results.setdefault("message", e.message)
 
-            return results
+            returnValue(results)
 
+
+        @inlineCallbacks
         def projection_point (path = None, pixel = None):
             results = dict()
             results.setdefault("success", False)
@@ -104,17 +108,19 @@ class LocatorServiceComponent(ApplicationSession):
                 status = results.setdefault("status", dict())
                 status.setdefault("message", "missing path or pixel argument(s)")
 
-                return results
+                returnValue(results)
 
             try:
                 projector = ProjectionPoint(config)
-                results.setdefault("coordinate", projector.get(path, pixel))
+                coordinate = yield threads.deferToThread(projector.get, path, pixel)
+                results.setdefault("coordinate", coordinate)
                 results["success"] = True
 
             except (IOError, ValueError) as e:
                 results.setdefault("message", e.message)
 
-            return results
+            returnValue(results)
+
 
         @inlineCallbacks
         def filmstrip_location (pixel = None, distanceMapPath = None, direction = None):
@@ -126,10 +132,12 @@ class LocatorServiceComponent(ApplicationSession):
                 status = results.setdefault("status", dict())
                 status.setdefault("message", "missing pixel, distanceMapPath, or direction argument(s)")
 
+
             locator = FilmStripLocator(config)
-            d = yield threads.deferToThread(locator.get, pixel, distanceMapPath, direction, results)
+            results = yield threads.deferToThread(locator.get, pixel, distanceMapPath, direction, results)
                 
-            returnValue(d)
+            returnValue(results)
+
 
         @inlineCallbacks
         def voxel_lookup (coords = None):
@@ -138,9 +146,10 @@ class LocatorServiceComponent(ApplicationSession):
             
             lookup = VoxelLookup(config)
             
-            d = yield threads.deferToThread(lookup.get, coords, results)
+            results = yield threads.deferToThread(lookup.get, coords, results)
 
-            returnValue(d)
+            returnValue(results)
+
 
         # Retrieves streamlines or neuron reconstructions by an ambiguous id
         @inlineCallbacks
@@ -150,27 +159,35 @@ class LocatorServiceComponent(ApplicationSession):
 
             locator = LineFinder(config)
 
-            d = yield threads.deferToThread(locator.get, id, results)
+            results = yield threads.deferToThread(locator.get, id, results)
             
-            returnValue(d)
+            returnValue(results)
 
+
+        @inlineCallbacks
         def spatial_search(voxel = None, map_dir = None):
 
             search = SpatialSearch(config)
 
-            d = search.get(voxel, map_dir)
+            results = yield threads.deferToThread(search.get, voxel, map_dir)
 
-            return d
+            returnValue(results)
 
+
+        @inlineCallbacks
         def ccf_ontology():
             service = OntologyService(config)
 
-            return service.get_ontology()
-        
+            results = yield threads.deferToThread(service.get_ontology)
+            returnValue(results)
+
+
+        @inlineCallbacks        
         def ccf_model(id = None):
             service = ModelLoader(config)
             
-            return service.get(id)
+            results = yield threads.deferToThread(service.get, id)
+            returnValue(results)
 
 
         ready = False
