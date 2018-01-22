@@ -212,7 +212,7 @@ class Datacube:
                     else:
                         new_coords[dim] = []
             # cast coords to correct type
-            coords = {dim: np.array(v, dtype=res.coords[dim].dtype) for dim,v in iteritems(new_coords)}
+            coords = {dim: np.array(v, dtype=res.coords[dim].dtype).tolist() for dim,v in iteritems(new_coords)}
             res = res.loc[coords]
         if fields:
             res = res[fields]
