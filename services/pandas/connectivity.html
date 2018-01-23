@@ -121,6 +121,7 @@ function include_target_volumes(request, structures, hemisphere) {
 
     if(structures.every(function(x) {return Number.isInteger(x)})) {
         request.kwargs.fields.push("volume");
+        request.kwargs.fields.push("structure_volumes");
         request.kwargs.coords["normalized"] = false;
         request.kwargs.coords["injection"] = false;
         request.kwargs.coords["hemisphere"] = hemisphere;
