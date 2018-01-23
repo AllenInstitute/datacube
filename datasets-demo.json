@@ -46,7 +46,7 @@
     },
     {
         "name": "connectivity",
-        "enabled": false,
+        "enabled": true,
         "auto-generate": false,
         "script": "./scripts/datasets/connectivity.py",
         "data-dir": "./data/",
