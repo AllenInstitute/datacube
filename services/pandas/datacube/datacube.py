@@ -634,6 +634,8 @@ class Datacube:
                         mask = (lhs <= value)
                     elif op == '>=':
                         mask = (lhs >= value)
+                    elif op == '!=':
+                        mask = (lhs != value)
                     #todo: if df is self.df, could cache depending on size of mask
                     #todo: convert 1-d masks to inds (?)
                     res['masks'].append(mask)
@@ -801,6 +803,8 @@ class Datacube:
                                             mask = (count <= value)
                                         elif op == '>=':
                                             mask = (count >= value)
+                                        elif op == '!=':
+                                            mask = (count != value)
                                     res['masks'].append(mask)
                                 return res
                             agg_func = _count
