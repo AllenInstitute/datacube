@@ -126,6 +126,7 @@ class PandasServiceComponent(ApplicationSession):
                 else:
                     coords['experiment'] = experiment_ids
                 coords['experiment'] = np.intersect1d(conn.experiment.values, coords['experiment']) #todo: shouldn't need this if the data lines up
+                coords['experiment'] = coords['experiment'].tolist()
                 res = yield threads.deferToThread(conn_datacube.raw, select=select, coords=coords, fields=fields, filters=filters)
                 streamlines = xr.Dataset({'streamline': (['experiment'], streamlines_list), 'experiment': experiment_ids})
                 res = xr.merge([res, streamlines], join='left')
