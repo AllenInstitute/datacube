@@ -212,7 +212,7 @@ class Datacube:
                     else:
                         new_coords[dim] = []
             # cast coords to correct type
-            coords = {dim: np.array(v, dtype=res.coords[dim].dtype) for dim,v in iteritems(new_coords)}
+            coords = {dim: np.array(v, dtype=res.coords[dim].dtype).tolist() for dim,v in iteritems(new_coords)}
             res = res.loc[coords]
         if fields:
             res = res[fields]
@@ -634,6 +634,8 @@ class Datacube:
                         mask = (lhs <= value)
                     elif op == '>=':
                         mask = (lhs >= value)
+                    elif op == '!=':
+                        mask = (lhs != value)
                     #todo: if df is self.df, could cache depending on size of mask
                     #todo: convert 1-d masks to inds (?)
                     res['masks'].append(mask)
@@ -801,6 +803,8 @@ class Datacube:
                                             mask = (count <= value)
                                         elif op == '>=':
                                             mask = (count >= value)
+                                        elif op == '!=':
+                                            mask = (count != value)
                                     res['masks'].append(mask)
                                 return res
                             agg_func = _count
