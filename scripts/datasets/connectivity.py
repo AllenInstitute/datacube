@@ -149,6 +149,18 @@ def main():
         return volume
     volume = make_projection_volume()
 
+    def make_injection_structures_arrays():
+        injection_structures_list = [[int(id) for id in s.split('/')] for s in ds.injection_structures.values]
+        injection_structures_arr = np.zeros((len(structures), max([len(x) for x in structures])), np.nan)
+        injection_structure_paths = np.zeros(injection_structures_arr.shape+(ontology_depth,), dtype=injection_structures_arr.dtype)
+        for i, structures in enumerate(injection_structures_list):
+            injection_structures_arr[i][:len(structures)] = structures
+            for j in range(len(structures)):
+                path = structure_paths[structures[j]]
+                injection_structure_paths[i,j,:len(path)] = path
+        return injection_structures_arr, injection_structure_paths
+    injection_structures_arr, injection_structure_paths = make_injection_structures_arrays()
+
     ccf_dims = ['anterior_posterior', 'superior_inferior', 'left_right']
     ds = xr.Dataset(
         data_vars={
@@ -157,7 +169,9 @@ def main():
             'projection': (ccf_dims+['experiment'], volume),
             'volume': projection_unionize,
             'structure_volumes': structure_volumes,
-            'primary_structures': (['experiment', 'depth'], primary_structure_paths)
+            'primary_structures': (['experiment', 'depth'], primary_structure_paths),
+            'injection_structures_array': (['experiment', 'secondary'], injection_structures_arr),
+            'injection_structure_paths': (['experiment', 'secondary', 'depth'], injection_structure_paths)
         },
         coords={
             'experiment': experiment_ids,
