@@ -34,7 +34,7 @@ def main():
     experiments_ds.rename({'index': 'experiment'}, inplace=True)
     experiments_ds.coords['experiment'] = experiments_ds.data_set_id
 
-    experiment_ids = list(experiments_ds.data_set_id)
+    experiment_ids = experiments_ds.data_set_id.values.tolist()
     tree = mcc.get_structure_tree()
     structure_ids = list(tree.node_ids())
 
@@ -126,7 +126,7 @@ def main():
         return structure_paths_array
     structure_paths_array = make_structure_paths_array()
 
-    primary_structures = experiments_ds.structure_id
+    primary_structures = experiments_ds.structure_id.values
     def make_primary_structure_paths():
         primary_structure_paths = np.zeros((len(primary_structures), ontology_depth), dtype=primary_structures.dtype)
         for i in range(len(primary_structures)):
@@ -154,7 +154,7 @@ def main():
     volume = make_projection_volume()
 
     def make_injection_structures_arrays():
-        injection_structures_list = [[int(id) for id in s.split('/')] for s in experiments_ds.injection_structures.values]
+        injection_structures_list = [[int(id) for id in s.split('/')] for s in experiments_ds.injection_structures.values.tolist()]
         injection_structures_arr = np.zeros((len(injection_structures_list), max([len(x) for x in injection_structures_list])))
         injection_structure_paths = np.zeros(injection_structures_arr.shape+(ontology_depth,), dtype=injection_structures_arr.dtype)
         for i, structures in enumerate(injection_structures_list):
