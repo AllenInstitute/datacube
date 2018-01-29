@@ -155,7 +155,7 @@ def main():
 
     def make_injection_structures_arrays():
         injection_structures_list = [[int(id) for id in s.split('/')] for s in experiments_ds.injection_structures.values]
-        injection_structures_arr = np.zeros((len(structures), max([len(x) for x in structures])), np.nan)
+        injection_structures_arr = np.zeros((len(injection_structures_list), max([len(x) for x in injection_structures_list])))
         injection_structure_paths = np.zeros(injection_structures_arr.shape+(ontology_depth,), dtype=injection_structures_arr.dtype)
         for i, structures in enumerate(injection_structures_list):
             injection_structures_arr[i][:len(structures)] = structures
