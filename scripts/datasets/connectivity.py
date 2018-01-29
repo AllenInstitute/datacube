@@ -30,7 +30,11 @@ def main():
     r=requests.get(args.data_src + '/api/v2/data/ApiConnectivity/query.csv?num_rows=all')
     experiments = pd.read_csv(StringIO(r.text), true_values=['t'], false_values=['f'])
 
-    experiment_ids = list(experiments['data_set_id'])
+    experiments_ds = xr.Dataset.from_dataframe(experiments)
+    experiments_ds.rename({'index': 'experiment'}, inplace=True)
+    experiments_ds.coords['experiment'] = experiments_ds.data_set_id
+
+    experiment_ids = list(experiments_ds.data_set_id)
     tree = mcc.get_structure_tree()
     structure_ids = list(tree.node_ids())
 
@@ -122,7 +126,7 @@ def main():
         return structure_paths_array
     structure_paths_array = make_structure_paths_array()
 
-    primary_structures = experiments['structure_id']
+    primary_structures = experiments_ds.structure_id
     def make_primary_structure_paths():
         primary_structure_paths = np.zeros((len(primary_structures), ontology_depth), dtype=primary_structures.dtype)
         for i in range(len(primary_structures)):
@@ -150,7 +154,7 @@ def main():
     volume = make_projection_volume()
 
     def make_injection_structures_arrays():
-        injection_structures_list = [[int(id) for id in s.split('/')] for s in ds.injection_structures.values]
+        injection_structures_list = [[int(id) for id in s.split('/')] for s in experiments_ds.injection_structures.values]
         injection_structures_arr = np.zeros((len(structures), max([len(x) for x in structures])), np.nan)
         injection_structure_paths = np.zeros(injection_structures_arr.shape+(ontology_depth,), dtype=injection_structures_arr.dtype)
         for i, structures in enumerate(injection_structures_list):
@@ -183,9 +187,6 @@ def main():
         }
     )
 
-    experiments_ds = xr.Dataset.from_dataframe(experiments)
-    experiments_ds.rename({'index': 'experiment'}, inplace=True)
-    experiments_ds.coords['experiment'] = experiments_ds.data_set_id
     ds.merge(experiments_ds, inplace=True, join='exact')
     ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly
     ds.to_netcdf(os.path.join(args.data_dir, args.data_name + '.nc'), format='NETCDF4')
