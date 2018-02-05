@@ -11,7 +11,7 @@ class Component(ApplicationSession):
 
     def get_records(self, out, start_time):
         numrecords = 45287
-        pagesize = 100
+        pagesize = 500
         for i in range(0, numrecords, pagesize):
             start = i
             stop = min(i+(pagesize-1), numrecords)
