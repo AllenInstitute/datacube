@@ -34,7 +34,7 @@ class Component(ApplicationSession):
 
             out = []
             deferreds = []
-            concurrent = 8
+            concurrent = 16
             coop = task.Cooperator()
             work = self.get_records(out, start_time)
             for i in range(concurrent):
