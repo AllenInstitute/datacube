@@ -1,0 +1,4 @@
+1. Change URL in load_test.py to point at desired crossbar router
+2. Run ./build.sh
+3. Copy the contents of this directory to a location on the SAN accessible to the cluster
+4. cd to the directory and run `./submit.sh N` where N is the number of nodes to use
