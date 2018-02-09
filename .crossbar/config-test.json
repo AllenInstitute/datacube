@@ -61,6 +61,12 @@
                         "port": 8080
                     },
                     "paths": {
+                        "call": {
+                            "type": "reverseproxy",
+                            "host": "localhost",
+                            "port": 9090,
+                            "path": "/"
+                        },
                         "ws": {
                             "type": "websocket",
                             "options": {
@@ -110,14 +116,6 @@
                             },
                             "serializers": ["msgpack"]
                         },
-                        "call": {
-                            "type": "caller",
-                            "realm": "aibs",
-                            "role": "anonymous",
-                            "options": {
-                                "debug": true
-                            }
-                        },
                         "cgi": {
                             "type": "cgi",
                             "directory": "../cgi",
@@ -154,6 +152,15 @@
             "arguments": ["ws://localhost:8080/auth_ws", "aibs", "services", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "env_vars.json"],
             "options": {
                 "workdir": "../services/locator/"
+            }
+        },
+        {
+            "id": "http_bridge",
+            "type": "guest",
+            "executable": "python",
+            "arguments": ["http_bridge.py"],
+            "options": {
+                "workdir": ".."
             }
         },
         {
