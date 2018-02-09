@@ -9,6 +9,7 @@ import xarray as xr
 import xarray.ufuncs as xr_ufuncs
 import dask
 import dask.array as da
+import zarr
 from PIL import Image
 from io import BytesIO
 import base64
@@ -88,14 +89,21 @@ class Datacube:
     def load(self, nc_file, chunks=None, missing_data=False, calculate_stats=True):
         #todo: rename df
         #todo: argsorts need to be cached to a file (?)
-        self.df = xr.open_dataset(nc_file, chunks=chunks)
-        for field in self.df.variables:
-            if self.df[field].dtype.name.startswith('bytes'):
-                self.df[field] = self.df[field].astype('str')
+        if nc_file.endswith('.nc'):
+            self.df = xr.open_dataset(nc_file, chunks=chunks)
+        elif nc_file.endswith('.lmdb'):
+            store = zarr.storage.LMDBStore(nc_file)
+            self.df = xr.open_zarr(store=store)
+            #chunks = self.df.chunks
+        else:
+            raise RuntimeError('Invalid or unsupported file type {0}.'.format(nc_file))
+        #for field in self.df.variables:
+        #    if self.df[field].dtype.name.startswith('bytes'):
+        #        self.df[field] = self.df[field].astype('str')
         #todo: rework _query so this is not needed:
-        for dim in self.df.dims:
-            if dim not in self.df.dims:
-                self.df.coords[dim] = range(self.df.dims[dim])
+        #for dim in self.df.dims:
+        #    if dim not in self.df.dims:
+        #        self.df.coords[dim] = range(self.df.dims[dim])
         #todo: add option whether to create mdata
         if missing_data:
             #todo: need to reintroduce this and test
@@ -103,9 +111,9 @@ class Datacube:
             #self.mdata = self.mdata.persist()
             #todo: can nan-only chunks be dropped?
             self.df = self.df.fillna(0.)
-        if chunks:
+        if chunks or nc_file.endswith('.lmdb'):
             self.backend = da
-            self.df = self.df.persist()
+        #    self.df = self.df.persist()
         else:
             self.backend = np
             self.df = self.df.load()

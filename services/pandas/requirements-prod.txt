@@ -5,7 +5,7 @@ pandas
 numpy==1.13.0
 scipy
 txaio
-xarray
+git+git://github.com/pydata/xarray.git#master
 netCDF4
 dask
 toolz
@@ -15,3 +15,5 @@ six
 allensdk
 Pillow
 numba
+git+git://github.com/zarr-developers/zarr.git#master
+lmdb
