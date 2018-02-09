@@ -2,7 +2,7 @@
     {
         "name": "connectivity",
         "enabled": true,
-        "auto-generate": false,
+        "auto-generate": true,
         "script": "./scripts/datasets/connectivity.py",
         "data-dir": "./conn_data/",
         "files": [
@@ -20,7 +20,7 @@
     {
         "name": "mouse_ccf",
         "enabled": true,
-        "auto-generate": false,
+        "auto-generate": true,
         "script": "./scripts/datasets/mouse_ccf.py",
         "data-dir": "./mouse_ccf_data/",
         "files": [
