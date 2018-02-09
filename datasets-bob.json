@@ -2,7 +2,7 @@
     {
         "name": "cell_specimens",
         "enabled": true,
-        "auto-generate": false,
+        "auto-generate": true,
         "script": "./scripts/datasets/api_cam_cell_metric.py",
         "data-dir": "./bob_data/",
         "files": [
