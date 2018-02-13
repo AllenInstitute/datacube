@@ -30,6 +30,6 @@
                 "chunks": {"left_right": 100, "anterior_posterior": 100, "superior_inferior": 100}
             }
         ],
-        "arguments": ["--data-src", "http://iwarehouse/", "--data-dir", "./conn_data/", "--data-name", "mouse_ccf"]
+        "arguments": ["--data-src", "http://iwarehouse/", "--data-dir", "./mouse_ccf_data/", "--data-name", "mouse_ccf"]
     }
 ]
