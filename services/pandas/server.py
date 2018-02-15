@@ -87,15 +87,18 @@ class PandasServiceComponent(ApplicationSession):
 
 
         @inlineCallbacks
-        def corr(field, dim, seed_idx, select=None, coords=None, filters=None, name=None):
+        def corr(field, dim, seed_idx, fields=None, select=None, coords=None, filters=None, name=None):
             try:
                 datacube = datacubes[name]
                 res = yield threads.deferToThread(datacube.corr, field, dim, seed_idx, select=select, coords=coords, filters=filters)
                 res = res.where(res.corr.notnull(), drop=True)
                 res = res.sortby('corr', ascending=False)
+                if fields is not None:
+                    additional_fields_result = yield threads.deferToThread(datacube.raw, coords={dim: res[dim].values.tolist()}, fields=fields)
+                    res = xr.merge([res, additional_fields_result])
                 returnValue(res.to_dict())
             except Exception as e:
-                print({'field': field, 'dim': dim, 'seed_idx': seed_idx, 'select': select, 'filters': filters, 'name': name})
+                print({'field': field, 'dim': dim, 'seed_idx': seed_idx, 'fields': fields, 'select': select, 'filters': filters, 'name': name})
                 _application_error(e)
 
 
