@@ -36,7 +36,7 @@ class FilmStripLocator ():
             return results
 
         except (IOError, ValueError) as e:
-            return results.setdefault('message', e.message)
+            return results.setdefault('message', str(e))
 
 
     def prepare_files(self, pixel, distance_map_path, direction):
