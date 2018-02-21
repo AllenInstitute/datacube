@@ -31,7 +31,7 @@ class LineFinder():
                 results['success'] = True
 
             except Exception as e:
-                results.setdefault("message", "an error occured while parsing the streamline files: " + e.message)    
+                results.setdefault("message", "an error occured while parsing the streamline files: " + str(e))    
 
             return results
         
@@ -49,7 +49,7 @@ class LineFinder():
                 results['success'] = True
 
             except Exception as e:
-                results.setdefault("message", "an error occured while parsing the neuron reconstruction: " + e.message)
+                results.setdefault("message", "an error occured while parsing the neuron reconstruction: " + str(e))
                 return results
 
         results.setdefault("message", "invalid streamline or reconstruction id")

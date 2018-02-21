@@ -59,6 +59,14 @@
                     },
                     "paths": {
                         "call": {
+                            "type": "caller",
+                            "realm": "aibs",
+                            "role": "anonymous",
+                            "options": {
+                                "debug": true
+                            }
+                        },
+                        "get": {
                             "type": "reverseproxy",
                             "host": "localhost",
                             "port": 9090,

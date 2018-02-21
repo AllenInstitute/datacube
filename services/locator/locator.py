@@ -60,7 +60,7 @@ class LocatorServiceComponent(ApplicationSession):
             path = args.env_vars_path
             config = ConfigurationManager(path)
         except (IOError) as e:
-            print(e.message)
+            print(e)
 
 
         ####################################################################
@@ -93,7 +93,7 @@ class LocatorServiceComponent(ApplicationSession):
                 results['success'] = True
 
             except (IOError) as e:
-                results.setdefault("message", e.message)
+                results.setdefault("message", str(e))
 
             returnValue(results)
 
@@ -117,7 +117,7 @@ class LocatorServiceComponent(ApplicationSession):
                 results["success"] = True
 
             except (IOError, ValueError) as e:
-                results.setdefault("message", e.message)
+                results.setdefault("message", str(e))
 
             returnValue(results)
 
