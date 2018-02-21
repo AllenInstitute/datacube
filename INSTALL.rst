@@ -103,7 +103,7 @@ Then run the demo::
 
     ./run.sh --config config-demo.json
 
-Wait for the "Server Ready." message, and then point your browser to http://localhost:8082/demo and click on the links.
+Wait for the "Server Ready." message, and then point your browser to http://localhost:8080/demo and click on the links.
 
 Run tests
 ---------
