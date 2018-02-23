@@ -37,9 +37,11 @@ def main():
     experiment_ids = experiments_ds.data_set_id.values.tolist()
     tree = mcc.get_structure_tree()
     structure_ids = list(tree.node_ids())
-
-    r=requests.get(args.data_src + '/api/v2/data/query.json?criteria=model::StructureSet,rma::criteria,[id$eq167587189],rma::include,structures[id$ne1009]')
-    summary_structures = [structure['id'] for structure in json.loads(r.text)['msg'][0]['structures']]
+    structure_meta = pd.DataFrame(tree.filter_nodes(lambda x: True))
+    structure_meta = structure_meta[['name','acronym']]
+    structure_meta = xr.Dataset.from_dataframe(structure_meta)
+    structure_meta = structure_meta.drop('index').rename({'index': 'structure'})
+    summary_structures = [s['id'] for s in tree.get_structures_by_set_id([167587189]) if s['id'] != 1009] # summary structures minus fiber tracts
 
     if not args.annotation_volume_dir:
         ccf_anno = mcc.get_annotation_volume(file_name=os.path.join(mcc_dir, 'annotation_100.nrrd'))[0]
@@ -168,7 +170,7 @@ def main():
     ccf_dims = ['anterior_posterior', 'superior_inferior', 'left_right']
     ds = xr.Dataset(
         data_vars={
-            'ccf_structure': (ccf_dims, ccf_anno),
+            'ccf_structure': (ccf_dims, ccf_anno, {'spacing': [100, 100, 100]}),
             'ccf_structures': (ccf_dims+['depth'], ccf_anno_paths),
             'projection': (ccf_dims+['experiment'], volume),
             'volume': projection_unionize,
@@ -188,6 +190,7 @@ def main():
     )
 
     ds.merge(experiments_ds, inplace=True, join='exact')
+    ds.merge(structure_meta, inplace=True, join='exact')
     ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly
     ds.to_netcdf(os.path.join(args.data_dir, args.data_name + '.nc'), format='NETCDF4')
 
