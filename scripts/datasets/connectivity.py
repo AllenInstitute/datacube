@@ -38,8 +38,9 @@ def main():
     tree = mcc.get_structure_tree()
     structure_ids = list(tree.node_ids())
     structure_meta = pd.DataFrame(tree.filter_nodes(lambda x: True))
-    structure_meta = structure_meta[['name','acronym', 'structure_id_path','rgb_triplet']]
+    structure_meta = structure_meta[['name','acronym']]
     structure_meta = xr.Dataset.from_dataframe(structure_meta)
+    structure_meta = structure_meta.drop('index').rename({'index': 'structure'})
     summary_structures = [s['id'] for s in tree.get_structures_by_set_id([167587189]) if s['id'] != 1009] # summary structures minus fiber tracts
 
     if not args.annotation_volume_dir:
@@ -169,7 +170,7 @@ def main():
     ccf_dims = ['anterior_posterior', 'superior_inferior', 'left_right']
     ds = xr.Dataset(
         data_vars={
-            'ccf_structure': (ccf_dims, ccf_anno),
+            'ccf_structure': (ccf_dims, ccf_anno, {'spacing': [100, 100, 100]}),
             'ccf_structures': (ccf_dims+['depth'], ccf_anno_paths),
             'projection': (ccf_dims+['experiment'], volume),
             'volume': projection_unionize,
