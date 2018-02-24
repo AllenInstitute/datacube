@@ -68,6 +68,7 @@ $(function() {
                 }
                 var end_time = new Date();
                 document.getElementById('elapsed').innerHTML = (end_time - start_time) + 'ms';
+                console.log(res);
                 log("Result:" + JSON.stringify(res));
             },
             function (err) {

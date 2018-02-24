@@ -1,6 +1,5 @@
 from twisted.internet.defer import inlineCallbacks, returnValue
 from klein import Klein, Plating
-#from twisted.web.template import slot, tags
 from autobahn.twisted.wamp import Application
 from datetime import date, timedelta
 import simplejson as json
@@ -19,6 +18,7 @@ def post_bridge(request):
 
     res = yield wampapp.session.call(procedure, *args, **kwargs)
     request.responseHeaders.addRawHeader(b'content-type', b'application/json')
+    request.responseHeaders.addRawHeader(b'Access-Control-Allow-Origin', b'*')
     returnValue(json.dumps(res, ignore_nan=True, separators=(',',':')))
 
 
@@ -33,6 +33,7 @@ def get_bridge(request, procedure):
     res = yield wampapp.session.call(procedure, *args, **kwargs)
 
     request.responseHeaders.addRawHeader(b'content-type', b'application/json')
+    request.responseHeaders.addRawHeader(b'Access-Control-Allow-Origin', b'*')
     #todo: check for some special key in the wamp containing custom headers that
     #  the callee would like to set.
     expiry = date.today() + timedelta(days=1)
