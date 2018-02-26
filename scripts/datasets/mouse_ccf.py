@@ -61,7 +61,7 @@ def generate(data_src=None, data_dir='./', data_name='mouse_ccf'):
         dims = ['anterior_posterior', 'superior_inferior', 'left_right']
         ds = xr.Dataset(
             data_vars={
-                'ccf': (dims, ccf),
+                'ccf': (dims, ccf, {'spacing': [25, 25, 25]}),
                 'annotation': (dims, ccf_anno),
                 'color': (dims+['RGBA'], ccf_anno_color)
             },
