@@ -190,7 +190,7 @@ def main():
     )
 
     ds.merge(experiments_ds, inplace=True, join='exact')
-    ds.merge(structure_meta, inplace=True, join='exact')
+    ds.merge(structure_meta, inplace=True, join='left')
     ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly
     ds.to_netcdf(os.path.join(args.data_dir, args.data_name + '.nc'), format='NETCDF4')
 
