@@ -52,12 +52,19 @@ class PandasServiceComponent(ApplicationSession):
     @inlineCallbacks
     def onJoin(self, details):
 
+        def _ensure_computed(f, *args, **kwargs):
+            res = f(*args, **kwargs)
+            if isinstance(res, (xr.Dataset, xr.DataArray)):
+                return res.compute()
+            else:
+                return res
+
 
         @inlineCallbacks
         def info(name=None):
             try:
                 datacube = datacubes[name]
-                res = yield threads.deferToThread(datacube.info)
+                res = yield threads.deferToThread(_ensure_computed, datacube.info)
                 returnValue(res)
             except Exception as e:
                 print({'name': name})
@@ -68,7 +75,7 @@ class PandasServiceComponent(ApplicationSession):
         def raw(fields=None, select=None, coords=None, filters=None, name=None):
             try:
                 datacube = datacubes[name]
-                res = yield threads.deferToThread(datacube.raw, select, coords, fields, filters)
+                res = yield threads.deferToThread(_ensure_computed, datacube.raw, select, coords, fields, filters)
                 returnValue(res.to_dict())
             except Exception as e:
                 print({'fields': fields, 'select': select, 'coords': coords, 'name': name, 'filters': filters})
@@ -79,7 +86,7 @@ class PandasServiceComponent(ApplicationSession):
         def image(field, select=None, coords=None, image_format='jpeg', dim_order=None, name=None):
             try:
                 datacube = datacubes[name]
-                res = yield threads.deferToThread(datacube.image, select, coords, field, dim_order, image_format)
+                res = yield threads.deferToThread(_ensure_computed, datacube.image, select, coords, field, dim_order, image_format)
                 returnValue(res)
             except Exception as e:
                 print({'field': field, 'select': select, 'dim_order': dim_order, 'image_format': image_format, 'name': name})
@@ -90,11 +97,11 @@ class PandasServiceComponent(ApplicationSession):
         def corr(field, dim, seed_idx, fields=None, select=None, coords=None, filters=None, name=None):
             try:
                 datacube = datacubes[name]
-                res = yield threads.deferToThread(datacube.corr, field, dim, seed_idx, select=select, coords=coords, filters=filters)
+                res = yield threads.deferToThread(_ensure_computed, datacube.corr, field, dim, seed_idx, select=select, coords=coords, filters=filters)
                 res = res.where(res.corr.notnull(), drop=True)
                 res = res.sortby('corr', ascending=False)
                 if fields is not None:
-                    additional_fields_result = yield threads.deferToThread(datacube.raw, coords={dim: res[dim].values.tolist()}, fields=fields)
+                    additional_fields_result = yield threads.deferToThread(_ensure_computed, datacube.raw, coords={dim: res[dim].values.tolist()}, fields=fields)
                     res = xr.merge([res, additional_fields_result])
                 returnValue(res.to_dict())
             except Exception as e:
@@ -118,7 +125,7 @@ class PandasServiceComponent(ApplicationSession):
                 #   https://github.com/crossbario/crossbar/issues/299 is implemented.
                 # relying on twisted instead.
                 d = self.call(u'org.brain_map.locator.get_streamlines_at_voxel', voxel=voxel_xyz, map_dir=projection_map_dir)
-                d.addTimeout(120, reactor)
+                d.addTimeout(10, reactor)
                 res = yield d
 
                 streamlines_list = res['results']
@@ -130,7 +137,7 @@ class PandasServiceComponent(ApplicationSession):
                     coords['experiment'] = experiment_ids
                 coords['experiment'] = np.intersect1d(conn.experiment.values, coords['experiment']) #todo: shouldn't need this if the data lines up
                 coords['experiment'] = coords['experiment'].tolist()
-                res = yield threads.deferToThread(conn_datacube.raw, select=select, coords=coords, fields=fields, filters=filters)
+                res = yield threads.deferToThread(_ensure_computed, conn_datacube.raw, select=select, coords=coords, fields=fields, filters=filters)
                 streamlines = xr.Dataset({'streamline': (['experiment'], streamlines_list), 'experiment': experiment_ids})
                 res = xr.merge([res, streamlines], join='left')
                 returnValue(res.to_dict())
@@ -190,6 +197,7 @@ class PandasServiceComponent(ApplicationSession):
                     #res = yield threads.deferToThreadPool(reactor,
                     #                                      thread_pool,
                     res = yield threads.deferToThread(
+                                                          _ensure_computed,
                                                           datacube.select,
                                                           'dim_0',
                                                           filters,
