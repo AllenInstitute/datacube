@@ -234,9 +234,16 @@ class Datacube:
     def info(self):
         dims = {name: size for name, size in self.df.dims.items()}
         variables = {name: {'type': da.dtype.name, 'dims': da.dims} for name, da in self.df.variables.items()}
+        def serializable(x):
+            try:
+                json.dumps(x)
+                return True
+            except:
+                return False
+
         for name, da in self.df.variables.items():
-            variables[name]['attrs'] = dict(da.attrs.items())
-        attrs = dict(self.df.attrs.items())
+            variables[name]['attrs'] = {k: v for k, v in da.attrs.items() if serializable(v)}
+        attrs = {k: v for k, v in self.df.attrs.items() if serializable(v)}
         return {'dims': dims, 'vars': variables, 'attrs': attrs}
 
 
