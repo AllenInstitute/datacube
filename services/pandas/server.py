@@ -118,7 +118,7 @@ class PandasServiceComponent(ApplicationSession):
                 #   https://github.com/crossbario/crossbar/issues/299 is implemented.
                 # relying on twisted instead.
                 d = self.call(u'org.brain_map.locator.get_streamlines_at_voxel', voxel=voxel_xyz, map_dir=projection_map_dir)
-                d.addTimeout(10, reactor)
+                d.addTimeout(120, reactor)
                 res = yield d
 
                 streamlines_list = res['results']
