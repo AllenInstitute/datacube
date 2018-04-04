@@ -221,6 +221,8 @@ class Datacube:
             ds = res
             res = xr.Dataset()
             mask = reduce(xr_ufuncs.logical_and, f['masks'])
+            if mask.nbytes <= self.max_cacheable_bytes:
+                mask = mask.compute()
             for field in ds.data_vars:
                 reduce_dims = [dim for dim in mask.dims if dim not in ds[field].dims]
                 res[field] = ds[field].where(mask.any(dim=reduce_dims), drop=True)
