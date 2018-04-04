@@ -62,7 +62,16 @@
                             "type": "websocket",
                             "options": {
                                 "auto_ping_interval": 0,
-                                "auto_ping_timeout": 0
+                                "auto_ping_timeout": 0,
+                                "compression": {
+                                   "deflate": {
+                                      "request_no_context_takeover": false,
+                                      "request_max_window_bits": 11,
+                                      "no_context_takeover": false,
+                                      "max_window_bits": 11,
+                                      "memory_level": 4
+                                   }
+                                }
                             },
                             "serializers": ["msgpack"]
                         },
@@ -85,7 +94,16 @@
                             },
                             "options": {
                                 "auto_ping_interval": 0,
-                                "auto_ping_timeout": 0
+                                "auto_ping_timeout": 0,
+                                "compression": {
+                                   "deflate": {
+                                      "request_no_context_takeover": false,
+                                      "request_max_window_bits": 11,
+                                      "no_context_takeover": false,
+                                      "max_window_bits": 11,
+                                      "memory_level": 4
+                                   }
+                                }
                             },
                             "serializers": ["msgpack"]
                         },
