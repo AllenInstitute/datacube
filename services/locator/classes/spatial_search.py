@@ -18,6 +18,8 @@ class SpatialSearch():
             results.setdefault("message", "invalid/missing voxel coordinate or map_dir")
 
         map_file = self.get_projection_map_file(voxel, map_dir)
+        if not os.path.isfile(map_file):
+            return {'success': True, 'results': []}
 
         pmaps = self.read_projection_map_header(map_file)
         num_experiments = len(pmaps)
