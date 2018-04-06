@@ -24,6 +24,7 @@ from classes.line_finder import LineFinder
 from classes.spatial_search import SpatialSearch
 from classes.ontology_service import OntologyService
 from classes.model_loader import ModelLoader
+from classes.stack_volume_slice import StackVolumeSlice
 
 
 
@@ -159,8 +160,9 @@ class LocatorServiceComponent(ApplicationSession):
 
             locator = LineFinder(config)
 
-            results = yield threads.deferToThread(locator.get, id, results)
+            image = yield threads.deferToThread(locator.get, id, results)
             
+            results = { 'data': 
             returnValue(results)
 
 
@@ -187,6 +189,20 @@ class LocatorServiceComponent(ApplicationSession):
             service = ModelLoader(config)
             
             results = yield threads.deferToThread(service.get, id)
+            returnValue(results)
+
+        @inlineCallbacks        
+        def stack_volume_slice(storage_dir, plane, index, 
+                               width, height, 
+                               value_range):
+
+            service = StackVolumeSlice(config)
+            
+            results = yield threads.deferToThread(service.get, 
+                                                  storage_dir, plane, index, 
+                                                  width, height, 
+                                                  value_range)
+            
             returnValue(results)
 
 
