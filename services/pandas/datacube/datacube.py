@@ -201,19 +201,14 @@ class Datacube:
         if subscripts:
             res = res[subscripts]
         if coords:
-            # validate coords
-            new_coords = {}
-            for dim,v in iteritems(coords):
-                if isinstance(v, list):
-                    new_coords[dim] = [x for x in v if x in res.coords[dim].values]
-                else:
-                    if v in res.coords[dim].values:
-                        new_coords[dim] = v
-                    else:
-                        new_coords[dim] = []
             # cast coords to correct type
-            coords = {dim: np.array(v, dtype=res.coords[dim].dtype).tolist() for dim,v in iteritems(new_coords)}
-            res = res.loc[coords]
+            coords = {dim: np.array(v, dtype=res.coords[dim].dtype).tolist() for dim,v in iteritems(coords)}
+            # apply all coords, rounding to nearest when possible
+            for dim, coord in iteritems(coords):
+                try:
+                    res = res.sel(**{dim: coord}, method='nearest')
+                except ValueError:
+                    res = res.sel(**{dim: coord})
         if fields:
             res = res[fields]
         if filters and f['masks']:
@@ -223,9 +218,14 @@ class Datacube:
             mask = reduce(xr_ufuncs.logical_and, f['masks'])
             if mask.nbytes <= self.max_cacheable_bytes:
                 mask = mask.compute()
-            for field in ds.data_vars:
+            for field in ds.variables:
                 reduce_dims = [dim for dim in mask.dims if dim not in ds[field].dims]
-                res[field] = ds[field].where(mask.any(dim=reduce_dims), drop=True)
+                reduced = ds[field].where(mask.any(dim=reduce_dims), drop=True)
+                if field in ds.data_vars:
+                    res[field] = reduced
+                else:
+                    if field not in res.coords:
+                        res.coords[field] = reduced.coords[field]
                 for coord in res[field].coords:
                     res.coords[coord] = res[field].coords[coord]
         if dim_order:

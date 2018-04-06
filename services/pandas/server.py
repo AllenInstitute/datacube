@@ -115,9 +115,10 @@ class PandasServiceComponent(ApplicationSession):
                 name = 'connectivity'
                 conn_datacube = datacubes[name]
                 conn = conn_datacube.df
-                voxel['anterior_posterior'] = int(conn.anterior_posterior[np.searchsorted(conn.anterior_posterior, int(voxel['anterior_posterior']))])
-                voxel['superior_inferior'] = int(conn.superior_inferior[np.searchsorted(conn.superior_inferior, int(voxel['superior_inferior']))])
-                voxel['left_right'] = int(conn.left_right[np.searchsorted(conn.left_right, int(voxel['left_right']))])
+                # round input voxel to nearest coordinate (conn datacube and streamlines are both at 100 micron resolution)
+                voxel['anterior_posterior'] = int(conn.anterior_posterior.sel(anterior_posterior=voxel['anterior_posterior'], method='nearest'))
+                voxel['superior_inferior'] = int(conn.superior_inferior.sel(superior_inferior=voxel['superior_inferior'], method='nearest'))
+                voxel['left_right'] = int(conn.left_right.sel(left_right=voxel['left_right'], method='nearest'))
                 voxel_xyz = [voxel['anterior_posterior'], voxel['superior_inferior'], voxel['left_right']]
                 projection_map_dir = args.projection_map_dir
 
