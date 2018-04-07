@@ -160,9 +160,8 @@ class LocatorServiceComponent(ApplicationSession):
 
             locator = LineFinder(config)
 
-            image = yield threads.deferToThread(locator.get, id, results)
-            
-            results = { 'data': 
+            results = yield threads.deferToThread(locator.get, id, results)
+
             returnValue(results)
 
 

@@ -37,7 +37,7 @@ class MetaImage():
                 if k in line:
                     line = line.split('=')
                     line = line[1].strip().split(' ')
-                    params[k] = [ int(v) for v in line ]
+                    params[k] = tuple(int(v) for v in line)
 
             for k in [ "ElementDataFile" ]:
                 if k in line:
@@ -58,12 +58,16 @@ class MetaImage():
         self._metadata = params
         return self._metadata
 
+    def memmap_image(self):
+        return np.memmap(self.metadata['ElementDataFile'],
+                         dtype=np.dtype(self.metadata["ElementType"]).str,
+                         shape=self.metadata["DimSize"],
+                         mode='r')
+
     @property
     def image(self):
         if self._image is not None:
-            return self._image
-
-        dtype_size = 4
+            return self._image 
 
         with open(self.metadata['ElementDataFile'], 'r') as f:    
             v = np.fromfile(f, dtype=self.metadata["ElementType"])
@@ -83,14 +87,17 @@ class MetaImage():
                             count=1)
             
         return v
-            
+
     def slice3d(self, axis, index):
-        if axis == 0:
-            return self.image[index,:,:]
-        if axis == 1:
-            return self.image[:,index,:]
-        if axis == 2:
-            return self.image[:,:,index]
+        return slice3d(self.image, axis, index)
+
+def slice3d(image, axis, index):
+    if axis == 0:
+        return image[index,:,:]
+    if axis == 1:
+        return image[:,index,:]
+    if axis == 2:
+        return image[:,:,index]
 
 
 if __name__ == "__main__":
