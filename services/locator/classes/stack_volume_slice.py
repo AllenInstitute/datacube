@@ -12,6 +12,16 @@ STACK_VOLUME_CACHE_SIZE = 10
 STACK_VOLUME_CACHE = None
 LOCK = threading.RLock()
 
+CORONAL = 'coronal'
+SAGITTAL = 'sagittal'
+HORIZONTAL = 'horizontal'
+
+PLANE_DIMENSION_ORDER = {
+    SAGITTAL: (2, 1, 0),
+    CORONAL: (1, 0, 2),
+    HORIZONTAL: (0, 2, 1)
+}
+
 def load_images(k):
     storage_dir, spacing = k
     red_path = os.path.join(storage_dir,
@@ -56,12 +66,7 @@ def image_jpeg_response(im, quality):
     return { 'data': 'data:image/jpeg;base64,' + base64.b64encode(buf.getvalue()).decode() }
 
 def plane_width_height_index(plane, width, height, index, dims, spacing, max_dimension):
-    if plane == 'sagittal':
-        d0, d1, d2 = 2, 1, 0
-    elif plane == 'coronal':
-        d0, d1, d2 = 1, 0, 2
-    else:
-        d0, d1, d2 = 0, 2, 1
+    d0, d1, d2 = PLANE_DIMENSION_ORDER[plane]
 
     index = int(float(index) / float(spacing[d2]))
 
@@ -121,11 +126,11 @@ class StackVolumeSlice():
                             slice3d(g, dims[2], index),
                             slice3d(b, dims[2], index))).astype(float)                    
 
-        if plane == 'sagittal':
+        if plane == SAGITTAL:
             im = np.fliplr(im)
-        elif plane == 'coronal':
+        elif plane == CORONAL:
             im = np.transpose(im, (1,0,2))
-        elif plane == 'horizontal':
+        elif plane == HORIZONTAL:
             im = np.flipud(np.fliplr(im))
 
         width_factor = float(width) / im.shape[1]
@@ -153,7 +158,7 @@ class StackVolumeImageInfo():
 
 if __name__ == "__main__":
     sdir = "/external/conn/prod626/image_series_268321927/"
-    plane='horizontal'
+    plane='sagittal'
     index=7100
     width=179
     height=134
