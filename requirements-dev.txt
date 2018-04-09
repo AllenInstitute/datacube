@@ -1,1 +1,2 @@
+-r requirements-test.txt
 -r services/pandas/requirements-dev.txt
