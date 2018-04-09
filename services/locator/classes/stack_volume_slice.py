@@ -1,5 +1,5 @@
 import os
-import metaimage as mi
+from .metaimage import MetaImage, slice3d
 from scipy.ndimage import zoom
 import numpy as np
 from PIL import Image
@@ -25,13 +25,13 @@ def load_images(k):
                              "grid",
                              "blue_%s.mhd" % spacing)
     
-    images = ( mi.MetaImage(red_path).memmap_image(),
-               mi.MetaImage(green_path).memmap_image(),
-               mi.MetaImage(blue_path).memmap_image() )
+    images = ( MetaImage(red_path).memmap_image(),
+               MetaImage(green_path).memmap_image(),
+               MetaImage(blue_path).memmap_image() )
 
     return images
 
-def resample_image(im, width, height, order, max_dimension):
+def resample_image(im, width, height, order, max_dimension):          
     if width is not None or height is not None:
         if height is not None:
             height_factor = float(height) / float(im.shape[0])
@@ -73,11 +73,6 @@ def image_jpeg_response(im, quality):
 STACK_VOLUME_CACHE = LRUCache(maxsize=STACK_VOLUME_CACHE_SIZE, missing=load_images)
 
 class StackVolumeSlice():
-    DEFAULT_MAX_DIMENSION = 2048
-    DEFAULT_CACHE_SIZE = 10
-    DEFAULT_INTERPOLATION_ORDER = 0
-    DEFAULT_SPACING = "44.8"
-
     def __init__(self, config):
         self.config = config
 
@@ -86,15 +81,18 @@ class StackVolumeSlice():
             value_range, 
             quality=40):
 
-        r, g, b = STACK_VOLUME_CACHE[(storage_dir, self.config.get("spacing", self.DEFAULT_SPACING))]
+        spacing = self.config.get_property("stack_volume_spacing")
+        r, g, b = STACK_VOLUME_CACHE[(storage_dir, spacing)]
 
-        im = np.dstack((mi.slice3d(r, plane, index),
-                        mi.slice3d(g, plane, index),
-                        mi.slice3d(b, plane, index))).astype(float)
+        # begin mutex
+        im = np.dstack((slice3d(r, plane, index),
+                        slice3d(g, plane, index),
+                        slice3d(b, plane, index))).astype(float)
+        # end mutex
 
         im = resample_image(im, width, height, 
-                            self.config.get('order', self.DEFAULT_INTERPOLATION_ORDER),
-                            self.config.get('max_dimension', self.DEFAULT_MAX_DIMENSION))
+                            self.config.get_property('stack_volume_interpolation_order'),
+                            self.config.get_property('stack_volume_max_dimension'))
 
         im = image_16b_to_8b(im, value_range)
         

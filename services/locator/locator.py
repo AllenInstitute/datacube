@@ -221,6 +221,7 @@ class LocatorServiceComponent(ApplicationSession):
             yield self.register(spatial_search,     u"org.brain_map.locator.get_streamlines_at_voxel")
             yield self.register(ccf_ontology,       u"org.brain_map.locator.get_ccf_ontology")
             yield self.register(ccf_model,          u"org.brain_map.locator.get_ccf_model")
+            yield self.register(stack_volume_slice, u"org.brain_map.locator.get_stack_volume_slice")
         
             ready = True
         except (Exception) as e:
