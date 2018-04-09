@@ -62,7 +62,8 @@ class MetaImage():
         return np.memmap(self.metadata['ElementDataFile'],
                          dtype=np.dtype(self.metadata["ElementType"]).str,
                          shape=self.metadata["DimSize"],
-                         mode='r')
+                         mode='r',
+                         order='F')
 
     @property
     def image(self):

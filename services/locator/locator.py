@@ -24,7 +24,8 @@ from classes.line_finder import LineFinder
 from classes.spatial_search import SpatialSearch
 from classes.ontology_service import OntologyService
 from classes.model_loader import ModelLoader
-from classes.stack_volume_slice import StackVolumeSlice
+from classes.stack_volume_slice import StackVolumeSlice, StackVolumeImageInfo
+
 
 
 
@@ -204,6 +205,12 @@ class LocatorServiceComponent(ApplicationSession):
             
             returnValue(results)
 
+        @inlineCallbacks
+        def stack_volume_image_info(storage_dir):
+            service = StackVolumeImageInfo(config)
+            results = yield threads.deferToThread(service.get, storage_dir)
+            returnValue(results)
+
 
         ready = False
         try:
@@ -222,6 +229,7 @@ class LocatorServiceComponent(ApplicationSession):
             yield self.register(ccf_ontology,       u"org.brain_map.locator.get_ccf_ontology")
             yield self.register(ccf_model,          u"org.brain_map.locator.get_ccf_model")
             yield self.register(stack_volume_slice, u"org.brain_map.locator.get_stack_volume_slice")
+            yield self.register(stack_volume_image_info, u"org.brain_map.locator.get_stack_volume_image_info")
         
             ready = True
         except (Exception) as e:

@@ -1,3 +1,4 @@
 -r services/pandas/requirements-prod.txt
 klein
 simplejson
+cachetools
