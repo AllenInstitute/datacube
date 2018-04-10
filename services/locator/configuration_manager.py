@@ -17,8 +17,4 @@ class ConfigurationManager ():
             self.env_vars = json.load(f)
 
     def get_property(self, key):
-       
-        if self.env_vars[key]:
-            return self.env_vars[key]
-
-        return ""
+        return self.env_vars.get(key,"")
