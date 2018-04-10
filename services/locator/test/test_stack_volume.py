@@ -3,6 +3,9 @@ import numpy as np
 import os
 from mock import patch, mock_open, MagicMock, PropertyMock
 import cachetools
+from PIL import Image
+import base64
+import io
 
 import locator.classes.stack_volume_slice as svs
 import locator.classes.metaimage as mi
@@ -37,7 +40,7 @@ def test_image_jpeg_response():
     im = np.random.randint(low=0, high=255, size=(10,10,3)).astype(np.uint8)
     res = svs.image_jpeg_response(im, 40)
     data = res['data']
-    assert data.startswith("data:image/jpeg;base64")
+    validate_jpeg_data(data, 10, 10)
 
 def test_plane_width_height_index():
     plane = 'coronal'
@@ -78,8 +81,16 @@ def test_get_slice(stack_volume_slice):
             resp = stack_volume_slice.get(sdir, plane, index, width, height, vr)
 
             data = resp['data']
-            assert data.startswith("data:image/jpeg;base64")
+            
+            validate_jpeg_data(data, 100, height)
 
+def validate_jpeg_data(data, width, height):
+    jpeg_prefix = "data:image/jpeg;base64"
+    assert data.startswith(jpeg_prefix)
+    img_bytes = base64.b64decode(data[len(jpeg_prefix):])
+    img = Image.open(io.BytesIO(img_bytes))
+    assert img.size == (width, height)
+    
 def test_get_image_info(stack_volume_image_info):
     sdir = '/made/up/path'
     dim_size = [10,10,10]

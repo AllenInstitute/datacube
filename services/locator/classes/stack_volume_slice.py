@@ -5,11 +5,11 @@ import numpy as np
 from PIL import Image
 from io import StringIO, BytesIO
 import base64
-from cachetools import LRUCache
+from cachetools import LRUCache, cached
 import threading
 
 STACK_VOLUME_CACHE_SIZE = 10
-STACK_VOLUME_CACHE = None
+STACK_VOLUME_CACHE = LRUCache(maxsize=STACK_VOLUME_CACHE_SIZE)
 LOCK = threading.RLock()
 
 CORONAL = 'coronal'
@@ -22,8 +22,7 @@ PLANE_DIMENSION_ORDER = {
     HORIZONTAL: (0, 2, 1)
 }
 
-def load_images(k):
-    storage_dir, spacing = k
+def load_images(storage_dir, spacing):
     red_path = os.path.join(storage_dir,
                             "grid",
                             "red_%s.mhd" % spacing)
@@ -42,8 +41,9 @@ def load_images(k):
 
     return images
 
-def load_memmap_images(k):
-    images = load_images(k)
+@cached(cache=STACK_VOLUME_CACHE, lock=LOCK)
+def load_memmap_images(storage_dir, spacing):
+    images = load_images(storage_dir, spacing)
     return tuple(i.memmap_image() for i in images)
 
 def image_16b_to_8b(im, value_range):
@@ -98,14 +98,14 @@ def plane_width_height_index(plane, width, height, index, dims, spacing, max_dim
         
         
 
-STACK_VOLUME_CACHE = LRUCache(maxsize=STACK_VOLUME_CACHE_SIZE, missing=load_memmap_images)
+
 
 class StackVolumeSlice():
     def __init__(self, config):
         self.config = config
 
     def image_metadata(self, storage_dir, spacing):
-        r,_,_ = load_images((storage_dir, spacing))
+        r,_,_ = load_images(storage_dir, spacing)
         return r.metadata
 
     def get(self, storage_dir, plane, index, 
@@ -114,17 +114,16 @@ class StackVolumeSlice():
             quality=40):
         
         spacing = self.config.get_property("stack_volume_spacing")
-        r, g, b = STACK_VOLUME_CACHE[(storage_dir, spacing)]
+        r, g, b = load_memmap_images(storage_dir, spacing)
         md = self.image_metadata(storage_dir, spacing)
 
         width, height, index, dims = plane_width_height_index(plane, width, height, index, 
                                                               md['DimSize'], md['ElementSpacing'],
                                                               self.config.get_property('stack_volume_max_dimension'))
 
-        with LOCK:
-            im = np.dstack((slice3d(r, dims[2], index),
-                            slice3d(g, dims[2], index),
-                            slice3d(b, dims[2], index))).astype(float)                    
+        im = np.dstack((slice3d(r, dims[2], index),
+                        slice3d(g, dims[2], index),
+                        slice3d(b, dims[2], index))).astype(float)                    
 
         if plane == SAGITTAL:
             im = np.fliplr(im)
@@ -150,7 +149,7 @@ class StackVolumeImageInfo():
 
     def get(self, storage_dir):
         spacing = self.config.get_property("stack_volume_spacing")
-        r, _, _ = load_images((storage_dir, spacing))
+        r, _, _ = load_images(storage_dir, spacing)
         md = r.metadata
         
         return {'data': { 'size': md['DimSize'], 
