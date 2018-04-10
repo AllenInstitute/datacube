@@ -118,6 +118,14 @@
                             },
                             "serializers": ["msgpack"]
                         },
+                        "ccf_model": {
+                            "type": "static",
+                            "directory": "../../structure_meshes/",
+                            "options": {
+                                "enable_directory_listing": true,
+                                "mime_types": {}
+                            }
+                        },
                         "cgi": {
                             "type": "cgi",
                             "directory": "../cgi",
