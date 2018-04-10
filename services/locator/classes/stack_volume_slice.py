@@ -155,18 +155,6 @@ class StackVolumeImageInfo():
         return {'data': { 'size': md['DimSize'], 
                           'spacing': md['ElementSpacing'] }}
 
-if __name__ == "__main__":
-    sdir = "/external/conn/prod626/image_series_268321927/"
-    plane='sagittal'
-    index=7100
-    width=179
-    height=134
-    value_range=[0,1116,0,2652,0,4095]
-
-    from configuration_manager import ConfigurationManager
-    svs = StackVolumeSlice(ConfigurationManager())
-    buf = svs.get(sdir, plane, index, width, height, value_range)
-    print(buf)
 
 
         

@@ -99,10 +99,3 @@ def slice3d(image, axis, index):
         return image[:,index,:]
     if axis == 2:
         return image[:,:,index]
-
-
-if __name__ == "__main__":
-    fname = "/external/ctyconn/prod17/image_series_609475867/grid/red_22.4.mhd"
-    m = MetaImage(fname)
-    print(m.metadata)
-    print(m.sample([300,200,100]))
