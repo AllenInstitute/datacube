@@ -322,7 +322,7 @@ if __name__ == '__main__':
     parser.add_argument('dataset_manifest', help='JSON dataset manifest')
     parser.add_argument('--max-records', default=1000, help='maximum records to serve in a single request (default: %(default)s)')
     parser.add_argument('--recache', action='store_true', help='overwrite existing data files')
-    parser.add_argument('--projection-map-dir', help='path to root of projection map directory structure e.g. /data/informatics/heatmap/mouseconn_projection_maps_2017_09_11/P56/')
+    parser.add_argument('--projection-map-dir', help='path to root of projection map directory structure e.g. /allen/aibs/informatics/heatmap/mouseconn_projection_maps_2017_09_11/P56/')
     args = parser.parse_args()
     txaio.use_twisted()
     log = txaio.make_logger()
