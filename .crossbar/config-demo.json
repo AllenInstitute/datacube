@@ -132,6 +132,14 @@
                             },
                             "serializers": ["msgpack"]
                         },
+                        "ccf_model": {
+                            "type": "static",
+                            "directory": "/data/informatics/datacube/t/projects/0378/vol1/informatics/model/P56/models/MouseCCF2016/",
+                            "options": {
+                                "enable_directory_listing": true,
+                                "mime_types": {}
+                            }
+                        },
                         "cgi": {
                             "type": "cgi",
                             "directory": "../cgi",
