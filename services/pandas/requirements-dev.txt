@@ -1,2 +1,2 @@
--r ../../requirements-dev.txt
+-r ../../requirements-global-dev.txt
 -r requirements-test.txt

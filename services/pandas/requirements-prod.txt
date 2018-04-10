@@ -1,4 +1,4 @@
--r ../../requirements-prod.txt
+-r ../../requirements-global-prod.txt
 autobahn
 crossbar
 Twisted

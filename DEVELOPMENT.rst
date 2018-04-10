@@ -17,7 +17,7 @@ The requirements files are set up in an inheritance/include heirarchy to support
     global-dev -------> svc{n}-dev
 
 
-Note that it is possible to introduce version conflicts either explicitly or implicitly given this structure. It may be advisable to maintain a unified environment across all services in order to simplify deployment (see requirements-txt_).
+Note that it is possible to introduce version conflicts either explicitly or implicitly given this structure. It may be advisable to build an environment across all services periodically in order to ensure conflicts don't arise (see requirements-txt_).
 
 
 Service dependencies
@@ -35,9 +35,9 @@ In some cases a package may be needed as part of the base install across all ser
 requirements.txt
 ^^^^^^^^^^^^^^^^
 
-``requirements.txt`` of locked package versions are maintained for purposes of deploying to production. These files can be materialized at different levels of the project. For example, if a single unified deploy environment is desired, ``requirements.txt`` can be maintained at the root-level, based off the union of the requirements of all the services. Alternatively, or in addition, individual ``requirements.txt`` files can be maintained within each service for leaner environments when deploying separately.
+``requirements.txt`` of locked package versions are maintained for purposes of deploying to production (not dev or test). These files can be materialized at different levels of the project. For example, if a single unified deploy environment is desired, ``requirements.txt`` can be maintained at the root-level, based off the union of the requirements of all the services. Alternatively, or in addition, individual ``requirements.txt`` files can be maintained within each service for leaner environments when deploying separately.
 
-If any ``requirements-prod.txt`` is modified which would affect it, the corresponding ``requirements.txt`` should be updated by way of a ``pip install`` and ``pip freeze`` within a fresh conda env, and checked in. For example, this is how to update a root-level ``requirements.txt`` file from a ``requirements-all.txt`` file containing includes for each of the services' ``services/{servicename}/requirements-prod.txt`` files:
+If any production dependencies are modified which would affect it, the corresponding ``requirements.txt`` should be updated by way of a ``pip install`` and ``pip freeze`` within a fresh conda env, and checked in. For example, this is how to update a root-level ``requirements.txt`` file from a root-level ``requirements-prod.txt`` file containing includes for each of the services' ``services/{servicename}/requirements-prod.txt`` files:
 
 ::
 
@@ -45,7 +45,7 @@ If any ``requirements-prod.txt`` is modified which would affect it, the correspo
     conda env remove -n datacube
     conda create -n datacube python=3
     source activate datacube
-    pip install --ignore-installed -r requirements-all.txt
+    pip install --ignore-installed -r requirements-prod.txt
     pip freeze > requirements.txt
 
 
