@@ -108,6 +108,14 @@ def test_raw_filters_coords(test_datacube):
 
 
 @pytest.mark.filterwarnings('ignore')
+def test_raw_coords_with_filter_coords(test_datacube):
+    d, ds = test_datacube
+    r = d.raw(coords={'dim_1': 5}, filters=[{'field': 'foo_1', 'coords': {'dim_1': 4}, 'op': '>=', 'value': .5}])
+    cond = ds.foo_1.sel(dim_1=4, drop=True) >= .5
+    assert r.equals(ds.sel(dim_1=5).where(cond, drop=True))
+
+
+@pytest.mark.filterwarnings('ignore')
 def test_raw_distance_filter(test_datacube):
     d, ds = test_datacube
 
@@ -142,13 +150,13 @@ def test_raw_distance_filter(test_datacube):
     if 'foo_2' in ds: assert r.foo_2.equals(ds.where(cond, drop=True).foo_2)
 
     r = d.raw(filters=[{'op': 'distance', 'fields': ['foo_0', {'field': 'foo_1', 'coords': {'dim_1': 6}}], 'point': [.5,.3], 'value': .166}])
-    cond = ((ds.foo_0-.5)**2.+(ds.foo_1.sel(dim_1=6)-.3)**2.)**.5<=.166
+    cond = ((ds.foo_0-.5)**2.+(ds.foo_1.sel(dim_1=6, drop=True)-.3)**2.)**.5<=.166
     assert r.foo_0.equals(ds.where(cond, drop=True).foo_0)
     assert r.foo_1.equals(ds.where(cond, drop=True).foo_1)
     if 'foo_2' in ds: assert r.foo_2.equals(ds.where(cond, drop=True).foo_2)
 
     r = d.raw(filters=[{'op': 'distance', 'fields': ['foo_0', {'field': 'foo_1', 'coords': {'dim_0': 7}}], 'point': [.5,.3], 'value': .166}])
-    cond = ((ds.foo_0-.5)**2.+(ds.foo_1.sel(dim_0=7)-.3)**2.)**.5<=.166
+    cond = ((ds.foo_0-.5)**2.+(ds.foo_1.sel(dim_0=7, drop=True)-.3)**2.)**.5<=.166
     assert r.foo_0.equals(ds.where(cond.any(dim='dim_1'), drop=True).foo_0)
     assert r.foo_1.equals(ds.where(cond, drop=True).foo_1)
     if 'foo_2' in ds: assert r.foo_2.equals(ds.where(cond, drop=True).foo_2)
