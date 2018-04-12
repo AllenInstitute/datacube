@@ -111,7 +111,7 @@ class StackVolumeSlice():
     def get(self, storage_dir, plane, index, 
             width, height, 
             value_range, 
-            quality=40):
+            quality=None):
         
         spacing = self.config.get_property("stack_volume_spacing")
         r, g, b = load_memmap_images(storage_dir, spacing)
@@ -140,6 +140,9 @@ class StackVolumeSlice():
                   order=self.config.get_property('stack_volume_interpolation_order'))
 
         im = image_16b_to_8b(im, value_range)
+
+        if quality is None:
+            quality = self.config.get_property('stack_volume_jpeg_quality')
 
         return image_jpeg_response(im, quality)
 
