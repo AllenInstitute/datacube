@@ -7,6 +7,7 @@
     "reconstruction_lookup":    "http://api.brain-map.org/api/v2/data/Specimen/{0}.json?include=neuron_reconstructions(well_known_files)",
     "ccf_model_path":           "/allen/aibs/informatics/datacube/t/projects/0378/vol1/informatics/model/P56/models/MouseCCF2016/{0}.obj",
     "stack_volume_spacing":     "44.8",
-    "stack_volume_interpolation_order": 0,
-    "stack_volume_max_dimension": 2048
+    "stack_volume_interpolation_order": 1,
+    "stack_volume_max_dimension": 2048,
+    "stack_volume_jpeg_quality": 70
 }
