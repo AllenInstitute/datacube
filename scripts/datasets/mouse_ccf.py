@@ -4,8 +4,10 @@ import argparse
 import nrrd
 import numpy as np
 import xarray as xr
+import pandas as pd
 import os.path
-import urllib.request
+import requests
+from io import StringIO
 from numba import jit
 import json
 from future.utils import lmap
@@ -48,7 +50,7 @@ def generate(data_src, data_dir, data_name, manifest_filename, resolution):
             for structure_id in annotated_structures:
                 if structure_id:
                     STRUCTURE_API = data_src + '/api/v2/data/Structure/query.json?id='
-                    color_hex_triplet = json.load(urllib.request.urlopen(STRUCTURE_API + str(structure_id)))['msg'][0]['color_hex_triplet']
+                    color_hex_triplet = json.loads(requests.get(STRUCTURE_API + str(structure_id)).text)['msg'][0]['color_hex_triplet']
                     structure_colors[int(structure_id)] = np.concatenate([np.array(bytearray.fromhex(color_hex_triplet)), [255]]).astype(np.uint8)
             return structure_colors
                     
@@ -69,6 +71,13 @@ def generate(data_src, data_dir, data_name, manifest_filename, resolution):
         colors = np.stack(lmap(lambda x: x[1], sorted_colors), axis=0)
         colorize(ccf_anno, ids, colors, ccf_anno_color)
 
+        r=requests.get(data_src + '/api/v2/data/Structure/query.json?criteria=[graph_id$eq1]&num_rows=all')
+        structures = pd.DataFrame(json.loads(r.text)['msg'])
+        structures_ds = xr.Dataset.from_dataframe(structures)
+        structures_ds.coords['structure'] = structures_ds['id']
+        structures_ds = structures_ds.drop('index')
+        structures_ds = structures_ds.rename({'index': 'structure'})
+
         dims = ['anterior_posterior', 'superior_inferior', 'left_right']
         ds = xr.Dataset(
             data_vars={
@@ -82,6 +91,7 @@ def generate(data_src, data_dir, data_name, manifest_filename, resolution):
                 'left_right': resolution*np.arange(ccf.shape[2])
             }
         )
+        ds.merge(structures_ds, inplace=True)
         ds.to_netcdf(data_path, format='NETCDF4')
     print('Data created in data_dir.')
 
