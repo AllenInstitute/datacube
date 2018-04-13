@@ -26,7 +26,7 @@ class SurfacePoint ():
 
         result = np.array(ind) * self.spacing_um
         
-        return list(result)
+        return result.tolist()
 
     def micron2vox(self, micron):
         return int(micron * 0.1)

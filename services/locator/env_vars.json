@@ -1,5 +1,5 @@
 {
-    "p56_file_path":            "/allen/programs/celltypes/production/0378/informatics/model/P56/corticalCoordinates/surface_coords_10.h5",
+    "p56_file_path":            "../../conn_data/surface_coords_10.h5",
     "p56_annotation_file":      "/allen/aibs/informatics/datacube/t/projects/0378/vol1/informatics/model/P56/atlases/MouseCCF2016/annotation_25.npy",
     "p56_annotation_meta_file": "/allen/aibs/informatics/datacube/t/projects/0378/vol1/informatics/model/P56/atlases/MouseCCF2016/annotation_25_meta.json",
     "ccf_ontology":             "../../mouse_ccf_data/ccf_ontology.json",

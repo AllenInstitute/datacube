@@ -8,6 +8,7 @@ import json
 import urllib
 import requests
 from io import StringIO
+import shutil
 
 import nrrd
 import numpy as np
@@ -190,6 +191,10 @@ def main():
     ds.merge(structure_meta, inplace=True, join='left')
     ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly
     ds.to_netcdf(os.path.join(args.data_dir, args.data_name + '.nc'), format='NETCDF4')
+
+    #PBS-1262:
+    surface_coords_file = '/allen/programs/celltypes/production/0378/informatics/model/P56/corticalCoordinates/surface_coords_10.h5'
+    shutil.copy2(surface_coords_file, args.data_dir)
 
 
 if __name__ == '__main__':
