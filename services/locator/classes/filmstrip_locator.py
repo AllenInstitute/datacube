@@ -117,7 +117,8 @@ class FilmStripLocator ():
         return tmp_coord[:3] + self.center_of_rotation
 
     def read_mhd_header(self, meta_file):
-        meta = open(meta_file).readlines()
+        with open(meta_file, 'r') as f:
+            meta = f.readlines()
         
         for line in meta:
             if "ElementSpacing" in line:
