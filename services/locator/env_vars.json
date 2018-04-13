@@ -2,7 +2,7 @@
     "p56_file_path":            "/allen/programs/celltypes/production/0378/informatics/model/P56/corticalCoordinates/surface_coords_10.h5",
     "p56_annotation_file":      "/allen/aibs/informatics/datacube/t/projects/0378/vol1/informatics/model/P56/atlases/MouseCCF2016/annotation_25.npy",
     "p56_annotation_meta_file": "/allen/aibs/informatics/datacube/t/projects/0378/vol1/informatics/model/P56/atlases/MouseCCF2016/annotation_25_meta.json",
-    "ccf_ontology":             "/allen/aibs/informatics/datacube/t/projects/0378/vol1/informatics/model/P56/atlases/MouseCCF2016/ccf_ontology.json",
+    "ccf_ontology":             "../../mouse_ccf_data/ccf_ontology.json",
     "streamline_lookup":        "http://api.brain-map.org/api/v2/data/SectionDataSet/{0}.json",
     "reconstruction_lookup":    "http://api.brain-map.org/api/v2/data/Specimen/{0}.json?include=neuron_reconstructions(well_known_files)",
     "ccf_model_path":           "/allen/aibs/informatics/datacube/t/projects/0378/vol1/informatics/model/P56/models/MouseCCF2016/{0}.obj",

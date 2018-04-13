@@ -72,7 +72,10 @@ def generate(data_src, data_dir, data_name, manifest_filename, resolution):
         colorize(ccf_anno, ids, colors, ccf_anno_color)
 
         r=requests.get(data_src + '/api/v2/data/Structure/query.json?criteria=[graph_id$eq1]&num_rows=all')
-        structures = pd.DataFrame(json.loads(r.text)['msg'])
+        ccf_ontology_j = json.loads(r.text)['msg']
+        with open(os.path.join(data_dir, 'ccf_ontology.json'), 'w') as f:
+            json.dump(ccf_ontology_j, f)
+        structures = pd.DataFrame(ccf_ontology_j)
         structures_ds = xr.Dataset.from_dataframe(structures)
         structures_ds.coords['structure'] = structures_ds['id']
         structures_ds = structures_ds.drop('index')
