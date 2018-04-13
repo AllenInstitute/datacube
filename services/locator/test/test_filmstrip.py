@@ -33,6 +33,28 @@ def test_get_rotation_matrix(filmstrip):
     mat = np.array(filmstrip.get_rotation_matrix(np.pi, "vertical"))
     c2 = np.dot(mat, c1)
     assert np.allclose(c2, [1,-1,-1,1])
+
+def test_rotate_volume_coordinate(filmstrip):
+
+    # this thing is quite stateful, don't want the tests to mess it up
+    old_cor = filmstrip.center_of_rotation
     
-    
+    frames_per_deg = filmstrip.frames / filmstrip.rotation
+
+    filmstrip.center_of_rotation = np.array([1,0,1])
+    c = filmstrip.rotate_volume_coordinate(np.array([0,0,0]), 0, "horizontal")
+    assert np.allclose(c, [0,0,0])
+
+    c = filmstrip.rotate_volume_coordinate(np.array([0,0,0]), frames_per_deg*90, "horizontal")
+    assert np.allclose(c, [0,0,2])
+
+    filmstrip.center_of_rotation = np.array([0,1,1])
+    c = filmstrip.rotate_volume_coordinate(np.array([0,0,0]), 0, "vertical")
+    assert np.allclose(c, [0,0,0])
+
+    c = filmstrip.rotate_volume_coordinate(np.array([0,0,0]), frames_per_deg*180, "vertical")
+    assert np.allclose(c, [0,2,2])
+
+    # reset to old value
+    filmstrip.center_of_rotation = old_cor
     

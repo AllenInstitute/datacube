@@ -14,14 +14,22 @@ class FilmStripLocator ():
         self.rotation = 360.0
         self.config = config
 
+        self.vol_padding = np.array([0.0, 0.0, 0.0])
+        self.center_of_rotation = [0, 0, 0]
+        self.depth_scale = [1.0, 1.0, 1.0]
+        self.center_of_rotation = [i * .5 for i in self.annot_dimensions]
+
+        self.frame_width = -1
+
     def get(self, pixel, distance_map_path, direction, results):
         try:
             self.prepare_files(pixel, distance_map_path, direction)
-            self.get_volume_coordinate(pixel, distance_map_path, direction)
-            self.phys_coord = [i * self.annot_spacing for i in self.vol_coord]
+
+            vol_coord = self.get_volume_coordinate(pixel, distance_map_path, direction)
+            phys_coord = [i * self.annot_spacing for i in vol_coord]
             
-            results.setdefault("volumeCoordinate", list(self.vol_coord))
-            results.setdefault("physicalCoordinate", self.phys_coord)
+            results.setdefault("volumeCoordinate", list(vol_coord))
+            results.setdefault("physicalCoordinate", phys_coord)
             results["success"] = True
             
             return results
@@ -37,14 +45,9 @@ class FilmStripLocator ():
         if not os.path.exists(distance_map_path) or not os.path.getsize(distance_map_path) > 0:
             raise IOError("Distance map does not exist or was not provided")
 
-        # new up our structures, just in case one ends up being empty when we return errything
-        self.vol_coord = np.array([-1, -1, -1])
-        self.phys_coord = np.array([-1, -1, -1])
-
         self.read_mhd_header(distance_map_path)
 
         self.frame_width = self.dist_map_dimensions[0] / self.frames
-        self.vol_padding = np.array([0.0, 0.0, 0.0])
 
         self.dist_map_spacing.append(self.dist_map_spacing[0])
         if direction == "vertical":
@@ -59,10 +62,6 @@ class FilmStripLocator ():
             self.vol_padding[1] = (max_ver_size - y_len) * .5
 
 
-        self.center_of_rotation = [0, 0, 0]
-        self.depth_scale = [1.0, 1.0, 1.0]
-
-        self.center_of_rotation = [i * .5 for i in self.annot_dimensions]
         self.depth_scale = [float(i) / float(self.annot_spacing) for i in self.dist_map_spacing]
 
 
@@ -74,9 +73,10 @@ class FilmStripLocator ():
         
         frame = pixel[0] // self.frame_width
 
-        self.vol_coord = np.array([pixel[0] - (frame * self.frame_width), pixel[1], depth])
-        self.vol_coord = (self.vol_coord - self.vol_padding) * self.depth_scale
-        self.vol_coord = self.rotate_volume_coordinate(self.vol_coord, frame, direction)
+        vol_coord = np.array([pixel[0] - (frame * self.frame_width), pixel[1], depth])
+        vol_coord = (vol_coord - self.vol_padding) * self.depth_scale
+        return self.rotate_volume_coordinate(vol_coord, frame, direction)
+
 
     def get_rotation_matrix(self, theta, rotation_direction):
         ctheta = math.cos(theta)
@@ -94,6 +94,7 @@ class FilmStripLocator ():
                     [ 0.0,   stheta,  ctheta,    0.0 ],
                     [ 0.0,   0.0,     0.0,       1.0 ]]
 
+
     def sample_distance_map(self, pixel_coord):
         with open(self.dist_map_raw, 'rb') as raw_file:
             index = int(pixel_coord[1] * self.frame_width * self.frames + pixel_coord[0])
@@ -103,18 +104,19 @@ class FilmStripLocator ():
             d = struct.unpack('<i', raw_file.read(unsigned_int_size))[0]
         return d
 
-    def rotate_volume_coordinate(self, vol_coords, angle, direction):
-        deg = -angle * self.rotation / self.frames
+
+    def rotate_volume_coordinate(self, vol_coord, frame, direction):
+        deg = -frame * self.rotation / self.frames
         theta = deg * math.pi / 180.0
 
         tmp_coord = np.ones(4)
-        tmp_coord[:3] = vol_coords - self.center_of_rotation
+        tmp_coord[:3] = vol_coord - self.center_of_rotation
 
         transform = np.array(self.get_rotation_matrix(theta, direction))
-
         tmp_coord = np.dot(transform, tmp_coord)
 
         return tmp_coord[:3] + self.center_of_rotation
+
 
     def read_mhd_header(self, meta_file):
         with open(meta_file, 'r') as f:
