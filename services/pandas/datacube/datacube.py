@@ -183,7 +183,7 @@ class Datacube:
         return subscripts
 
 
-    def _get_data(self, select=None, coords=None, fields=None, filters=None, dim_order=None, df=None):
+    def _get_data(self, select=None, coords=None, fields=None, filters=None, dim_order=None, df=None, drop=False):
         if df is not None:
             res = df
         else:
@@ -199,16 +199,16 @@ class Datacube:
             self._validate_select(select)
             subscripts = self._get_subscripts_from_select(select)
         if subscripts:
-            res = res[subscripts]
+            res = res.isel(**subscripts, drop=drop)
         if coords:
             # cast coords to correct type
             coords = {dim: np.array(v, dtype=res.coords[dim].dtype).tolist() for dim,v in iteritems(coords)}
             # apply all coords, rounding to nearest when possible
             for dim, coord in iteritems(coords):
                 try:
-                    res = res.sel(**{dim: coord}, method='nearest')
+                    res = res.sel(**{dim: coord}, drop=drop, method='nearest')
                 except ValueError:
-                    res = res.sel(**{dim: coord})
+                    res = res.sel(**{dim: coord}, drop=drop)
         if fields:
             res = res[fields]
         if filters and f['masks']:
@@ -607,7 +607,7 @@ class Datacube:
                         field = operand['field']
                         select = operand.get('select', None)
                         coords = operand.get('coords', None)
-                        data = self._get_data(fields=field, select=select, coords=coords, df=df)
+                        data = self._get_data(fields=field, select=select, coords=coords, df=df, drop=True)
                         if df[field] is not self.df[field] or field not in self.argsorts or select or coords:
                             data = data.where(xr_ufuncs.logical_and(data>=(coord-value), data<=(coord+value)), drop=True)
                         else:
@@ -632,7 +632,7 @@ class Datacube:
 
                 res = {'inds': {}, 'masks': []}
                 if df is not self.df or field not in self.argsorts or select or coords:
-                    lhs = self._get_data(fields=field, select=select, coords=coords, df=df)
+                    lhs = self._get_data(fields=field, select=select, coords=coords, df=df, drop=True)
                     if op == '=' or op == 'is':
                         mask = (lhs == value)
                     elif op == '<':
