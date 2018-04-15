@@ -88,7 +88,7 @@ class Datacube:
     def load(self, nc_file, chunks=None, missing_data=False, calculate_stats=True):
         #todo: rename df
         #todo: argsorts need to be cached to a file (?)
-        self.df = xr.open_dataset(nc_file, chunks=chunks)
+        self.df = xr.open_dataset(nc_file, chunks=chunks, engine='h5netcdf')
         for field in self.df.variables:
             if self.df[field].dtype.name.startswith('bytes'):
                 self.df[field] = self.df[field].astype('str')
