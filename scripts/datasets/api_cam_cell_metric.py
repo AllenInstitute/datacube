@@ -53,7 +53,7 @@ def generate(data_src=None, data_dir='./', data_name='cell_specimens'):
     del df
     ds = np_structured_array_to_xr_dataset(sa)
     del sa
-    ds.to_netcdf(nc_file, format='NETCDF4')
+    ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
     print('Data created in data_dir.')
 
 

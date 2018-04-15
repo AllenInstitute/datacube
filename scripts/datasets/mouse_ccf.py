@@ -95,7 +95,7 @@ def generate(data_src, data_dir, data_name, manifest_filename, resolution):
             }
         )
         ds.merge(structures_ds, inplace=True)
-        ds.to_netcdf(data_path, format='NETCDF4')
+        ds.to_netcdf(data_path, format='NETCDF4', engine='h5netcdf')
     print('Data created in data_dir.')
 
 

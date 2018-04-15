@@ -20,7 +20,7 @@ def test_nd_netcdf(request, tmpdir_factory):
     data_vars = {'foo_{0}'.format(i): (dims[:(i+1)], np.random.random(shape[:(i+1)])) for i in range(ndim)}
     ds = xr.Dataset(coords=coords, data_vars=data_vars)
     nc_file = str(tmpdir_factory.mktemp('data').join('foo.nc'))
-    ds.to_netcdf(nc_file, format='NETCDF4')
+    ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
     return nc_file, ds
 
 

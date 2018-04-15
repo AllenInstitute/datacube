@@ -10,6 +10,9 @@ class VoxelLookup():
         self.spacing = np.array([25, 25, 25])
 
     def get (self, coords, results):
+        results.setdefault("message", "this route has been removed in favor of datacube core.")
+        return results
+
         if coords == None or len(coords) < 3:
                 results.setdefault("message", "missing or invalid volume location")
                 return results

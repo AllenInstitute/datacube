@@ -7,7 +7,7 @@ numpy==1.13.0
 scipy
 txaio
 xarray
-netCDF4
+h5netcdf
 dask
 toolz
 txredisapi
