@@ -120,7 +120,7 @@
                         },
                         "ccf_model": {
                             "type": "static",
-                            "directory": "../../structure_meshes/",
+                            "directory": "../structure_meshes/",
                             "options": {
                                 "enable_directory_listing": true,
                                 "mime_types": {}
