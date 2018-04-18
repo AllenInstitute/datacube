@@ -114,6 +114,19 @@
                             "options": {
                                 "debug": true
                             }
+                        },
+                        "ccf_model": {
+                            "type": "static",
+                            "directory": "../../structure_meshes/",
+                            "options": {
+                                "enable_directory_listing": true,
+                                "mime_types": {}
+                            }
+                        },
+                        "cgi": {
+                            "type": "cgi",
+                            "directory": "../../cgi",
+                            "processor": "../pypy3.5-5.10.1-linux_x86_64-portable/bin/pypy3"
                         }
                     }
                 }

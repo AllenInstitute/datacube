@@ -3,7 +3,7 @@ import os
 import requests
 import json
 
-router_uri = 'http://' + os.environ['HTTP_HOST'] + '/call'
+router_uri = 'http://localhost:8080/call'
 
 r=requests.post(router_uri, json={
     "procedure": "wamp.registration.list",
