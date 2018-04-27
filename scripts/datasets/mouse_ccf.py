@@ -16,7 +16,7 @@ from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 from allensdk.config.manifest import Manifest
 
 
-MESH_STRUCTURE_SET = 114512892#691663206
+MESH_STRUCTURE_SET = 691663206
 
 def main():
     parser = argparse.ArgumentParser(description='MNI reference space datacube generator script')
