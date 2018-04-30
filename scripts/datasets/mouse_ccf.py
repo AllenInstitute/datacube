@@ -16,6 +16,8 @@ from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 from allensdk.config.manifest import Manifest
 
 
+MESH_STRUCTURE_SET = 691663206
+
 def main():
     parser = argparse.ArgumentParser(description='MNI reference space datacube generator script')
     parser.add_argument('--data-src', default='http://api.brain-map.org/', help='base RMA url from which to load data')
@@ -71,10 +73,25 @@ def generate(data_src, data_dir, data_name, manifest_filename, resolution):
         colors = np.stack(lmap(lambda x: x[1], sorted_colors), axis=0)
         colorize(ccf_anno, ids, colors, ccf_anno_color)
 
-        r=requests.get(data_src + '/api/v2/data/Structure/query.json?criteria=[graph_id$eq1]&num_rows=all')
+        r = requests.get(data_src + '/api/v2/data/Structure/query.json?criteria=[graph_id$eq1]&num_rows=all')
         ccf_ontology_j = json.loads(r.text)['msg']
+
+        # download list of structures with meshes
+        r_ss = requests.get(data_src + '/api/v2/data/StructureSet/%d.json?include=structures' % MESH_STRUCTURE_SET)
+        try:
+            mesh_structures = json.loads(r_ss.text)['msg'][0]['structures']
+        except IndexError as e:
+            raise Exception("Could not find structures in structure set %d" % MESH_STRUCTURE_SET)
+
+        mesh_structure_ids = set(ms['id'] for ms in mesh_structures)
+    
+        # annotate structure records
+        for structure in ccf_ontology_j:
+            structure['has_mesh'] = structure['id'] in mesh_structure_ids
+
         with open(os.path.join(data_dir, 'ccf_ontology.json'), 'w') as f:
             json.dump(ccf_ontology_j, f)
+
         structures = pd.DataFrame(ccf_ontology_j)
         structures_ds = xr.Dataset.from_dataframe(structures)
         structures_ds.coords['structure'] = structures_ds['id']
