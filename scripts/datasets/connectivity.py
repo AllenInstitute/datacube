@@ -101,7 +101,9 @@ def make_annotation_volume_paths():
     return ccf_anno_paths
 
 
-def make_primary_structure_paths():
+def make_primary_structure_paths(primary_structures, ontology_depth, structure_paths):
+    ''' Builds a ragged array of structure paths starting at the primary structure for each experiment.
+    '''
 
     primary_structure_paths = np.zeros((len(primary_structures), ontology_depth), dtype=primary_structures.dtype)
 
@@ -244,7 +246,7 @@ def main():
     structure_paths_array = make_structure_paths_array()
 
     primary_structures = experiments_ds.structure_id.values
-    primary_structure_paths = make_primary_structure_paths()
+    primary_structure_paths = make_primary_structure_paths(primary_structures, ontology_depth, structure_paths)
 
     volume = make_projection_volume(experiment_ids, mcc)
 
