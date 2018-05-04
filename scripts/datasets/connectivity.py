@@ -24,6 +24,8 @@ SUMMARY_SET_ID = 167587189
 HEMISPHERE_IDS = [1, 2, 3]
 HEMISPHERE_MAP = {1: 'left', 2: 'right', 3: 'bilateral'}
 API_CONNECTIVITY_QUERY = '/api/v2/data/ApiConnectivity/query.csv?num_rows=all'
+DEFAULT_SURFACE_COORDS_PATH = '/allen/programs/celltypes/production/0378/informatics/model/P56/corticalCoordinates/surface_coords_10.h5'
+
 
 
 def get_projection_table(unionizes, experiment_ids, structure_ids, data_field):
@@ -305,8 +307,7 @@ def main():
     ds.to_netcdf(os.path.join(args.data_dir, args.data_name + '.nc'), format='NETCDF4', engine='h5netcdf')
 
     #PBS-1262:
-    surface_coords_file = '/allen/programs/celltypes/production/0378/informatics/model/P56/corticalCoordinates/surface_coords_10.h5'
-    shutil.copy2(surface_coords_file, args.data_dir)
+    shutil.copy2(args.surface_coords_path, args.data_dir)
 
 
 if __name__ == '__main__':
@@ -319,6 +320,7 @@ if __name__ == '__main__':
     parser.add_argument('--data-name', default='mouse_ccf', help="base name with which to create files")
     parser.add_argument('--manifest_filename', type=str, default='mouse_connectivity_manifest.json')
     parser.add_argument('--resolution', type=int, default=100)
+    parser.add_argument('--surface_coords_path', type=str, default=DEFAULT_SURFACE_COORDS_PATH)
 
     args = parser.parse_args()
 
