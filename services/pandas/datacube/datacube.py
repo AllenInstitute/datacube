@@ -474,8 +474,8 @@ class Datacube:
         mseed2 = mseed * ~np.isnan(seed)
 
         def _num_samples():
-            return Datacube._get_num_samples(data, axis, mdata, backend=backend)
-        num_samples, _ = self._cache(_num_samples, json.dumps(cache_key+['num_samples', axis]), redis_client, disable=(not use_cache))
+            return Datacube._get_num_samples(data, axis, mdata, backend=backend)[0].compute()
+        num_samples = self._cache(_num_samples, json.dumps(cache_key+['num_samples', axis]), redis_client, disable=(not use_cache))
         seed_num_samples, _ = Datacube._get_num_samples(seed, axis, mseed2, backend=backend)
         seed_mean = backend.einsum(seed, range(seed.ndim), mseed2, range(mseed2.ndim), [], dtype=data.dtype) / seed_num_samples.astype(data.dtype)
         seed_dev = backend.einsum(seed-seed_mean, range(seed.ndim), mseed2, range(mseed2.ndim), range(seed.ndim), dtype=data.dtype)
