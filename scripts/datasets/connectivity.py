@@ -9,6 +9,7 @@ import urllib
 import requests
 from io import StringIO
 import shutil
+from collections import OrderedDict
 
 import nrrd
 import numpy as np
@@ -21,8 +22,7 @@ from allensdk.config.manifest import Manifest
 
 FIBER_TRACTS_ID = 1009
 SUMMARY_SET_ID = 167587189
-HEMISPHERE_IDS = [1, 2, 3]
-HEMISPHERE_MAP = {1: 'left', 2: 'right', 3: 'bilateral'}
+HEMISPHERE_MAP = OrderedDict({1: 'left', 2: 'right', 3: 'bilateral'})
 API_CONNECTIVITY_QUERY = '/api/v2/data/ApiConnectivity/query.csv?num_rows=all'
 DEFAULT_SURFACE_COORDS_PATH = (
     '/allen/programs/celltypes/production/0378/informatics/model/P56/corticalCoordinates/surface_coords_10.h5'
@@ -72,33 +72,50 @@ def get_all_unionizes(mcc, all_unionizes_path, experiment_ids):
     return unionizes
 
 
-def map_hemisphere_id(hem_id):
-    return HEMISPHERE_MAP[hem_id]
-
-
-def make_unionize_tables(data_field_key, mcc, all_unionizes_path, experiment_ids, structure_ids):
+def make_unionize_tables(data_field_key, mcc, all_unionizes_path, experiment_ids, structure_ids, hemisphere_map=HEMISPHERE_MAP):
     ''' Build a 4D table of unionize values, organized by experiment, structure, hemisphere and injection status
+
+    Parameters
+    ----------
+    data_field_key : str
+        Use this field as the values in the output table
+    mcc : allensdk.core.mouse_connectivity_cache.MouseConnectivityCache
+        Used to manage data access
+    all_unionizes_path : str
+        Path to csv file containing unionizes for the entire dataset
+    experiment_ids : list of int
+        Ids of experiments to include
+    structure_ids : list of int
+        Ids of structures to include
+    hemisphere_map : collections.OrderedDict
+        Maps hemisphere ids to full names
+
+    Returns
+    -------
+    tables : xarray.DataArray
+        4D unionize table
+
     '''
 
     unionizes = get_all_unionizes(mcc, all_unionizes_path, experiment_ids)
 
     nstructures = len(structure_ids)
-    nhemispheres = len(HEMISPHERE_IDS)
+    nhemispheres = len(hemisphere_map)
     nexperiments = len(experiment_ids)
 
     tables = xr.DataArray(
         np.zeros([nexperiments, nstructures, nhemispheres, 2]),
         dims=['experiment', 'structure', 'hemisphere', 'injection'],
-        coords={'experiment': experiment_ids, 'structure': structure_ids, 'hemisphere': list(map(map_hemisphere_id, HEMISPHERE_IDS)), 
+        coords={'experiment': experiment_ids, 'structure': structure_ids, 'hemisphere': list(hemisphere_map.values()), 
         'injection': [False, True]}
     )
     print(tables.coords)
 
-    for hid in HEMISPHERE_IDS:
+    for hid in hemisphere_map:
         for isinj in [0, 1]:
             spec_table = get_specified_projection_table(mcc, unionizes, experiment_ids, structure_ids, isinj, hid, data_field_key)
             print(hid, isinj, spec_table.values.sum())
-            tables.loc[:, :, map_hemisphere_id(hid), isinj] =  spec_table
+            tables.loc[:, :, hemisphere_map[hid], isinj] =  spec_table
 
     print(tables.loc[482578964, 1066, 'left', 0])
     print(tables.shape)
