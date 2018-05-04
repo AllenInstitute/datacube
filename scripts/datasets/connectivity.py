@@ -23,6 +23,59 @@ FIBER_TRACTS_ID = 1009
 SUMMARY_SET_ID = 167587189
 
 
+def rgb_to_hex(rgb):
+    ''' Convert an rgb triplet to a hex string
+    '''
+
+    return ''.join([ hex(ii)[2:] for ii in rgb ])
+
+
+def get_structure_information(tree, summary_set_id=SUMMARY_SET_ID, exclude_from_summary={FIBER_TRACTS_ID,}):
+    ''' Convenience function for extracting relevant metadata about ontological structures
+
+    Parameters
+    ----------
+    tree : allensdk.core.structure_tree.StructureTree
+        Holds the structure ontology.
+    summary_set_id : int, optional
+        Use this id to determine which structures are in the summary structure set. Defaults to 167587189.
+    exlude_from_summary : set of int, optional
+        Exclude these structures from the summary structure set. Defaults to 1009 (fiber tracts).
+
+    Returns
+    -------
+    structure_meta : xarray.Dataset
+        Contains the name and acronym of each structure
+    structure_ids : list of int
+        The id of each structure
+    structure_colors : list of str
+        The ontological color of each structure (as a hex string)
+    structure_paths : dict | int -> list of int
+        Maps structure ids to lists of int. Each such list describes the path from the root of the structure tree to 
+        structure in question.
+    summary_structures : set of int
+        Contains the ids of each summary structure (minus those specifically excluded)
+        
+    '''
+
+    nodes = pd.DataFrame(tree.nodes())
+
+    structure_ids = list(nodes['id'].values)
+    structure_colors = list(nodes['rgb_triplet'].map(rgb_to_hex).values)
+    structure_paths = { row.id: row.structure_id_path for row in nodes.itertuples() }
+
+    summary_structures = {
+        s['id'] for s in tree.get_structures_by_set_id([summary_set_id]) 
+        if s['id'] not in exclude_from_summary
+    }
+
+    structure_meta = nodes[['name','acronym']]
+    structure_meta = xr.Dataset.from_dataframe(structure_meta)
+    structure_meta = structure_meta.drop('index').rename({'index': 'structure'})
+
+    return structure_meta, structure_ids, structure_colors, structure_paths, summary_structures
+
+
 def main():
 
     mcc_dir = os.path.join(args.data_dir, 'mouse_connectivity_cache')
@@ -32,6 +85,9 @@ def main():
     all_unionizes_path = os.path.join(mcc_dir, 'all_unionizes.csv')
     mcc = MouseConnectivityCache(manifest_file=manifest_path, resolution=args.resolution, base_uri=args.data_src)
 
+    tree = mcc.get_structure_tree()
+    structure_meta, structure_ids, structure_colors, structure_paths, summary_structures = get_structure_information(tree)
+
     r=requests.get(args.data_src + '/api/v2/data/ApiConnectivity/query.csv?num_rows=all')
     experiments = pd.read_csv(StringIO(r.text), true_values=['t'], false_values=['f'])
 
@@ -40,19 +96,8 @@ def main():
     experiments_ds.coords['experiment'] = experiments_ds.data_set_id
 
     experiment_ids = experiments_ds.data_set_id.values.tolist()
-    tree = mcc.get_structure_tree()
-    structure_ids = list(tree.node_ids())
-    structure_meta = pd.DataFrame(tree.nodes())
-    structure_meta = structure_meta[['name','acronym']]
-    structure_meta = xr.Dataset.from_dataframe(structure_meta)
-    structure_meta = structure_meta.drop('index').rename({'index': 'structure'})
-    summary_structures = {
-        s['id'] for s in tree.get_structures_by_set_id([SUMMARY_SET_ID]) 
-        if s['id'] != FIBER_TRACTS_ID
-    } # summary structures minus fiber tracts
 
     ccf_anno = mcc.get_annotation_volume(file_name=os.path.join(mcc_dir, 'annotation_{:d}.nrrd'.format(args.resolution)))[0]
-    structure_paths = {s['id']: s['structure_id_path'] for s in tree.filter_nodes(lambda x: True)}
     ontology_depth = max([len(p) for p in structure_paths.values()])
 
     def make_annotation_volume_paths():
@@ -190,7 +235,7 @@ def main():
             'is_summary_structure': (['structure'], [structure in summary_structures for structure in projection_unionize.structure]),
             'anterior_posterior': args.resolution*np.arange(ccf_anno.shape[0]),
             'superior_inferior': args.resolution*np.arange(ccf_anno.shape[1]),
-            'left_right': args.resolution*np.arange(ccf_anno.shape[2])
+            'left_right': args.resolution*np.arange(ccf_anno.shape[2]),
         }
     )
 
