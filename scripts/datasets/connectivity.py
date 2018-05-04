@@ -42,7 +42,7 @@ def main():
     experiment_ids = experiments_ds.data_set_id.values.tolist()
     tree = mcc.get_structure_tree()
     structure_ids = list(tree.node_ids())
-    structure_meta = pd.DataFrame(tree.filter_nodes(lambda x: True))
+    structure_meta = pd.DataFrame(tree.nodes())
     structure_meta = structure_meta[['name','acronym']]
     structure_meta = xr.Dataset.from_dataframe(structure_meta)
     structure_meta = structure_meta.drop('index').rename({'index': 'structure'})
