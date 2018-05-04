@@ -80,7 +80,14 @@ def make_unionize_tables(data_field_key):
 
 
 def make_structure_paths_array():
-    structure_paths_array = np.zeros(projection_unionize.structure.shape+(ontology_depth,), dtype=projection_unionize.structure.dtype)
+    '''
+    '''
+    
+    structure_paths_array = np.zeros(
+        projection_unionize.structure.shape+(ontology_depth,), 
+        dtype=projection_unionize.structure.dtype
+    )
+
     for i in range(projection_unionize.structure.shape[0]):
         structure_id = int(projection_unionize.structure[i])
         if structure_id > 0:
@@ -89,20 +96,34 @@ def make_structure_paths_array():
     return structure_paths_array
 
 
-def make_annotation_volume_paths():
+def make_annotation_volume_paths(ccf_anno, ontology_depth, structure_paths):
+    ''' Builds a 4D array, ragged in the last axis, which assigns to each CCF voxel 
+    the structure id path associated with the structure at that voxel.
+
+    Notes
+    -----
+    no way this is the most efficient implementation
+
+    '''
+
     ccf_anno_paths = np.zeros(ccf_anno.shape+(ontology_depth,), dtype=ccf_anno.dtype)
+
     for i in range(ccf_anno.shape[0]):
         for j in range(ccf_anno.shape[1]):
             for k in range(ccf_anno.shape[2]):
+
                 structure_id = ccf_anno[i,j,k]
+
                 if structure_id > 0:
                     path = structure_paths[structure_id]
                     ccf_anno_paths[i,j,k,:len(path)] = path
+
     return ccf_anno_paths
 
 
 def make_primary_structure_paths(primary_structures, ontology_depth, structure_paths):
-    ''' Builds a ragged array of structure paths starting at the primary structure for each experiment.
+    ''' Builds a ragged array which assigns to each experiment the structure id path associated with that 
+    experiment's primary structure
     '''
 
     primary_structure_paths = np.zeros((len(primary_structures), ontology_depth), dtype=primary_structures.dtype)
@@ -235,7 +256,7 @@ def main():
 
     ccf_anno = mcc.get_annotation_volume(file_name=os.path.join(mcc_dir, 'annotation_{:d}.nrrd'.format(args.resolution)))[0]
     ontology_depth = max([len(p) for p in structure_paths.values()])
-    ccf_anno_paths = make_annotation_volume_paths()
+    ccf_anno_paths = make_annotation_volume_paths(ccf_anno, ontology_depth, structure_paths)
 
     pv = make_unionize_tables('projection_volume')
     npv = make_unionize_tables('normalized_projection_volume')
