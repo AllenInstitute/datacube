@@ -56,7 +56,9 @@ def map_hemisphere_id(hem_id):
     return HEMISPHERE_MAP[hem_id]
 
 
-def make_unionize_tables(data_field_key):
+def make_unionize_tables(data_field_key, mcc, all_unionizes_path, experiment_ids, structure_id):
+    ''' Build a 4D table of unionize values, organized by experiment, structure, hemisphere and injection status
+    '''
 
     unionizes = get_all_unionizes(mcc, all_unionizes_path, experiment_ids)
 
@@ -64,10 +66,12 @@ def make_unionize_tables(data_field_key):
     nhemispheres = len(HEMISPHERE_IDS)
     nexperiments = len(experiment_ids)
 
-    tables = xr.DataArray(np.zeros([nexperiments, nstructures, nhemispheres, 2]),
-                            dims=['experiment', 'structure', 'hemisphere', 'injection'],
-                            coords={'experiment': experiment_ids, 'structure': structure_ids,
-                                    'hemisphere': list(map(map_hemisphere_id, HEMISPHERE_IDS)), 'injection': [False, True]})
+    tables = xr.DataArray(
+        np.zeros([nexperiments, nstructures, nhemispheres, 2]),
+        dims=['experiment', 'structure', 'hemisphere', 'injection'],
+        coords={'experiment': experiment_ids, 'structure': structure_ids, 'hemisphere': list(map(map_hemisphere_id, HEMISPHERE_IDS)), 
+        'injection': [False, True]}
+    )
     print(tables.coords)
 
     for hid in HEMISPHERE_IDS:
@@ -262,8 +266,8 @@ def main():
     ontology_depth = max([len(p) for p in structure_paths.values()])
     ccf_anno_paths = make_annotation_volume_paths(ccf_anno, ontology_depth, structure_paths)
 
-    pv = make_unionize_tables('projection_volume')
-    npv = make_unionize_tables('normalized_projection_volume')
+    pv = make_unionize_tables('projection_volume', mcc, all_unionizes_path, experiment_ids, structure_id)
+    npv = make_unionize_tables('normalized_projection_volume', mcc, all_unionizes_path, experiment_ids, structure_id)
 
     projection_unionize = xr.concat([pv,npv],xr.DataArray([False,True],dims=['normalized'],name='normalized'))
     structure_volumes = make_unionize_tables('volume')
