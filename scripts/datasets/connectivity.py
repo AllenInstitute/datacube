@@ -102,16 +102,23 @@ def make_annotation_volume_paths():
 
 
 def make_primary_structure_paths():
+
     primary_structure_paths = np.zeros((len(primary_structures), ontology_depth), dtype=primary_structures.dtype)
+
     for i in range(len(primary_structures)):
         structure_id = int(primary_structures[i])
+        
         if structure_id > 0:
             path = structure_paths[structure_id]
             primary_structure_paths[i,:len(path)] = path
+
     return primary_structure_paths
 
 
-def make_projection_volume():
+def make_projection_volume(experiment_ids, mcc):
+    ''' Build a 4D array of projection density volumes, with experiment as the 4th axis
+    '''
+
     for ii, eid in enumerate(experiment_ids):
 
         data, header = mcc.get_projection_density(eid)
@@ -124,10 +131,13 @@ def make_projection_volume():
 
         volume[:, :, :, ii] = data
         logging.info('pasted data from experiment {0} ({1})'.format(eid, ii))
+
     return volume
 
 
 def make_injection_structures_arrays(experiments_ds, ontology_depth, structure_paths):
+    '''
+    '''
 
     injection_structures_list = [
         [int(id) for id in s.split('/')] 
@@ -236,7 +246,7 @@ def main():
     primary_structures = experiments_ds.structure_id.values
     primary_structure_paths = make_primary_structure_paths()
 
-    volume = make_projection_volume()
+    volume = make_projection_volume(experiment_ids, mcc)
 
     injection_structures_arr, injection_structure_paths = make_injection_structures_arrays(
         experiments_ds, ontology_depth, structure_paths)
