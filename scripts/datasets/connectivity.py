@@ -23,6 +23,7 @@ FIBER_TRACTS_ID = 1009
 SUMMARY_SET_ID = 167587189
 HEMISPHERE_IDS = [1, 2, 3]
 HEMISPHERE_MAP = {1: 'left', 2: 'right', 3: 'bilateral'}
+API_CONNECTIVITY_QUERY = '/api/v2/data/ApiConnectivity/query.csv?num_rows=all'
 
 
 def get_projection_table(unionizes, experiment_ids, structure_ids, data_field):
@@ -126,15 +127,23 @@ def make_projection_volume():
     return volume
 
 
-def make_injection_structures_arrays():
-    injection_structures_list = [[int(id) for id in s.split('/')] for s in experiments_ds.injection_structures.values.tolist()]
+def make_injection_structures_arrays(experiments_ds, ontology_depth, structure_paths):
+
+    injection_structures_list = [
+        [int(id) for id in s.split('/')] 
+        for s in experiments_ds.injection_structures.values.tolist()
+    ]
+
     injection_structures_arr = np.zeros((len(injection_structures_list), max([len(x) for x in injection_structures_list])))
     injection_structure_paths = np.zeros(injection_structures_arr.shape+(ontology_depth,), dtype=injection_structures_arr.dtype)
+
     for i, structures in enumerate(injection_structures_list):
         injection_structures_arr[i][:len(structures)] = structures
+
         for j in range(len(structures)):
             path = structure_paths[structures[j]]
-            injection_structure_paths[i,j,:len(path)] = path
+            injection_structure_paths[i, j, :len(path)] = path
+
     return injection_structures_arr, injection_structure_paths
 
 
@@ -203,7 +212,7 @@ def main():
     tree = mcc.get_structure_tree()
     structure_meta, structure_ids, structure_colors, structure_paths, summary_structures = get_structure_information(tree)
 
-    r=requests.get(args.data_src + '/api/v2/data/ApiConnectivity/query.csv?num_rows=all')
+    r=requests.get(args.data_src + API_CONNECTIVITY_QUERY)
     experiments = pd.read_csv(StringIO(r.text), true_values=['t'], false_values=['f'])
 
     experiments_ds = xr.Dataset.from_dataframe(experiments)
@@ -229,7 +238,8 @@ def main():
 
     volume = make_projection_volume()
 
-    injection_structures_arr, injection_structure_paths = make_injection_structures_arrays()
+    injection_structures_arr, injection_structure_paths = make_injection_structures_arrays(
+        experiments_ds, ontology_depth, structure_paths)
 
     ccf_dims = ['anterior_posterior', 'superior_inferior', 'left_right']
     ds = xr.Dataset(
