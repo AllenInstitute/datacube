@@ -79,10 +79,10 @@ def make_unionize_tables(data_field_key):
     return tables
 
 
-def make_structure_paths_array():
+def make_structure_paths_array(projection_unionize, ontology_depth, structure_paths):
+    ''' Builds a ragged array of structure id paths
     '''
-    '''
-    
+
     structure_paths_array = np.zeros(
         projection_unionize.structure.shape+(ontology_depth,), 
         dtype=projection_unionize.structure.dtype
@@ -90,9 +90,11 @@ def make_structure_paths_array():
 
     for i in range(projection_unionize.structure.shape[0]):
         structure_id = int(projection_unionize.structure[i])
+
         if structure_id > 0:
             path = structure_paths[structure_id]
-            structure_paths_array[i,:len(path)] = path
+            structure_paths_array[i, :len(path)] = path
+
     return structure_paths_array
 
 
@@ -264,7 +266,7 @@ def main():
     projection_unionize = xr.concat([pv,npv],xr.DataArray([False,True],dims=['normalized'],name='normalized'))
     structure_volumes = make_unionize_tables('volume')
 
-    structure_paths_array = make_structure_paths_array()
+    structure_paths_array = make_structure_paths_array(projection_unionize, ontology_depth, structure_paths)
 
     primary_structures = experiments_ds.structure_id.values
     primary_structure_paths = make_primary_structure_paths(primary_structures, ontology_depth, structure_paths)
