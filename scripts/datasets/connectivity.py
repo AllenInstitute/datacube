@@ -19,6 +19,10 @@ from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 from allensdk.config.manifest import Manifest
 
 
+FIBER_TRACTS_ID = 1009
+SUMMARY_SET_ID = 167587189
+
+
 def main():
 
     mcc_dir = os.path.join(args.data_dir, 'mouse_connectivity_cache')
@@ -42,7 +46,10 @@ def main():
     structure_meta = structure_meta[['name','acronym']]
     structure_meta = xr.Dataset.from_dataframe(structure_meta)
     structure_meta = structure_meta.drop('index').rename({'index': 'structure'})
-    summary_structures = [s['id'] for s in tree.get_structures_by_set_id([167587189]) if s['id'] != 1009] # summary structures minus fiber tracts
+    summary_structures = {
+        s['id'] for s in tree.get_structures_by_set_id([SUMMARY_SET_ID]) 
+        if s['id'] != FIBER_TRACTS_ID
+    } # summary structures minus fiber tracts
 
     ccf_anno = mcc.get_annotation_volume(file_name=os.path.join(mcc_dir, 'annotation_{:d}.nrrd'.format(args.resolution)))[0]
     structure_paths = {s['id']: s['structure_id_path'] for s in tree.filter_nodes(lambda x: True)}
