@@ -190,6 +190,15 @@ def main():
     ds.merge(experiments_ds, inplace=True, join='exact')
     ds.merge(structure_meta, inplace=True, join='left')
     ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly
+
+    ds['is_projection'] = xr.full_like(ds.projection, False, dtype=np.bool)
+    for i in range(ds.dims['experiment']):
+        print('generating mask for experiment {} of {}'.format(i, ds.dims['experiment']))
+        injection_structures = ds.injection_structures_array.isel(experiment=i)
+        injection_structures = injection_structures.where(injection_structures!=0, drop=True)
+        ds.is_projection[dict(experiment=i)] = (ds.ccf_structures!=injection_structures).all(dim=['depth','secondary'])
+        ds.is_projection[dict(experiment=i)] = xr.ufuncs.logical_and(ds.is_projection.isel(experiment=i), ds.ccf_structure != 0)
+
     ds.to_netcdf(os.path.join(args.data_dir, args.data_name + '.nc'), format='NETCDF4', engine='h5netcdf')
 
     #PBS-1262:
