@@ -29,9 +29,25 @@ DEFAULT_SURFACE_COORDS_PATH = (
 )
 
 
-
 def get_projection_table(unionizes, experiment_ids, structure_ids, data_field):
-    '''
+    ''' Builds an experiments X structures table out of a unionize table.
+
+    Parameters
+    ----------
+    unionizes : pd.DataFrame
+        Table of projection structure unionizes. Each row describes a spatial domain on a particular experiment.
+    experiment_ids : list of int
+        Use data from these experiments (will become the index of the output dataframe).
+    structure_ids : list of int
+        Use data from these structures (will become the columns of the output dataframe).
+    data_field : str
+        Use this field as the values of the projection table
+
+    Returns
+    -------
+    pd.DataFrame : 
+        Output table.
+
     '''
 
     unionizes = unionizes.pivot(index='experiment_id', columns='structure_id', values=data_field)
@@ -44,7 +60,7 @@ def get_projection_table(unionizes, experiment_ids, structure_ids, data_field):
 def get_specified_projection_table(
     mcc, unionizes, experiment_ids, structure_ids, is_injection, hemisphere_id, data_field
     ):
-    '''
+    ''' Obtain an experiments X structures table of unionize values, slicing by hemisphere and injection status.
     '''
 
     unionizes = mcc.filter_structure_unionizes(
@@ -220,7 +236,27 @@ def make_projection_volume(experiment_ids, mcc):
 
 
 def make_injection_structures_arrays(experiments_ds, ontology_depth, structure_paths):
-    '''
+    ''' Build experimentwise arrays of injection structures
+
+    Parameters
+    ----------
+    experiments_ds : xarray.DataSet
+        Contains information about experiments. Must have an attribute injection_structures whose values are / seperated 
+        strings of experimentwise injection structures.
+    ontology_depth : int
+        Maximum depth of the ontology tree.
+    structure_paths : dict | int -> list of int
+        Maps structure ids to lists of int. Each such list describes the path from the root of the structure tree to 
+        structure in question.
+
+    Returns
+    -------
+    injection_structures_arr : numpy.ndarray
+        Ragged array of experimentwise injection structures.
+    injection_structures_path : numpy.ndarray
+        As injection_structures_arr, but with an additional dimension holding the full path to root of each injection 
+        structure.
+
     '''
 
     injection_structures_list = [
