@@ -96,8 +96,9 @@ def get_all_unionizes(mcc, all_unionizes_path, experiment_ids):
 
     try:
         unionizes = pd.read_csv(all_unionizes_path)
+        assert( set(experiment_ids) - set(unionizes['experiment_id'].values) == set([]) )
 
-    except (IOError, ValueError) as err:
+    except (IOError, ValueError, AssertionError) as err:
         unionizes = mcc.get_structure_unionizes(experiment_ids)
         unionizes.to_csv(all_unionizes_path)
 
