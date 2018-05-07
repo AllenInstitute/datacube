@@ -59,7 +59,23 @@ def get_specified_projection_table(
 
 
 def get_all_unionizes(mcc, all_unionizes_path, experiment_ids):
-    '''
+    ''' Reads a table containing all projection structure unionizes for a given list of experiments. If necessary, 
+    this table will be compiled and stored.
+
+    Parameters
+    ----------
+    mcc : allensdk.core.mouse_connectivity_cache.MouseConnectivityCache
+        Use this cache to obtain unionizes.
+    all_unionizes_path : str
+        Read the collated table from here, or if this file does not exists, write it to here.
+    experiment_ids : list of int
+        Get unionizes for these experiments
+
+    Returns
+    -------
+    unionizes : pd.DataFrame
+        Collated table of unionizes
+
     '''
 
     try:
