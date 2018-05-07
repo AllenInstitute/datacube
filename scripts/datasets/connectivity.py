@@ -307,7 +307,7 @@ def main():
     npv = make_unionize_tables('normalized_projection_volume', mcc, all_unionizes_path, experiment_ids, structure_ids)
 
     projection_unionize = xr.concat([pv,npv],xr.DataArray([False,True],dims=['normalized'],name='normalized'))
-    structure_volumes = make_unionize_tables('volume')
+    structure_volumes = make_unionize_tables('volume', mcc, all_unionizes_path, experiment_ids, structure_ids)
 
     structure_paths_array = make_structure_paths_array(projection_unionize, ontology_depth, structure_paths)
 
@@ -334,7 +334,7 @@ def main():
         coords={
             'experiment': experiment_ids,
             'structures': (['structure', 'depth'], structure_paths_array),
-            'is_summary_structure': (['structure'], [structure in summary_structures for structure in projection_unionize.structure]),
+            'is_summary_structure': (['structure'], [structure.item() in summary_structures for structure in projection_unionize.structure]),
             'structure_color': structure_colors,
             'anterior_posterior': args.resolution*np.arange(ccf_anno.shape[0]),
             'superior_inferior': args.resolution*np.arange(ccf_anno.shape[1]),
