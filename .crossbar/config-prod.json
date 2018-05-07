@@ -118,12 +118,6 @@
                             },
                             "serializers": ["msgpack"]
                         },
-                        "lp": {
-                           "type": "longpoll",
-                           "options": {
-                              "session_timeout": 30
-                           }
-                        },
                         "ccf_model": {
                             "type": "static",
                             "directory": "../structure_meshes/",

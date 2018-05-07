@@ -96,9 +96,6 @@ class PandasServiceComponent(ApplicationSession):
         @inlineCallbacks
         def corr(field, dim, seed_idx, fields=None, select=None, coords=None, filters=None, name=None):
             try:
-                if filters is not None:
-                    filters.append({"field": "is_projection", "op": "=", "value": True})
-                print({'field': field, 'dim': dim, 'seed_idx': seed_idx, 'fields': fields, 'select': select, 'filters': filters, 'name': name})
                 datacube = datacubes[name]
                 res = yield threads.deferToThread(_ensure_computed, datacube.corr, field, dim, seed_idx, select=select, coords=coords, filters=filters)
                 res = res.where(res.corr.notnull(), drop=True)
