@@ -28,7 +28,6 @@ API_CONNECTIVITY_QUERY = '/api/v2/data/ApiConnectivity/query.csv?num_rows=all'
 DEFAULT_SURFACE_COORDS_PATH = (
     '/allen/programs/celltypes/production/0378/informatics/model/P56/corticalCoordinates/surface_coords_10.h5'
 )
-ST_PATHS_TEMP_DEFAULT = os.path.join(os.path.dirname(__file__), 'structure_paths_temp.npy')
 
 
 def get_projection_table(unionizes, experiment_ids, structure_ids, data_field):
@@ -232,7 +231,7 @@ def make_primary_structure_paths(primary_structures, ontology_depth, structure_p
     return primary_structure_paths
 
 
-def make_projection_volume(experiment_ids, mcc, temp_file=None):
+def make_projection_volume(experiment_ids, mcc):
     ''' Build a 4D array of projection density volumes, with experiment as the 4th axis
     '''
 
@@ -242,12 +241,8 @@ def make_projection_volume(experiment_ids, mcc, temp_file=None):
         logging.info('read in data for experiment {0}'.format(eid))
 
         if ii == 0:
-            volume_shape = list(data.shape) + [len(experiment_ids)]
-            
-            if temp_file is not None:
-                volume = np.memmap(temp_file, dtype=np.float32, shape=volume_shape )
-            else:
-                volume = np.zeros(volume_shape, dtype=np.float32)
+            volume_shape = tuple(list(data.shape) + [len(experiment_ids)])
+            volume = np.zeros(volume_shape, dtype=np.float32)
 
             logging.info('volume occupies {0} bytes ({1})'.format(volume.nbytes, volume.dtype.name))
 
@@ -424,41 +419,47 @@ def main():
     primary_structures = experiments_ds.structure_id.values
     primary_structure_paths = make_primary_structure_paths(primary_structures, ontology_depth, structure_paths)
 
+    volume = make_projection_volume(experiment_ids, mcc)
 
-    with temporary_file(args.volume_temp_file, mode='wb+') as volume_temp_file:
+    ccf_dims = ['anterior_posterior', 'superior_inferior', 'left_right']
+    ds = xr.Dataset(
+        data_vars={
+            'ccf_structure': (ccf_dims, ccf_anno, {'spacing': [args.resolution]*3}),
+            'ccf_structures': (ccf_dims+['depth'], ccf_anno_paths),
+            'projection': (ccf_dims+['experiment'], volume),
+            'volume': projection_unionize,
+            'structure_volumes': structure_volumes,
+            'primary_structures': (['experiment', 'depth'], primary_structure_paths),
+            'injection_structures_array': (['experiment', 'secondary'], injection_structures_arr),
+            'injection_structure_paths': (['experiment', 'secondary', 'depth'], injection_structure_paths)
+        },
+        coords={
+            'experiment': experiment_ids,
+            'structures': (['structure', 'depth'], structure_paths_array),
+            'is_summary_structure': (['structure'], [structure.item() in summary_structures for structure in projection_unionize.structure]),
+            'structure_color': structure_colors,
+            'anterior_posterior': args.resolution*np.arange(ccf_anno.shape[0]),
+            'superior_inferior': args.resolution*np.arange(ccf_anno.shape[1]),
+            'left_right': args.resolution*np.arange(ccf_anno.shape[2]),
+        }
+    )
 
-        volume = make_projection_volume(experiment_ids, mcc, volume_temp_file)
+    del volume
+    del primary_structure_paths
+    del primary_structures
+    del injection_structure_paths
+    del injection_structures_arr
+    del structure_paths_array
+    del structure_volumes
+    del projection_unionize
 
-        ccf_dims = ['anterior_posterior', 'superior_inferior', 'left_right']
-        ds = xr.Dataset(
-            data_vars={
-                'ccf_structure': (ccf_dims, ccf_anno, {'spacing': [args.resolution]*3}),
-                'ccf_structures': (ccf_dims+['depth'], ccf_anno_paths),
-                'projection': (ccf_dims+['experiment'], volume),
-                'volume': projection_unionize,
-                'structure_volumes': structure_volumes,
-                'primary_structures': (['experiment', 'depth'], primary_structure_paths),
-                'injection_structures_array': (['experiment', 'secondary'], injection_structures_arr),
-                'injection_structure_paths': (['experiment', 'secondary', 'depth'], injection_structure_paths)
-            },
-            coords={
-                'experiment': experiment_ids,
-                'structures': (['structure', 'depth'], structure_paths_array),
-                'is_summary_structure': (['structure'], [structure.item() in summary_structures for structure in projection_unionize.structure]),
-                'structure_color': structure_colors,
-                'anterior_posterior': args.resolution*np.arange(ccf_anno.shape[0]),
-                'superior_inferior': args.resolution*np.arange(ccf_anno.shape[1]),
-                'left_right': args.resolution*np.arange(ccf_anno.shape[2]),
-            }
-        )
-
-
-        ds.merge(experiments_ds, inplace=True, join='exact')
-        ds.merge(structure_meta, inplace=True, join='left')
-        ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly
-        nc_file = os.path.join(args.data_dir, args.data_name + '.nc')
-        ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
-        del ds # free up mem
+    ds.merge(experiments_ds, inplace=True, join='exact')
+    ds.merge(structure_meta, inplace=True, join='left')
+    ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly
+    nc_file = os.path.join(args.data_dir, args.data_name + '.nc')
+    ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
+    del ds # free up mem
+    logging.info('wrote dataset to {}'.format(nc_file))
     
     # generate mask of primary and secondary injection structures across all experiments
     ds = xr.open_dataset(nc_file, engine='h5netcdf')
@@ -484,10 +485,8 @@ if __name__ == '__main__':
     parser.add_argument('--data-dir', default='./', help='save file(s) in this directory')
     parser.add_argument('--data-name', default='mouse_ccf', help="base name with which to create files")
     parser.add_argument('--manifest_filename', type=str, default='mouse_connectivity_manifest.json')
-    parser.add_argument('--resolution', type=int, default=100)
+    parser.add_argument('--resolution', type=int, default=100, help='isometric CCF resolution')
     parser.add_argument('--surface_coords_path', type=str, default=DEFAULT_SURFACE_COORDS_PATH)
-    parser.add_argument('--structure_paths_temp_file', type=str, default=ST_PATHS_TEMP_DEFAULT)
 
     args = parser.parse_args()
-
     main()
