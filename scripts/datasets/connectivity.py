@@ -197,7 +197,7 @@ def make_annotation_volume_paths(ccf_anno, ontology_depth, structure_paths):
     return ccf_anno_paths
 
 
-def make_primary_structure_paths(primary_structures, ontology_depth, structure_paths, temp_file):
+def make_primary_structure_paths(primary_structures, ontology_depth, structure_paths):
     ''' Builds a ragged array which assigns to each experiment the structure id path associated with that 
     experiment's primary structure
 
@@ -210,8 +210,6 @@ def make_primary_structure_paths(primary_structures, ontology_depth, structure_p
     structure_paths : dict | int -> list of int
         Maps structure ids to lists of int. Each such list describes the path from the root of the structure tree to 
         structure in question. 
-    temp_file : File-like
-        The primary_structure_paths array will be memmapped over this file.
 
     Returns
     -------
@@ -222,7 +220,7 @@ def make_primary_structure_paths(primary_structures, ontology_depth, structure_p
     '''
 
     paths_shape = (len(primary_structures), ontology_depth)
-    primary_structure_paths = np.memmap(temp_file, dtype=primary_structures.dtype, shape=paths_shape)
+    primary_structure_paths = np.zeros(paths_shape, dtype=primary_structures.dtype)
 
     for i in range(len(primary_structures)):
         structure_id = int(primary_structures[i])
@@ -234,7 +232,7 @@ def make_primary_structure_paths(primary_structures, ontology_depth, structure_p
     return primary_structure_paths
 
 
-def make_projection_volume(experiment_ids, mcc):
+def make_projection_volume(experiment_ids, mcc, temp_file=None):
     ''' Build a 4D array of projection density volumes, with experiment as the 4th axis
     '''
 
@@ -244,8 +242,13 @@ def make_projection_volume(experiment_ids, mcc):
         logging.info('read in data for experiment {0}'.format(eid))
 
         if ii == 0:
-            dshape = list(data.shape)
-            volume = np.zeros(dshape + [len(experiment_ids)], dtype=np.float32)
+            volume_shape = list(data.shape) + [len(experiment_ids)]
+            
+            if temp_file is not None:
+                volume = np.memmap(temp_file, dtype=np.float32, shape=volume_shape )
+            else:
+                volume = np.zeros(volume_shape, dtype=np.float32)
+
             logging.info('volume occupies {0} bytes ({1})'.format(volume.nbytes, volume.dtype.name))
 
         volume[:, :, :, ii] = data
@@ -415,26 +418,28 @@ def main():
 
     structure_paths_array = make_structure_paths_array(projection_unionize, ontology_depth, structure_paths)
 
-    volume = make_projection_volume(experiment_ids, mcc)
-
     injection_structures_arr, injection_structure_paths = make_injection_structures_arrays(
         experiments_ds, ontology_depth, structure_paths)
 
     primary_structures = experiments_ds.structure_id.values
-    with temporary_file(args.structure_paths_temp_file, mode='wb+') as structure_path_temp_file:
-        primary_structure_paths = make_primary_structure_paths(primary_structures, ontology_depth, structure_paths, structure_path_temp_file)
+    primary_structure_paths = make_primary_structure_paths(primary_structures, ontology_depth, structure_paths)
+
+
+    with temporary_file(args.volume_temp_file, mode='wb+') as volume_temp_file:
+
+        volume = make_projection_volume(experiment_ids, mcc, volume_temp_file)
 
         ccf_dims = ['anterior_posterior', 'superior_inferior', 'left_right']
         ds = xr.Dataset(
             data_vars={
                 'ccf_structure': (ccf_dims, ccf_anno, {'spacing': [args.resolution]*3}),
                 'ccf_structures': (ccf_dims+['depth'], ccf_anno_paths),
-                # 'projection': (ccf_dims+['experiment'], volume),
+                'projection': (ccf_dims+['experiment'], volume),
                 'volume': projection_unionize,
                 'structure_volumes': structure_volumes,
                 'primary_structures': (['experiment', 'depth'], primary_structure_paths),
-                # 'injection_structures_array': (['experiment', 'secondary'], injection_structures_arr),
-                # 'injection_structure_paths': (['experiment', 'secondary', 'depth'], injection_structure_paths)
+                'injection_structures_array': (['experiment', 'secondary'], injection_structures_arr),
+                'injection_structure_paths': (['experiment', 'secondary', 'depth'], injection_structure_paths)
             },
             coords={
                 'experiment': experiment_ids,
