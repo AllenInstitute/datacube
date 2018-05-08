@@ -178,10 +178,6 @@ def make_annotation_volume_paths(ccf_anno, ontology_depth, structure_paths):
     ''' Builds a 4D array, ragged in the last axis, which assigns to each CCF voxel 
     the structure id path associated with the structure at that voxel.
 
-    Notes
-    -----
-    no way this is the most efficient implementation
-
     '''
 
     ccf_anno_paths = np.zeros(ccf_anno.shape+(ontology_depth,), dtype=ccf_anno.dtype)
@@ -194,7 +190,7 @@ def make_annotation_volume_paths(ccf_anno, ontology_depth, structure_paths):
 
                 if structure_id > 0:
                     path = structure_paths[structure_id]
-                    ccf_anno_paths[i,j,k,:len(path)] = path
+                    ccf_anno_paths[i, j, k, :len(path)] = path
 
     return ccf_anno_paths
 
