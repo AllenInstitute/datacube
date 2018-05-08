@@ -20,3 +20,4 @@ services/pandas/.crossbar/key.priv
 services/pandas/.crossbar/key.pub
 **/mouse_connectivity_cache
 **/brain_observatory_cache
+**.nc

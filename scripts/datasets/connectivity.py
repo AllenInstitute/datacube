@@ -10,6 +10,7 @@ import requests
 from io import StringIO
 import shutil
 from collections import OrderedDict
+from contextlib import contextmanager
 
 import nrrd
 import numpy as np
@@ -27,6 +28,7 @@ API_CONNECTIVITY_QUERY = '/api/v2/data/ApiConnectivity/query.csv?num_rows=all'
 DEFAULT_SURFACE_COORDS_PATH = (
     '/allen/programs/celltypes/production/0378/informatics/model/P56/corticalCoordinates/surface_coords_10.h5'
 )
+ST_PATHS_TEMP_DEFAULT = os.path.join(os.path.dirname(__file__), 'structure_paths_temp.npy')
 
 
 def get_projection_table(unionizes, experiment_ids, structure_ids, data_field):
@@ -195,12 +197,32 @@ def make_annotation_volume_paths(ccf_anno, ontology_depth, structure_paths):
     return ccf_anno_paths
 
 
-def make_primary_structure_paths(primary_structures, ontology_depth, structure_paths):
+def make_primary_structure_paths(primary_structures, ontology_depth, structure_paths, temp_file):
     ''' Builds a ragged array which assigns to each experiment the structure id path associated with that 
     experiment's primary structure
+
+    Parameters
+    ----------
+    primary_structures : array-like of int
+        Identifies the primary injection structure of each experiment.
+    ontology_depth : int
+        Maximum node depth within the ontology tree.
+    structure_paths : dict | int -> list of int
+        Maps structure ids to lists of int. Each such list describes the path from the root of the structure tree to 
+        structure in question. 
+    temp_file : File-like
+        The primary_structure_paths array will be memmapped over this file.
+
+    Returns
+    -------
+    primary_structure_paths ; numpy.ndarray
+        Each row contains the structure id path of a single experiment's primary injection structure 
+        (right-padded with zeros if necessary).
+
     '''
 
-    primary_structure_paths = np.zeros((len(primary_structures), ontology_depth), dtype=primary_structures.dtype)
+    paths_shape = (len(primary_structures), ontology_depth)
+    primary_structure_paths = np.memmap(temp_file, dtype=primary_structures.dtype, shape=paths_shape)
 
     for i in range(len(primary_structures)):
         structure_id = int(primary_structures[i])
@@ -241,7 +263,7 @@ def make_injection_structures_arrays(experiments_ds, ontology_depth, structure_p
         Contains information about experiments. Must have an attribute injection_structures whose values are / seperated 
         strings of experimentwise injection structures.
     ontology_depth : int
-        Maximum depth of the ontology tree.
+        Maximum node depth within the ontology tree.
     structure_paths : dict | int -> list of int
         Maps structure ids to lists of int. Each such list describes the path from the root of the structure tree to 
         structure in question.
@@ -276,9 +298,21 @@ def make_injection_structures_arrays(experiments_ds, ontology_depth, structure_p
 
 def rgb_to_hex(rgb):
     ''' Convert an rgb triplet to a hex string
+
+    Parameters
+    ----------
+    rgb : list of int
+        Red, Green, and Blue values. Should be integer types in the range [0, 255].
+
+    Returns
+    -------
+    str : 
+        6-character hex string corresponding to input RGB values
+
     '''
 
-    return ''.join([ hex(ii)[2:] for ii in rgb ])
+    hx = ''.join( hex(ii)[2:] if ii >= 16 else '0' + hex(ii)[2:] for ii in rgb )
+    return hx
 
 
 def get_structure_information(tree, summary_set_id=SUMMARY_SET_ID, exclude_from_summary={FIBER_TRACTS_ID,}):
@@ -327,6 +361,27 @@ def get_structure_information(tree, summary_set_id=SUMMARY_SET_ID, exclude_from_
     return structure_meta, structure_ids, structure_colors, structure_paths, summary_structures
 
 
+@contextmanager
+def temporary_file(path, *args, **kwargs):
+    ''' A context manager which opens a file and then deletes the file on exit.
+    
+    Parameters
+    ----------
+    path : str
+        Open the file at this filesystem path.
+    *args : 
+        Passed to open()
+    **kwargs : 
+        Passed to open()
+
+    '''
+
+    with open(path, *args, **kwargs) as temp_file:
+        yield temp_file
+
+    os.remove(path)
+
+
 def main():
 
     mcc_dir = os.path.join(args.data_dir, 'mouse_connectivity_cache')
@@ -360,41 +415,42 @@ def main():
 
     structure_paths_array = make_structure_paths_array(projection_unionize, ontology_depth, structure_paths)
 
-    primary_structures = experiments_ds.structure_id.values
-    primary_structure_paths = make_primary_structure_paths(primary_structures, ontology_depth, structure_paths)
-
     volume = make_projection_volume(experiment_ids, mcc)
 
     injection_structures_arr, injection_structure_paths = make_injection_structures_arrays(
         experiments_ds, ontology_depth, structure_paths)
 
-    ccf_dims = ['anterior_posterior', 'superior_inferior', 'left_right']
-    ds = xr.Dataset(
-        data_vars={
-            'ccf_structure': (ccf_dims, ccf_anno, {'spacing': [args.resolution]*3}),
-            'ccf_structures': (ccf_dims+['depth'], ccf_anno_paths),
-            'projection': (ccf_dims+['experiment'], volume),
-            'volume': projection_unionize,
-            'structure_volumes': structure_volumes,
-            'primary_structures': (['experiment', 'depth'], primary_structure_paths),
-            'injection_structures_array': (['experiment', 'secondary'], injection_structures_arr),
-            'injection_structure_paths': (['experiment', 'secondary', 'depth'], injection_structure_paths)
-        },
-        coords={
-            'experiment': experiment_ids,
-            'structures': (['structure', 'depth'], structure_paths_array),
-            'is_summary_structure': (['structure'], [structure.item() in summary_structures for structure in projection_unionize.structure]),
-            'structure_color': structure_colors,
-            'anterior_posterior': args.resolution*np.arange(ccf_anno.shape[0]),
-            'superior_inferior': args.resolution*np.arange(ccf_anno.shape[1]),
-            'left_right': args.resolution*np.arange(ccf_anno.shape[2]),
-        }
-    )
+    primary_structures = experiments_ds.structure_id.values
+    with temporary_file(args.structure_paths_temp_file, mode='wb+') as structure_path_temp_file:
+        primary_structure_paths = make_primary_structure_paths(primary_structures, ontology_depth, structure_paths, structure_path_temp_file)
 
-    ds.merge(experiments_ds, inplace=True, join='exact')
-    ds.merge(structure_meta, inplace=True, join='left')
-    ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly
-    ds.to_netcdf(os.path.join(args.data_dir, args.data_name + '.nc'), format='NETCDF4', engine='h5netcdf')
+        ccf_dims = ['anterior_posterior', 'superior_inferior', 'left_right']
+        ds = xr.Dataset(
+            data_vars={
+                'ccf_structure': (ccf_dims, ccf_anno, {'spacing': [args.resolution]*3}),
+                'ccf_structures': (ccf_dims+['depth'], ccf_anno_paths),
+                # 'projection': (ccf_dims+['experiment'], volume),
+                'volume': projection_unionize,
+                'structure_volumes': structure_volumes,
+                'primary_structures': (['experiment', 'depth'], primary_structure_paths),
+                # 'injection_structures_array': (['experiment', 'secondary'], injection_structures_arr),
+                # 'injection_structure_paths': (['experiment', 'secondary', 'depth'], injection_structure_paths)
+            },
+            coords={
+                'experiment': experiment_ids,
+                'structures': (['structure', 'depth'], structure_paths_array),
+                'is_summary_structure': (['structure'], [structure.item() in summary_structures for structure in projection_unionize.structure]),
+                'structure_color': structure_colors,
+                'anterior_posterior': args.resolution*np.arange(ccf_anno.shape[0]),
+                'superior_inferior': args.resolution*np.arange(ccf_anno.shape[1]),
+                'left_right': args.resolution*np.arange(ccf_anno.shape[2]),
+            }
+        )
+
+        ds.merge(experiments_ds, inplace=True, join='exact')
+        ds.merge(structure_meta, inplace=True, join='left')
+        ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly
+        ds.to_netcdf(os.path.join(args.data_dir, args.data_name + '.nc'), format='NETCDF4', engine='h5netcdf')
 
     #PBS-1262:
     shutil.copy2(args.surface_coords_path, args.data_dir)
@@ -411,6 +467,7 @@ if __name__ == '__main__':
     parser.add_argument('--manifest_filename', type=str, default='mouse_connectivity_manifest.json')
     parser.add_argument('--resolution', type=int, default=100)
     parser.add_argument('--surface_coords_path', type=str, default=DEFAULT_SURFACE_COORDS_PATH)
+    parser.add_argument('--structure_paths_temp_file', type=str, default=ST_PATHS_TEMP_DEFAULT)
 
     args = parser.parse_args()
 
