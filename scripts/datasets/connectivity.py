@@ -10,7 +10,7 @@ import requests
 from io import StringIO
 import shutil
 from collections import OrderedDict
-from contextlib import contextmanager
+import tempfile
 
 import nrrd
 import numpy as np
@@ -231,8 +231,19 @@ def make_primary_structure_paths(primary_structures, ontology_depth, structure_p
     return primary_structure_paths
 
 
-def make_projection_volume(experiment_ids, mcc):
+def make_projection_volume(experiment_ids, mcc, tmp_dir=None):
     ''' Build a 4D array of projection density volumes, with experiment as the 4th axis
+
+    Parameters
+    ----------
+    experiment_ids : list of int
+        Ids of experiments to include
+    mcc : allensdk.core.mouse_connectivity_cache.MouseConnectivityCache
+        Used to manage data access
+    tmp_dir : str
+        Path to directory in which to build the array as a memmapped file, else the array
+        will be built in memory. The memmap is written to a tempfile which will be deleted
+        when the memmap object is deallocated.
     '''
 
     for ii, eid in enumerate(experiment_ids):
@@ -242,7 +253,11 @@ def make_projection_volume(experiment_ids, mcc):
 
         if ii == 0:
             volume_shape = tuple(list(data.shape) + [len(experiment_ids)])
-            volume = np.zeros(volume_shape, dtype=np.float32)
+            if tmp_dir is not None:
+                temp_file = tempfile.NamedTemporaryFile(dir=tmp_dir)
+                volume = np.memmap(temp_file, dtype=np.float32, shape=volume_shape)
+            else:
+                volume = np.zeros(volume_shape, dtype=np.float32)
 
             logging.info('volume occupies {0} bytes ({1})'.format(volume.nbytes, volume.dtype.name))
 
@@ -359,27 +374,6 @@ def get_structure_information(tree, summary_set_id=SUMMARY_SET_ID, exclude_from_
     return structure_meta, structure_ids, structure_colors, structure_paths, summary_structures
 
 
-@contextmanager
-def temporary_file(path, *args, **kwargs):
-    ''' A context manager which opens a file and then deletes the file on exit.
-    
-    Parameters
-    ----------
-    path : str
-        Open the file at this filesystem path.
-    *args : 
-        Passed to open()
-    **kwargs : 
-        Passed to open()
-
-    '''
-
-    with open(path, *args, **kwargs) as temp_file:
-        yield temp_file
-
-    os.remove(path)
-
-
 def main():
 
     mcc_dir = os.path.join(args.data_dir, 'mouse_connectivity_cache')
@@ -419,7 +413,7 @@ def main():
     primary_structures = experiments_ds.structure_id.values
     primary_structure_paths = make_primary_structure_paths(primary_structures, ontology_depth, structure_paths)
 
-    volume = make_projection_volume(experiment_ids, mcc)
+    volume = make_projection_volume(experiment_ids, mcc, tmp_dir=args.data_dir)
 
     ccf_dims = ['anterior_posterior', 'superior_inferior', 'left_right']
     ds = xr.Dataset(
@@ -444,6 +438,15 @@ def main():
         }
     )
 
+
+    ds.merge(experiments_ds, inplace=True, join='exact')
+    ds.merge(structure_meta, inplace=True, join='left')
+    ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly
+    nc_file = os.path.join(args.data_dir, args.data_name + '.nc')
+    ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
+    ds.close()
+    # free up mem
+    del ds
     del volume
     del primary_structure_paths
     del primary_structures
@@ -452,25 +455,23 @@ def main():
     del structure_paths_array
     del structure_volumes
     del projection_unionize
-
-    ds.merge(experiments_ds, inplace=True, join='exact')
-    ds.merge(structure_meta, inplace=True, join='left')
-    ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly
-    nc_file = os.path.join(args.data_dir, args.data_name + '.nc')
-    ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
-    del ds # free up mem
     logging.info('wrote dataset to {}'.format(nc_file))
     
     # generate mask of primary and secondary injection structures across all experiments
     ds = xr.open_dataset(nc_file, engine='h5netcdf')
-    ds['is_projection'] = xr.full_like(ds.projection, False, dtype=np.bool)
+    volume_shape = ds.projection.shape
+    volume_dims = ds.projection.dims
+    volume_coords = ds.projection.coords
+    ds.close()
+    is_projection = xr.DataArray(np.zeros(volume_shape, dtype=np.bool), dims=volume_dims, coords=volume_coords)
     for i in range(ds.dims['experiment']):
-        print('generating mask for experiment {} of {}'.format(i+1, ds.dims['experiment']))
+        logging.info('generating projection mask for experiment {} of {}'.format(i+1, ds.dims['experiment']))
         injection_structures = ds.injection_structures_array.isel(experiment=i)
         injection_structures = injection_structures.where(injection_structures!=0, drop=True)
-        ds.is_projection[dict(experiment=i)] = (ds.ccf_structures!=injection_structures).all(dim=['depth','secondary'])
-
-    ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
+        is_projection[dict(experiment=i)] = (ds.ccf_structures!=injection_structures).all(dim=['depth','secondary'])
+    ds['is_projection'] = is_projection
+    ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf', mode='a')
+    logging.info('appended projection mask to {}'.format(nc_file))
 
     #PBS-1262:
     shutil.copy2(args.surface_coords_path, args.data_dir)
