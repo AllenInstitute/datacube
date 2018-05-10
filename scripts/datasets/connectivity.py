@@ -10,6 +10,7 @@ import requests
 from io import StringIO
 import shutil
 from collections import OrderedDict
+import tempfile
 
 import nrrd
 import numpy as np
@@ -198,9 +199,27 @@ def make_annotation_volume_paths(ccf_anno, ontology_depth, structure_paths):
 def make_primary_structure_paths(primary_structures, ontology_depth, structure_paths):
     ''' Builds a ragged array which assigns to each experiment the structure id path associated with that 
     experiment's primary structure
+
+    Parameters
+    ----------
+    primary_structures : array-like of int
+        Identifies the primary injection structure of each experiment.
+    ontology_depth : int
+        Maximum node depth within the ontology tree.
+    structure_paths : dict | int -> list of int
+        Maps structure ids to lists of int. Each such list describes the path from the root of the structure tree to 
+        structure in question. 
+
+    Returns
+    -------
+    primary_structure_paths ; numpy.ndarray
+        Each row contains the structure id path of a single experiment's primary injection structure 
+        (right-padded with zeros if necessary).
+
     '''
 
-    primary_structure_paths = np.zeros((len(primary_structures), ontology_depth), dtype=primary_structures.dtype)
+    paths_shape = (len(primary_structures), ontology_depth)
+    primary_structure_paths = np.zeros(paths_shape, dtype=primary_structures.dtype)
 
     for i in range(len(primary_structures)):
         structure_id = int(primary_structures[i])
@@ -212,8 +231,19 @@ def make_primary_structure_paths(primary_structures, ontology_depth, structure_p
     return primary_structure_paths
 
 
-def make_projection_volume(experiment_ids, mcc):
+def make_projection_volume(experiment_ids, mcc, tmp_dir=None):
     ''' Build a 4D array of projection density volumes, with experiment as the 4th axis
+
+    Parameters
+    ----------
+    experiment_ids : list of int
+        Ids of experiments to include
+    mcc : allensdk.core.mouse_connectivity_cache.MouseConnectivityCache
+        Used to manage data access
+    tmp_dir : str
+        Path to directory in which to build the array as a memmapped file, else the array
+        will be built in memory. The memmap is written to a tempfile which will be deleted
+        when the memmap object is deallocated.
     '''
 
     for ii, eid in enumerate(experiment_ids):
@@ -222,8 +252,13 @@ def make_projection_volume(experiment_ids, mcc):
         logging.info('read in data for experiment {0}'.format(eid))
 
         if ii == 0:
-            dshape = list(data.shape)
-            volume = np.zeros(dshape + [len(experiment_ids)], dtype=np.float32)
+            volume_shape = tuple(list(data.shape) + [len(experiment_ids)])
+            if tmp_dir is not None:
+                temp_file = tempfile.NamedTemporaryFile(dir=tmp_dir)
+                volume = np.memmap(temp_file, dtype=np.float32, shape=volume_shape)
+            else:
+                volume = np.zeros(volume_shape, dtype=np.float32)
+
             logging.info('volume occupies {0} bytes ({1})'.format(volume.nbytes, volume.dtype.name))
 
         volume[:, :, :, ii] = data
@@ -241,7 +276,7 @@ def make_injection_structures_arrays(experiments_ds, ontology_depth, structure_p
         Contains information about experiments. Must have an attribute injection_structures whose values are / seperated 
         strings of experimentwise injection structures.
     ontology_depth : int
-        Maximum depth of the ontology tree.
+        Maximum node depth within the ontology tree.
     structure_paths : dict | int -> list of int
         Maps structure ids to lists of int. Each such list describes the path from the root of the structure tree to 
         structure in question.
@@ -276,9 +311,21 @@ def make_injection_structures_arrays(experiments_ds, ontology_depth, structure_p
 
 def rgb_to_hex(rgb):
     ''' Convert an rgb triplet to a hex string
+
+    Parameters
+    ----------
+    rgb : list of int
+        Red, Green, and Blue values. Should be integer types in the range [0, 255].
+
+    Returns
+    -------
+    str : 
+        6-character hex string corresponding to input RGB values
+
     '''
 
-    return ''.join([ hex(ii)[2:] for ii in rgb ])
+    hx = ''.join( hex(ii)[2:] if ii >= 16 else '0' + hex(ii)[2:] for ii in rgb )
+    return hx
 
 
 def get_structure_information(tree, summary_set_id=SUMMARY_SET_ID, exclude_from_summary={FIBER_TRACTS_ID,}):
@@ -360,13 +407,13 @@ def main():
 
     structure_paths_array = make_structure_paths_array(projection_unionize, ontology_depth, structure_paths)
 
+    injection_structures_arr, injection_structure_paths = make_injection_structures_arrays(
+        experiments_ds, ontology_depth, structure_paths)
+
     primary_structures = experiments_ds.structure_id.values
     primary_structure_paths = make_primary_structure_paths(primary_structures, ontology_depth, structure_paths)
 
-    volume = make_projection_volume(experiment_ids, mcc)
-
-    injection_structures_arr, injection_structure_paths = make_injection_structures_arrays(
-        experiments_ds, ontology_depth, structure_paths)
+    volume = make_projection_volume(experiment_ids, mcc, tmp_dir=args.data_dir)
 
     ccf_dims = ['anterior_posterior', 'superior_inferior', 'left_right']
     ds = xr.Dataset(
@@ -391,23 +438,40 @@ def main():
         }
     )
 
+
     ds.merge(experiments_ds, inplace=True, join='exact')
     ds.merge(structure_meta, inplace=True, join='left')
     ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly
     nc_file = os.path.join(args.data_dir, args.data_name + '.nc')
     ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
-    del ds # free up mem
-    ds = xr.open_dataset(nc_file, engine='h5netcdf')
-
+    ds.close()
+    # free up mem
+    del ds
+    del volume
+    del primary_structure_paths
+    del primary_structures
+    del injection_structure_paths
+    del injection_structures_arr
+    del structure_paths_array
+    del structure_volumes
+    del projection_unionize
+    logging.info('wrote dataset to {}'.format(nc_file))
+    
     # generate mask of primary and secondary injection structures across all experiments
-    ds['is_projection'] = xr.full_like(ds.projection, False, dtype=np.bool)
+    ds = xr.open_dataset(nc_file, engine='h5netcdf')
+    volume_shape = ds.projection.shape
+    volume_dims = ds.projection.dims
+    volume_coords = ds.projection.coords
+    ds.close()
+    is_projection = xr.DataArray(np.zeros(volume_shape, dtype=np.bool), dims=volume_dims, coords=volume_coords)
     for i in range(ds.dims['experiment']):
-        print('generating mask for experiment {} of {}'.format(i+1, ds.dims['experiment']))
+        logging.info('generating projection mask for experiment {} of {}'.format(i+1, ds.dims['experiment']))
         injection_structures = ds.injection_structures_array.isel(experiment=i)
         injection_structures = injection_structures.where(injection_structures!=0, drop=True)
-        ds.is_projection[dict(experiment=i)] = (ds.ccf_structures!=injection_structures).all(dim=['depth','secondary'])
-
-    ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
+        is_projection[dict(experiment=i)] = (ds.ccf_structures!=injection_structures).all(dim=['depth','secondary'])
+    ds['is_projection'] = is_projection
+    ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf', mode='a')
+    logging.info('appended projection mask to {}'.format(nc_file))
 
     #PBS-1262:
     shutil.copy2(args.surface_coords_path, args.data_dir)
@@ -422,9 +486,8 @@ if __name__ == '__main__':
     parser.add_argument('--data-dir', default='./', help='save file(s) in this directory')
     parser.add_argument('--data-name', default='mouse_ccf', help="base name with which to create files")
     parser.add_argument('--manifest_filename', type=str, default='mouse_connectivity_manifest.json')
-    parser.add_argument('--resolution', type=int, default=100)
+    parser.add_argument('--resolution', type=int, default=100, help='isometric CCF resolution')
     parser.add_argument('--surface_coords_path', type=str, default=DEFAULT_SURFACE_COORDS_PATH)
 
     args = parser.parse_args()
-
     main()
