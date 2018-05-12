@@ -335,7 +335,7 @@ if __name__ == '__main__':
 
                 if not os.path.exists(data_dir):
                     os.makedirs(data_dir)
-                existing = [os.path.exists(os.path.join(data_dir, f['path'])) for f in dataset['files']]
+                existing = [os.path.isfile(os.path.join(data_dir, f['path'])) for f in dataset['files']]
                 if args.recache or (dataset['auto-generate'] and sum(existing) == 0):
                     command = [dataset['script']] + dataset['arguments']
                     print(' '.join(command))
@@ -344,15 +344,15 @@ if __name__ == '__main__':
                     if sum(existing) < len(dataset['files']):
                         raise RuntimeError('Refusing to run with ' + str(sum(existing)) + ' files when expecting ' + str(len(dataset['files'])) + ', for dataset "' + dataset['name'] + '". Specify --recache option to generate files (will overwrite existing files).')
                         exit(1)
-                file_opts = next(f for f in dataset['files'] if re.search('\.(nc|lmdb)$', f['path']))
+                nc_file = next(f for f in dataset['files'] if re.search('\.nc$', f['path']))
                 option_keys = ['chunks', 'max_response_size', 'max_cacheable_bytes', 'missing_data', 'calculate_stats']
-                options = {k:v for k,v in iteritems(file_opts) if k in option_keys}
-                if not file_opts['use_chunks']:
+                options = {k:v for k,v in iteritems(nc_file) if k in option_keys}
+                if not nc_file['use_chunks']:
                     del options['chunks']
 
                 datacubes[dataset['name']] = Datacube(
                     dataset['name'],
-                    os.path.join(data_dir, file_opts['path']),
+                    os.path.join(data_dir, nc_file['path']),
                     **options)
 
     if args.recache:
