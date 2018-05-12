@@ -1,1 +1,2 @@
+# include requirements-prod.txt for all services
 -r services/pandas/requirements-prod.txt

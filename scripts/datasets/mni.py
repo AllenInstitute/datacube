@@ -33,7 +33,7 @@ def generate(data_dir='./', data_name='mni'):
                             'mni_anterior_posterior': (['anterior_posterior'], (np.array(range(mni.shape[1]))*float(opts['space directions'][1][1]))+float(opts['space origin'][1])),
                             'mni_superior_inferior': (['superior_inferior'], (np.array(range(mni.shape[2]))*float(opts['space directions'][2][2]))+float(opts['space origin'][2]))
                         })
-        ds.to_netcdf(data_path, format='NETCDF4')
+        ds.to_netcdf(data_path, format='NETCDF4', engine='h5netcdf')
     print('Data created in data_dir.')
 
 

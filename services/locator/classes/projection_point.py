@@ -22,21 +22,20 @@ class ProjectionPoint ():
         if not os.path.exists(path) or not os.path.getsize(path) > 0:
             raise IOError("file does not exist")
 
-        f = file(path, 'r')
-        
-        pos = (self.projection_height * pixel[0] + pixel[1]) * self.components * self.size_of_int
+        pos = (self.projection_height * pixel[0] + pixel[1]) * self.components * self.size_of_int            
 
-        self.skip_header(f)
+        with open(path, 'rb') as f:
+            self.skip_header(f)
 
-        f.seek(pos, 1)
+            f.seek(pos, 1)
 
-        return struct.unpack('<iii', f.read(self.size_of_int*3))        
+            return struct.unpack('<iii', f.read(self.size_of_int*3))        
 
     def skip_header (self, f):
         in_header = True
 
         while in_header:
-            b = f.readline()
+            b = f.readline().decode('ascii')
 
             if b == '\n':
                 in_header = False

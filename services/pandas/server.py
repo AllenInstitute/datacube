@@ -52,12 +52,19 @@ class PandasServiceComponent(ApplicationSession):
     @inlineCallbacks
     def onJoin(self, details):
 
+        def _ensure_computed(f, *args, **kwargs):
+            res = f(*args, **kwargs)
+            if isinstance(res, (xr.Dataset, xr.DataArray)):
+                return res.compute()
+            else:
+                return res
+
 
         @inlineCallbacks
         def info(name=None):
             try:
                 datacube = datacubes[name]
-                res = yield threads.deferToThread(datacube.info)
+                res = yield threads.deferToThread(_ensure_computed, datacube.info)
                 returnValue(res)
             except Exception as e:
                 print({'name': name})
@@ -68,7 +75,7 @@ class PandasServiceComponent(ApplicationSession):
         def raw(fields=None, select=None, coords=None, filters=None, name=None):
             try:
                 datacube = datacubes[name]
-                res = yield threads.deferToThread(datacube.raw, select, coords, fields, filters)
+                res = yield threads.deferToThread(_ensure_computed, datacube.raw, select, coords, fields, filters)
                 returnValue(res.to_dict())
             except Exception as e:
                 print({'fields': fields, 'select': select, 'coords': coords, 'name': name, 'filters': filters})
@@ -79,7 +86,7 @@ class PandasServiceComponent(ApplicationSession):
         def image(field, select=None, coords=None, image_format='jpeg', dim_order=None, name=None):
             try:
                 datacube = datacubes[name]
-                res = yield threads.deferToThread(datacube.image, select, coords, field, dim_order, image_format)
+                res = yield threads.deferToThread(_ensure_computed, datacube.image, select, coords, field, dim_order, image_format)
                 returnValue(res)
             except Exception as e:
                 print({'field': field, 'select': select, 'dim_order': dim_order, 'image_format': image_format, 'name': name})
@@ -87,15 +94,18 @@ class PandasServiceComponent(ApplicationSession):
 
 
         @inlineCallbacks
-        def corr(field, dim, seed_idx, select=None, coords=None, filters=None, name=None):
+        def corr(field, dim, seed_idx, fields=None, select=None, coords=None, filters=None, name=None):
             try:
                 datacube = datacubes[name]
-                res = yield threads.deferToThread(datacube.corr, field, dim, seed_idx, select=select, coords=coords, filters=filters)
+                res = yield threads.deferToThread(_ensure_computed, datacube.corr, field, dim, seed_idx, select=select, coords=coords, filters=filters)
                 res = res.where(res.corr.notnull(), drop=True)
                 res = res.sortby('corr', ascending=False)
+                if fields is not None:
+                    additional_fields_result = yield threads.deferToThread(_ensure_computed, datacube.raw, coords={dim: res[dim].values.tolist()}, fields=fields)
+                    res = xr.merge([res, additional_fields_result])
                 returnValue(res.to_dict())
             except Exception as e:
-                print({'field': field, 'dim': dim, 'seed_idx': seed_idx, 'select': select, 'filters': filters, 'name': name})
+                print({'field': field, 'dim': dim, 'seed_idx': seed_idx, 'fields': fields, 'select': select, 'filters': filters, 'name': name})
                 _application_error(e)
 
 
@@ -105,9 +115,10 @@ class PandasServiceComponent(ApplicationSession):
                 name = 'connectivity'
                 conn_datacube = datacubes[name]
                 conn = conn_datacube.df
-                voxel['anterior_posterior'] = int(conn.anterior_posterior[np.searchsorted(conn.anterior_posterior, int(voxel['anterior_posterior']))])
-                voxel['superior_inferior'] = int(conn.superior_inferior[np.searchsorted(conn.superior_inferior, int(voxel['superior_inferior']))])
-                voxel['left_right'] = int(conn.left_right[np.searchsorted(conn.left_right, int(voxel['left_right']))])
+                # round input voxel to nearest coordinate (conn datacube and streamlines are both at 100 micron resolution)
+                voxel['anterior_posterior'] = int(conn.anterior_posterior.sel(anterior_posterior=voxel['anterior_posterior'], method='nearest'))
+                voxel['superior_inferior'] = int(conn.superior_inferior.sel(superior_inferior=voxel['superior_inferior'], method='nearest'))
+                voxel['left_right'] = int(conn.left_right.sel(left_right=voxel['left_right'], method='nearest'))
                 voxel_xyz = [voxel['anterior_posterior'], voxel['superior_inferior'], voxel['left_right']]
                 projection_map_dir = args.projection_map_dir
 
@@ -127,7 +138,7 @@ class PandasServiceComponent(ApplicationSession):
                     coords['experiment'] = experiment_ids
                 coords['experiment'] = np.intersect1d(conn.experiment.values, coords['experiment']) #todo: shouldn't need this if the data lines up
                 coords['experiment'] = coords['experiment'].tolist()
-                res = yield threads.deferToThread(conn_datacube.raw, select=select, coords=coords, fields=fields, filters=filters)
+                res = yield threads.deferToThread(_ensure_computed, conn_datacube.raw, select=select, coords=coords, fields=fields, filters=filters)
                 streamlines = xr.Dataset({'streamline': (['experiment'], streamlines_list), 'experiment': experiment_ids})
                 res = xr.merge([res, streamlines], join='left')
                 returnValue(res.to_dict())
@@ -187,6 +198,7 @@ class PandasServiceComponent(ApplicationSession):
                     #res = yield threads.deferToThreadPool(reactor,
                     #                                      thread_pool,
                     res = yield threads.deferToThread(
+                                                          _ensure_computed,
                                                           datacube.select,
                                                           'dim_0',
                                                           filters,
@@ -310,7 +322,7 @@ if __name__ == '__main__':
     parser.add_argument('dataset_manifest', help='JSON dataset manifest')
     parser.add_argument('--max-records', default=1000, help='maximum records to serve in a single request (default: %(default)s)')
     parser.add_argument('--recache', action='store_true', help='overwrite existing data files')
-    parser.add_argument('--projection-map-dir', help='path to root of projection map directory structure e.g. /data/informatics/heatmap/mouseconn_projection_maps_2017_09_11/P56/')
+    parser.add_argument('--projection-map-dir', help='path to root of projection map directory structure e.g. /allen/aibs/informatics/heatmap/mouseconn_projection_maps_2017_09_11/P56/')
     args = parser.parse_args()
     txaio.use_twisted()
     log = txaio.make_logger()

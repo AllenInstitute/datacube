@@ -58,7 +58,21 @@
                         "port": 8080
                     },
                     "paths": {
-                        "/": {
+                        "call": {
+                            "type": "caller",
+                            "realm": "aibs",
+                            "role": "anonymous",
+                            "options": {
+                                "debug": true
+                            }
+                        },
+                        "get": {
+                            "type": "reverseproxy",
+                            "host": "localhost",
+                            "port": 9090,
+                            "path": "/"
+                        },
+                        "demo": {
                             "type": "static",
                             "directory": "..",
                             "options": {
@@ -118,13 +132,18 @@
                             },
                             "serializers": ["msgpack"]
                         },
-                        "call": {
-                            "type": "caller",
-                            "realm": "aibs",
-                            "role": "anonymous",
+                        "ccf_model": {
+                            "type": "static",
+                            "directory": "/allen/aibs/informatics/datacube/t/projects/0378/vol1/informatics/model/P56/models/MouseCCF2016/",
                             "options": {
-                                "debug": true
+                                "enable_directory_listing": true,
+                                "mime_types": {}
                             }
+                        },
+                        "cgi": {
+                            "type": "cgi",
+                            "directory": "../cgi",
+                            "processor": "python"
                         }
                     }
                 }
@@ -136,7 +155,7 @@
             "id": "datacube",
             "type": "guest",
             "executable": "run.sh",
-            "arguments": ["ws://localhost:8080/auth_ws", "aibs", "services", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "../../datasets-demo.json", "--projection-map-dir", "/data/informatics/heatmap/mouseconn_projection_maps/P56/"],
+            "arguments": ["ws://localhost:8080/auth_ws", "aibs", "services", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "../../datasets-demo.json", "--projection-map-dir", "/allen/aibs/informatics/heatmap/mouseconn_projection_maps/P56/"],
             "options": {
                 "workdir": "../services/pandas/"
             }
@@ -148,6 +167,15 @@
             "arguments": ["ws://localhost:8080/auth_ws", "aibs", "services", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "env_vars.json"],
             "options": {
                 "workdir": "../services/locator/"
+            }
+        },
+        {
+            "id": "http_bridge",
+            "type": "guest",
+            "executable": "python",
+            "arguments": ["http_bridge.py"],
+            "options": {
+                "workdir": ".."
             }
         },
         {

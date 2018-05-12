@@ -88,7 +88,7 @@ class Datacube:
     def load(self, nc_file, chunks=None, missing_data=False, calculate_stats=True):
         #todo: rename df
         #todo: argsorts need to be cached to a file (?)
-        self.df = xr.open_dataset(nc_file, chunks=chunks)
+        self.df = xr.open_dataset(nc_file, chunks=chunks, engine='h5netcdf')
         for field in self.df.variables:
             if self.df[field].dtype.name.startswith('bytes'):
                 self.df[field] = self.df[field].astype('str')
@@ -183,7 +183,7 @@ class Datacube:
         return subscripts
 
 
-    def _get_data(self, select=None, coords=None, fields=None, filters=None, dim_order=None, df=None):
+    def _get_data(self, select=None, coords=None, fields=None, filters=None, dim_order=None, df=None, drop=False):
         if df is not None:
             res = df
         else:
@@ -199,21 +199,16 @@ class Datacube:
             self._validate_select(select)
             subscripts = self._get_subscripts_from_select(select)
         if subscripts:
-            res = res[subscripts]
+            res = res.isel(**subscripts, drop=drop)
         if coords:
-            # validate coords
-            new_coords = {}
-            for dim,v in iteritems(coords):
-                if isinstance(v, list):
-                    new_coords[dim] = [x for x in v if x in res.coords[dim].values]
-                else:
-                    if v in res.coords[dim].values:
-                        new_coords[dim] = v
-                    else:
-                        new_coords[dim] = []
             # cast coords to correct type
-            coords = {dim: np.array(v, dtype=res.coords[dim].dtype).tolist() for dim,v in iteritems(new_coords)}
-            res = res.loc[coords]
+            coords = {dim: np.array(v, dtype=res.coords[dim].dtype).tolist() for dim,v in iteritems(coords)}
+            # apply all coords, rounding to nearest when possible
+            for dim, coord in iteritems(coords):
+                try:
+                    res = res.sel(**{dim: coord}, drop=drop, method='nearest')
+                except ValueError:
+                    res = res.sel(**{dim: coord}, drop=drop)
         if fields:
             res = res[fields]
         if filters and f['masks']:
@@ -221,9 +216,16 @@ class Datacube:
             ds = res
             res = xr.Dataset()
             mask = reduce(xr_ufuncs.logical_and, f['masks'])
-            for field in ds.data_vars:
+            if mask.nbytes <= self.max_cacheable_bytes:
+                mask = mask.compute()
+            for field in ds.variables:
                 reduce_dims = [dim for dim in mask.dims if dim not in ds[field].dims]
-                res[field] = ds[field].where(mask.any(dim=reduce_dims), drop=True)
+                reduced = ds[field].where(mask.any(dim=reduce_dims), drop=True)
+                if field in ds.data_vars:
+                    res[field] = reduced
+                else:
+                    if field not in res.coords:
+                        res.coords[field] = reduced.coords[field]
                 for coord in res[field].coords:
                     res.coords[coord] = res[field].coords[coord]
         if dim_order:
@@ -234,9 +236,16 @@ class Datacube:
     def info(self):
         dims = {name: size for name, size in self.df.dims.items()}
         variables = {name: {'type': da.dtype.name, 'dims': da.dims} for name, da in self.df.variables.items()}
+        def serializable(x):
+            try:
+                json.dumps(x)
+                return True
+            except:
+                return False
+
         for name, da in self.df.variables.items():
-            variables[name]['attrs'] = dict(da.attrs.items())
-        attrs = dict(self.df.attrs.items())
+            variables[name]['attrs'] = {k: v for k, v in da.attrs.items() if serializable(v)}
+        attrs = {k: v for k, v in self.df.attrs.items() if serializable(v)}
         return {'dims': dims, 'vars': variables, 'attrs': attrs}
 
 
@@ -465,8 +474,8 @@ class Datacube:
         mseed2 = mseed * ~np.isnan(seed)
 
         def _num_samples():
-            return Datacube._get_num_samples(data, axis, mdata, backend=backend)
-        num_samples, _ = self._cache(_num_samples, json.dumps(cache_key+['num_samples', axis]), redis_client, disable=(not use_cache))
+            return _compute(Datacube._get_num_samples(data, axis, mdata, backend=backend)[0])
+        num_samples = self._cache(_num_samples, json.dumps(cache_key+['num_samples', axis]), redis_client, disable=(not use_cache))
         seed_num_samples, _ = Datacube._get_num_samples(seed, axis, mseed2, backend=backend)
         seed_mean = backend.einsum(seed, range(seed.ndim), mseed2, range(mseed2.ndim), [], dtype=data.dtype) / seed_num_samples.astype(data.dtype)
         seed_dev = backend.einsum(seed-seed_mean, range(seed.ndim), mseed2, range(mseed2.ndim), range(seed.ndim), dtype=data.dtype)
@@ -598,7 +607,7 @@ class Datacube:
                         field = operand['field']
                         select = operand.get('select', None)
                         coords = operand.get('coords', None)
-                        data = self._get_data(fields=field, select=select, coords=coords, df=df)
+                        data = self._get_data(fields=field, select=select, coords=coords, df=df, drop=True)
                         if df[field] is not self.df[field] or field not in self.argsorts or select or coords:
                             data = data.where(xr_ufuncs.logical_and(data>=(coord-value), data<=(coord+value)), drop=True)
                         else:
@@ -623,7 +632,7 @@ class Datacube:
 
                 res = {'inds': {}, 'masks': []}
                 if df is not self.df or field not in self.argsorts or select or coords:
-                    lhs = self._get_data(fields=field, select=select, coords=coords, df=df)
+                    lhs = self._get_data(fields=field, select=select, coords=coords, df=df, drop=True)
                     if op == '=' or op == 'is':
                         mask = (lhs == value)
                     elif op == '<':

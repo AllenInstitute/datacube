@@ -1,3 +1,4 @@
+-r ../../requirements-global-prod.txt
 autobahn
 crossbar
 Twisted
@@ -6,7 +7,7 @@ numpy==1.13.0
 scipy
 txaio
 xarray
-netCDF4
+h5netcdf
 dask
 toolz
 txredisapi

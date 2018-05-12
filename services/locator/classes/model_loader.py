@@ -14,13 +14,7 @@ class ModelLoader():
         path = self.config.get_property("ccf_model_path")
         path = path.replace("{0}", str(id))
 
-        out = ""
-
         with open(path) as f:
-            for line in f:
-                if '#' in line:
-                    continue
-
-                out += line
+            out = f.read()
 
         return out
