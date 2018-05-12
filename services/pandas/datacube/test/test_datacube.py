@@ -24,14 +24,11 @@ def test_nd_netcdf(request, tmpdir_factory):
     return nc_file, ds
 
 
-@pytest.fixture(params=list(product((False, True), (8*10, 8*200))))
+@pytest.fixture(params=list((8*10, 8*200)))
 def test_datacube(request, test_nd_netcdf, redisdb):
-    use_chunks, max_cacheable_bytes = request.param
+    max_cacheable_bytes = request.param
     nc_file, ds = test_nd_netcdf
-    chunks = None
-    if use_chunks:
-        chunks = {dim: 3 for dim in ds.dims}
-    d = Datacube('test', nc_file, redis_client=redisdb, chunks=chunks, max_cacheable_bytes=max_cacheable_bytes)
+    d = Datacube('test', nc_file, redis_client=redisdb, max_cacheable_bytes=max_cacheable_bytes)
     return d, ds
 
 
