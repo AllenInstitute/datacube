@@ -458,20 +458,21 @@ def main():
     logging.info('wrote dataset to {}'.format(nc_file))
     
     # generate mask of primary and secondary injection structures across all experiments
-    ds = xr.open_dataset(nc_file, engine='h5netcdf')
-    volume_shape = ds.projection.shape
-    volume_dims = ds.projection.dims
-    volume_coords = ds.projection.coords
-    ds.close()
-    is_projection = xr.DataArray(np.zeros(volume_shape, dtype=np.bool), dims=volume_dims, coords=volume_coords)
-    for i in range(ds.dims['experiment']):
-        logging.info('generating projection mask for experiment {} of {}'.format(i+1, ds.dims['experiment']))
-        injection_structures = ds.injection_structures_array.isel(experiment=i)
-        injection_structures = injection_structures.where(injection_structures!=0, drop=True)
-        is_projection[dict(experiment=i)] = (ds.ccf_structures!=injection_structures).all(dim=['depth','secondary'])
-    ds['is_projection'] = is_projection
-    ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf', mode='a')
-    logging.info('appended projection mask to {}'.format(nc_file))
+    #todo: uncomment this section once ram issues are sorted
+    #ds = xr.open_dataset(nc_file, engine='h5netcdf')
+    #volume_shape = ds.projection.shape
+    #volume_dims = ds.projection.dims
+    #volume_coords = ds.projection.coords
+    #ds.close()
+    #is_projection = xr.DataArray(np.zeros(volume_shape, dtype=np.bool), dims=volume_dims, coords=volume_coords)
+    #for i in range(ds.dims['experiment']):
+    #    logging.info('generating projection mask for experiment {} of {}'.format(i+1, ds.dims['experiment']))
+    #    injection_structures = ds.injection_structures_array.isel(experiment=i)
+    #    injection_structures = injection_structures.where(injection_structures!=0, drop=True)
+    #    is_projection[dict(experiment=i)] = (ds.ccf_structures!=injection_structures).all(dim=['depth','secondary'])
+    #ds['is_projection'] = is_projection
+    #ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf', mode='a')
+    #logging.info('appended projection mask to {}'.format(nc_file))
 
     #PBS-1262:
     shutil.copy2(args.surface_coords_path, args.data_dir)
