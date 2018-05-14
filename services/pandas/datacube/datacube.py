@@ -55,42 +55,44 @@ from builtins import int, map
 # monkey-patch the method into the module for now
 #setattr(da, 'einsum', da_einsum)
 
-import opt_einsum
-class oe:
 
-    @staticmethod
-    def einsum(*args, **kwargs):
-        args = list(args)
-        out_inds = args.pop()
-        in_inds = args[1::2]
-        arrays = args[0::2]
-        dtype = kwargs.get('dtype')
-        einsum_dtype = dtype
-        if dtype is None:
-            dtype = np.result_type(*[a.dtype for a in arrays])
-        casting = kwargs.get('casting')
-        if casting is None:
-            casting = 'safe'
-
-        import string
-        alpha = string.ascii_lowercase
-        einsum_string = '->'.join([','.join([''.join(alpha[i] for i in iinds) for iinds in in_inds])]+[''.join(alpha[i] for i in out_inds)])
-        return opt_einsum.contract(einsum_string, *arrays, backend='dask')
-
-
-    @staticmethod
-    def sum(*args, **kwargs):
-        return da.sum(*args, **kwargs)
-
-
-    @staticmethod
-    def reshape(*args, **kwargs):
-        return da.reshape(*args, **kwargs)
-
-
-    @staticmethod
-    def clip(*args, **kwargs):
-        return da.clip(*args, **kwargs)
+if False:
+    import opt_einsum
+    class oe:
+    
+        @staticmethod
+        def einsum(*args, **kwargs):
+            args = list(args)
+            out_inds = args.pop()
+            in_inds = args[1::2]
+            arrays = args[0::2]
+            dtype = kwargs.get('dtype')
+            einsum_dtype = dtype
+            if dtype is None:
+                dtype = np.result_type(*[a.dtype for a in arrays])
+            casting = kwargs.get('casting')
+            if casting is None:
+                casting = 'safe'
+    
+            import string
+            alpha = string.ascii_lowercase
+            einsum_string = '->'.join([','.join([''.join(alpha[i] for i in iinds) for iinds in in_inds])]+[''.join(alpha[i] for i in out_inds)])
+            return opt_einsum.contract(einsum_string, *arrays, backend='dask')
+    
+    
+        @staticmethod
+        def sum(*args, **kwargs):
+            return da.sum(*args, **kwargs)
+    
+    
+        @staticmethod
+        def reshape(*args, **kwargs):
+            return da.reshape(*args, **kwargs)
+    
+    
+        @staticmethod
+        def clip(*args, **kwargs):
+            return da.clip(*args, **kwargs)
 
 
 def get_num_samples(data, axis, mdata, backend=np):
@@ -110,6 +112,7 @@ def get_num_samples(data, axis, mdata, backend=np):
         if len(sample_axes)>0:
             num_samples *= np.prod(np.array([data.shape[i] for i in sample_axes if mdata.shape[i]==1 and data.shape[i]>1], dtype=np.uint64))
     return num_samples, mdata_args
+
 
 
 #def get_num_samples(data, axis, mdata, backend=np):

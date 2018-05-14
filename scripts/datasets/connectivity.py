@@ -256,9 +256,9 @@ def make_projection_volume(experiment_ids, mcc, tmp_dir=None):
             volume_shape = tuple(list(data.shape) + [len(experiment_ids)])
             if tmp_dir is not None:
                 store = zarr.storage.TempStore(prefix='volume_', dir=tmp_dir)
-                volume = zarr.creation.create(shape=volume_shape, dtype=np.float16, store=store)
+                volume = zarr.creation.create(shape=volume_shape, dtype=np.float32, store=store)
             else:
-                volume = zarr.creation.create(shape=volume_shape, dtype=np.float16)
+                volume = zarr.creation.create(shape=volume_shape, dtype=np.float32)
 
             logging.info('volume occupies {0} bytes ({1})'.format(volume.nbytes, volume.dtype.name))
 
