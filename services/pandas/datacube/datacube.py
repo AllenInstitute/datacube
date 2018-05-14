@@ -94,6 +94,7 @@ def get_num_samples(data, axis, mdata, backend=np):
 
 def einsum_corr(data, seed, axis, mdata, mseed, backend=np, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
     np.seterr(divide='ignore', invalid='ignore')
+    dtype = np.result_type(np.float64, data.dtype, mdata.dtype, seed.dtype, mseed.dtype) # use f64 at least
     
     sdims = range(seed.ndim)
     ddims = range(data.ndim)
@@ -102,18 +103,18 @@ def einsum_corr(data, seed, axis, mdata, mseed, backend=np, memoize=lambda k,f,*
     seed_num_samples, _ = get_num_samples(seed, axis, mseed, backend=backend)
     num_samples = memoize(['num_samples'], lambda *a,**kw: get_num_samples(*a,**kw)[0], data, axis, mdata, backend=backend)
 
-    seed_mean = backend.einsum(seed, sdims, mseed, range(0, mseed.ndim), []) / seed_num_samples
-    data_sum = memoize(['data_sum'], backend.einsum, data, ddims, mdata, range(0, mdata.ndim), [axis])
+    seed_mean = backend.einsum(seed, sdims, mseed, range(0, mseed.ndim), [], dtype=dtype) / seed_num_samples
+    data_sum = memoize(['data_sum'], backend.einsum, data, ddims, mdata, range(0, mdata.ndim), [axis], dtype=dtype)
     data_sum = backend.reshape(data_sum, tuple(data.shape[i] if i == axis else 1 for i in ddims)) # restore dims after einsum
     data_mean = data_sum / num_samples
 
-    seed_dev = backend.einsum(seed-seed_mean, sdims, mseed, range(0, mseed.ndim), sdims)
-    seed_denominator = backend.sum(seed_dev**2, axis=tuple(sample_axes))
-    numerator = backend.einsum(seed_dev, ddims, data, ddims, mdata, range(0, mdata.ndim), [axis])
-    numerator -= backend.einsum(seed_dev, ddims, data_mean, ddims, [axis])
+    seed_dev = backend.einsum(seed-seed_mean, sdims, mseed, range(0, mseed.ndim), sdims, dtype=dtype)
+    seed_denominator = backend.sum(seed_dev**2, axis=tuple(sample_axes), dtype=dtype)
+    numerator = backend.einsum(seed_dev, ddims, data, ddims, mdata, range(0, mdata.ndim), [axis], dtype=dtype)
+    numerator -= backend.einsum(seed_dev, ddims, data_mean, ddims, [axis], dtype=dtype)
     numerator = backend.reshape(numerator, tuple(data.shape[i] if i == axis else 1 for i in ddims)) # restore dims after einsum
 
-    data_denominator = memoize(['data_denominator'], backend.einsum, data, ddims, data, ddims, mdata, range(0, mdata.ndim), [axis])
+    data_denominator = memoize(['data_denominator'], backend.einsum, data, ddims, data, ddims, mdata, range(0, mdata.ndim), [axis], dtype=dtype)
     # data_mean has already been masked
     #denominator += -2.0*backend.einsum(data, ddims, data_mean, ddims, mdata, range(0, mdata.ndim), [axis])
     data_denominator = backend.reshape(data_denominator, tuple(data.shape[i] if i == axis else 1 for i in ddims)) # restore dims after einsum
@@ -374,6 +375,9 @@ class Datacube:
             del zarr.hierarchy.group(store=store)[var]
             self.df[var] = df[var]
             #self.df[var] = self.df[var].chunk({**{dim: self.df.dims[dim] for dim in self.df[var].dims}, **chunks})
+            #if var=='projection':
+            #    self.df[var] = self.df[var].astype(np.float16).load()
+            #else:
             self.df[var] = self.df[var].load()
         print('done loading {}.'.format(nc_file))
 
