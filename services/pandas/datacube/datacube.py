@@ -21,38 +21,76 @@ from builtins import int, map
 
 
 #todo: https://github.com/dask/dask/issues/732
-def da_einsum(*args, **kwargs):
-    args = list(args)
-    out_inds = args.pop()
-    in_inds = args[1::2]
-    arrays = args[0::2]
-    dtype = kwargs.get('dtype')
-    einsum_dtype = dtype
-    if dtype is None:
-        dtype = np.result_type(*[a.dtype for a in arrays])
-    casting = kwargs.get('casting')
-    if casting is None:
-        casting = 'safe'
-    
-    full_inds = list(set().union(*in_inds))
-    contract_inds = tuple(set(full_inds)-set(out_inds))
-    
-    def einsum(*operands, **kwargs):
-        kernel_dtype = kwargs.get('kernel_dtype')
-        casting = kwargs.get('casting')
-        chunk = np.einsum(dtype=kernel_dtype, casting=casting, *([arg for arg_pair in zip(operands, in_inds) for arg in arg_pair]+[out_inds]))
-        chunk = np.array(chunk)
-        chunk.shape = tuple([1 if ind not in out_inds else chunk.shape[out_inds.index(ind)] for ind in full_inds])
-        return chunk
-    
-    adjust_chunks = {ind: 1 for ind in contract_inds}
-    result = da.atop(einsum, full_inds, *args, dtype=dtype, kernel_dtype=einsum_dtype, casting=casting, adjust_chunks=adjust_chunks)
-    if contract_inds:
-        result = da.sum(result, axis=contract_inds)
-    return result
-
+#def da_einsum(*args, **kwargs):
+#    args = list(args)
+#    out_inds = args.pop()
+#    in_inds = args[1::2]
+#    arrays = args[0::2]
+#    dtype = kwargs.get('dtype')
+#    einsum_dtype = dtype
+#    if dtype is None:
+#        dtype = np.result_type(*[a.dtype for a in arrays])
+#    casting = kwargs.get('casting')
+#    if casting is None:
+#        casting = 'safe'
+#    
+#    full_inds = list(set().union(*in_inds))
+#    contract_inds = tuple(set(full_inds)-set(out_inds))
+#    
+#    def einsum(*operands, **kwargs):
+#        kernel_dtype = kwargs.get('kernel_dtype')
+#        casting = kwargs.get('casting')
+#        chunk = np.einsum(dtype=kernel_dtype, casting=casting, *([arg for arg_pair in zip(operands, in_inds) for arg in arg_pair]+[out_inds]))
+#        chunk = np.array(chunk)
+#        #chunk.shape = tuple([1 if ind not in out_inds else chunk.shape[out_inds.index(ind)] for ind in full_inds])
+#        return chunk
+#    
+#    #adjust_chunks = {ind: 1 for ind in contract_inds}
+#    #result = da.atop(einsum, full_inds, *args, dtype=dtype, kernel_dtype=einsum_dtype, casting=casting, adjust_chunks=adjust_chunks)
+#    #if contract_inds:
+#    #    result = da.sum(result, axis=contract_inds)
+#    result = da.atop(einsum, out_inds, *args, dtype=dtype, kernel_dtype=einsum_dtype, casting=casting, concatenate=True)
+#    return result
+#
 # monkey-patch the method into the module for now
-setattr(da, 'einsum', da_einsum)
+#setattr(da, 'einsum', da_einsum)
+
+import opt_einsum
+class oe:
+
+    @staticmethod
+    def einsum(*args, **kwargs):
+        args = list(args)
+        out_inds = args.pop()
+        in_inds = args[1::2]
+        arrays = args[0::2]
+        dtype = kwargs.get('dtype')
+        einsum_dtype = dtype
+        if dtype is None:
+            dtype = np.result_type(*[a.dtype for a in arrays])
+        casting = kwargs.get('casting')
+        if casting is None:
+            casting = 'safe'
+
+        import string
+        alpha = string.ascii_lowercase
+        einsum_string = '->'.join([','.join([''.join(alpha[i] for i in iinds) for iinds in in_inds])]+[''.join(alpha[i] for i in out_inds)])
+        return opt_einsum.contract(einsum_string, *arrays, backend='dask')
+
+
+    @staticmethod
+    def sum(*args, **kwargs):
+        return da.sum(*args, **kwargs)
+
+
+    @staticmethod
+    def reshape(*args, **kwargs):
+        return da.reshape(*args, **kwargs)
+
+
+    @staticmethod
+    def clip(*args, **kwargs):
+        return da.clip(*args, **kwargs)
 
 
 def get_num_samples(data, axis, mdata, backend=np):
@@ -237,12 +275,30 @@ def do_correlation(ds, seed, mseed, dim, num_chunks, max_workers, chunk_idx, mem
     return xr.Dataset({'corr': (data.dims, einsum_corr(data.data, seed, axis, mdata.data, mseed, backend=np, memoize=_memoize))}).squeeze()
 
 
-def par_correlation(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
+def par_correlation_tmp(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
     seed, mseed = get_seed(ds, seed_label, dim)
     seed = seed.compute()
     mseed = mseed.compute()
     _memoize = lambda key, f, *args, **kwargs: memoize([dim]+key, f, *args, **kwargs)
     corr = do_correlation(ds, seed, mseed, dim, num_chunks, max_workers, memoize=_memoize)
+    corr.coords[dim] = ds.coords[dim]
+    return corr
+
+
+def par_correlation(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
+    data = ds['data']
+    mdata = mask_field(ds, 'data')
+    axis = data.dims.index(dim)
+    seed, mseed = get_seed(ds, seed_label, dim)
+    def _compute(arr):
+        if isinstance(arr, da.Array):
+            tmp = arr.compute()
+            return da.from_array(tmp, chunks=arr.chunks)
+        else:
+            return arr
+    _memoize = lambda key, f, *args, **kwargs: memoize([dim]+key, lambda: _compute(f(*args, **kwargs)))
+    corr = einsum_corr(data.data, seed.data, axis, mdata.data, mseed.data, backend=da, memoize=_memoize)
+    corr = xr.Dataset({'corr': (data.dims, corr)}).squeeze()
     corr.coords[dim] = ds.coords[dim]
     return corr
 
@@ -293,10 +349,12 @@ class Datacube:
             if self.df[field].dtype.name.startswith('bytes') or self.df[field].dtype.name == 'object':
                 self.df[field] = self.df[field].astype('str')
                 self.df[field] = self.df[field].astype(self.df[field].values.dtype)
-        print('building dataset as zarr DictStore (in-memory)...')
+        #print('building dataset as zarr DictStore (in-memory)...')
+        print('building dataset as zarr LMDBStore (in-memory)...')
         import zarr
         import numcodecs
-        store = zarr.storage.DictStore()
+        #store = zarr.storage.DictStore()
+        store = zarr.storage.LMDBStore('/dev/shm/{}.zarr.lmdb'.format(self.name))
         import types
         import functools
 
@@ -317,7 +375,7 @@ class Datacube:
                 'projection': {'filters': [numcodecs.quantize.Quantize(3, np.float32)]}
                 #'projection': {'compressor': None}
                 }
-        PERSIST = ['projection', 'is_projection']
+        PERSIST = [] #'projection', 'is_projection']
         df = self.df
         #for var in set(self.df.variables).intersection(PERSIST):
         #    self.df = self.df.drop(var)
