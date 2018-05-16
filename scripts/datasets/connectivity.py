@@ -11,11 +11,18 @@ from io import StringIO
 import shutil
 from collections import OrderedDict
 import tempfile
+import pg8000
+import csv
+from concurrent.futures import ThreadPoolExecutor
 
 import nrrd
 import numpy as np
 import xarray as xr
 import pandas as pd
+import zarr
+import h5py
+import dask
+import dask.array as da
 
 from allensdk.core.mouse_connectivity_cache import MouseConnectivityCache
 from allensdk.config.manifest import Manifest
@@ -28,6 +35,9 @@ API_CONNECTIVITY_QUERY = '/api/v2/data/ApiConnectivity/query.csv?num_rows=all'
 DEFAULT_SURFACE_COORDS_PATH = (
     '/allen/programs/celltypes/production/0378/informatics/model/P56/corticalCoordinates/surface_coords_10.h5'
 )
+
+
+
 
 
 def get_projection_table(unionizes, experiment_ids, structure_ids, data_field):
@@ -46,7 +56,7 @@ def get_projection_table(unionizes, experiment_ids, structure_ids, data_field):
 
     Returns
     -------
-    pd.DataFrame : 
+    pd.DataFrame :
         Output table.
 
     '''
@@ -65,9 +75,9 @@ def get_specified_projection_table(
     '''
 
     unionizes = mcc.filter_structure_unionizes(
-        unionizes, 
+        unionizes,
         is_injection=bool(is_injection),
-        structure_ids=structure_ids, 
+        structure_ids=structure_ids,
         include_descendants=True,
         hemisphere_ids=[hemisphere_id]
     )
@@ -75,8 +85,8 @@ def get_specified_projection_table(
     return get_projection_table(unionizes, experiment_ids, structure_ids, data_field)
 
 
-def get_all_unionizes(mcc, all_unionizes_path, experiment_ids):
-    ''' Reads a table containing all projection structure unionizes for a given list of experiments. If necessary, 
+def get_all_unionizes(mcc, all_unionizes_path, experiment_ids, lims=None):
+    ''' Reads a table containing all projection structure unionizes for a given list of experiments. If necessary,
     this table will be compiled and stored.
 
     Parameters
@@ -87,6 +97,8 @@ def get_all_unionizes(mcc, all_unionizes_path, experiment_ids):
         Read the collated table from here, or if this file does not exists, write it to here.
     experiment_ids : list of int
         Get unionizes for these experiments
+    lims : pg8000.Connection or None
+        Lims database connection to use if running with --internal.
 
     Returns
     -------
@@ -96,17 +108,38 @@ def get_all_unionizes(mcc, all_unionizes_path, experiment_ids):
     '''
 
     try:
+        logging.info('found all-unionizes csv')
         unionizes = pd.read_csv(all_unionizes_path)
         assert( set(experiment_ids) - set(unionizes['experiment_id'].values) == set([]) )
 
     except (IOError, ValueError, AssertionError) as err:
-        unionizes = mcc.get_structure_unionizes(experiment_ids)
-        unionizes.to_csv(all_unionizes_path)
+        if lims:
+            logging.info('downloading unionizes from lims...')
+            cursor = lims.cursor()
+            cursor.execute('''
+                select image_series_id, structure_id, hemisphere_id, is_injection,
+                projection_volume, normalized_projection_volume, volume
+                from projection_structure_unionizes
+                where image_series_id in ({})'''.format(','.join(str(eid) for eid in experiment_ids)))
+            with open(all_unionizes_path, 'w') as f:
+                writer = csv.writer(f, delimiter=',')
+                writer.writerow(['experiment_id', 'structure_id', 'hemisphere_id', 'is_injection',
+                    'projection_volume', 'normalized_projection_volume', 'volume'])
+                for row in cursor:
+                    writer.writerow(row)
+            cursor.close()
+            unionizes = pd.read_csv(all_unionizes_path)
+            logging.info('done')
+        else:
+            logging.info('downloading unionizes to mouse connectivity cache...')
+            unionizes = mcc.get_structure_unionizes(experiment_ids)
+            unionizes.to_csv(all_unionizes_path)
+            logging.info('done')
 
     return unionizes
 
 
-def make_unionize_tables(data_field_key, mcc, all_unionizes_path, experiment_ids, structure_ids, hemisphere_map=HEMISPHERE_MAP):
+def make_unionize_tables(data_field_key, mcc, all_unionizes_path, experiment_ids, structure_ids, hemisphere_map=HEMISPHERE_MAP, lims=None):
     ''' Build a 4D table of unionize values, organized by experiment, structure, hemisphere and injection status
 
     Parameters
@@ -123,6 +156,8 @@ def make_unionize_tables(data_field_key, mcc, all_unionizes_path, experiment_ids
         Ids of structures to include
     hemisphere_map : collections.OrderedDict
         Maps hemisphere ids to full names
+    lims : pg8000.Connection or None
+        Lims database connection to use if running with --internal.
 
     Returns
     -------
@@ -131,7 +166,7 @@ def make_unionize_tables(data_field_key, mcc, all_unionizes_path, experiment_ids
 
     '''
 
-    unionizes = get_all_unionizes(mcc, all_unionizes_path, experiment_ids)
+    unionizes = get_all_unionizes(mcc, all_unionizes_path, experiment_ids, lims)
 
     nstructures = len(structure_ids)
     nhemispheres = len(hemisphere_map)
@@ -140,7 +175,7 @@ def make_unionize_tables(data_field_key, mcc, all_unionizes_path, experiment_ids
     tables = xr.DataArray(
         np.zeros([nexperiments, nstructures, nhemispheres, 2]),
         dims=['experiment', 'structure', 'hemisphere', 'injection'],
-        coords={'experiment': experiment_ids, 'structure': structure_ids, 'hemisphere': list(hemisphere_map.values()), 
+        coords={'experiment': experiment_ids, 'structure': structure_ids, 'hemisphere': list(hemisphere_map.values()),
         'injection': [False, True]}
     )
     print(tables.coords)
@@ -161,7 +196,7 @@ def make_structure_paths_array(projection_unionize, ontology_depth, structure_pa
     '''
 
     structure_paths_array = np.zeros(
-        projection_unionize.structure.shape+(ontology_depth,), 
+        projection_unionize.structure.shape+(ontology_depth,),
         dtype=projection_unionize.structure.dtype
     )
 
@@ -176,7 +211,7 @@ def make_structure_paths_array(projection_unionize, ontology_depth, structure_pa
 
 
 def make_annotation_volume_paths(ccf_anno, ontology_depth, structure_paths):
-    ''' Builds a 4D array, ragged in the last axis, which assigns to each CCF voxel 
+    ''' Builds a 4D array, ragged in the last axis, which assigns to each CCF voxel
     the structure id path associated with the structure at that voxel.
 
     '''
@@ -197,7 +232,7 @@ def make_annotation_volume_paths(ccf_anno, ontology_depth, structure_paths):
 
 
 def make_primary_structure_paths(primary_structures, ontology_depth, structure_paths):
-    ''' Builds a ragged array which assigns to each experiment the structure id path associated with that 
+    ''' Builds a ragged array which assigns to each experiment the structure id path associated with that
     experiment's primary structure
 
     Parameters
@@ -207,13 +242,13 @@ def make_primary_structure_paths(primary_structures, ontology_depth, structure_p
     ontology_depth : int
         Maximum node depth within the ontology tree.
     structure_paths : dict | int -> list of int
-        Maps structure ids to lists of int. Each such list describes the path from the root of the structure tree to 
-        structure in question. 
+        Maps structure ids to lists of int. Each such list describes the path from the root of the structure tree to
+        structure in question.
 
     Returns
     -------
     primary_structure_paths ; numpy.ndarray
-        Each row contains the structure id path of a single experiment's primary injection structure 
+        Each row contains the structure id path of a single experiment's primary injection structure
         (right-padded with zeros if necessary).
 
     '''
@@ -223,7 +258,7 @@ def make_primary_structure_paths(primary_structures, ontology_depth, structure_p
 
     for i in range(len(primary_structures)):
         structure_id = int(primary_structures[i])
-        
+
         if structure_id > 0:
             path = structure_paths[structure_id]
             primary_structure_paths[i,:len(path)] = path
@@ -231,7 +266,25 @@ def make_primary_structure_paths(primary_structures, ontology_depth, structure_p
     return primary_structure_paths
 
 
-def make_projection_volume(experiment_ids, mcc, tmp_dir=None):
+def get_projection_density_grid_data(experiment_id, mcc, lims=False):
+    ''' Get 3D projection density volume by downloading nrrd through AllenSDK or reading
+    from the filesystem (--internal) '''
+
+    if lims:
+        lims = pg8000.connect(host="limsdb2", port=5432, database="lims2", user="atlasreader", password="atlasro")
+        cursor = lims.cursor()
+        cursor.execute('''select storage_directory from image_series where id={}'''.format(experiment_id))
+        storage_directory = cursor.fetchone()[0]
+        cursor.close()
+        lims.close()
+        nrrd_path = os.path.join(storage_directory, 'grid', 'projection_density_{}.nrrd'.format(mcc.resolution))
+        data, header = nrrd.read(nrrd_path)
+    else:
+        data, header = mcc.get_projection_density(experiment_id)
+    return data, header
+
+
+def make_projection_volume(experiment_ids, mcc, lims=None, tmp_dir=None, max_workers=16):
     ''' Build a 4D array of projection density volumes, with experiment as the 4th axis
 
     Parameters
@@ -240,29 +293,37 @@ def make_projection_volume(experiment_ids, mcc, tmp_dir=None):
         Ids of experiments to include
     mcc : allensdk.core.mouse_connectivity_cache.MouseConnectivityCache
         Used to manage data access
+    lims : pg8000.Connection or None
+        Lims database connection to use if running with --internal.
     tmp_dir : str
         Path to directory in which to build the array as a memmapped file, else the array
         will be built in memory. The memmap is written to a tempfile which will be deleted
         when the memmap object is deallocated.
+    max_workers : int
+        Number of threads to use.
     '''
 
-    for ii, eid in enumerate(experiment_ids):
+    data, _ = get_projection_density_grid_data(experiment_ids[0], mcc, lims)
+    volume_shape = tuple(list(data.shape) + [len(experiment_ids)])
+    chunks = volume_shape[:-1]+(1,)
+    if tmp_dir is not None:
+        store = zarr.storage.TempStore(prefix='volume_', dir=tmp_dir)
+        volume = zarr.creation.create(shape=volume_shape, dtype=np.float32, chunks=chunks, store=store)
+    else:
+        volume = zarr.creation.create(shape=volume_shape, dtype=np.float32, chunks=chunks)
 
-        data, header = mcc.get_projection_density(eid)
+    logging.info('volume occupies {0} bytes ({1})'.format(volume.nbytes, volume.dtype.name))
+
+    def paste_grid_data_into_volume(eid):
+        data, header = get_projection_density_grid_data(eid, mcc, lims)
         logging.info('read in data for experiment {0}'.format(eid))
 
-        if ii == 0:
-            volume_shape = tuple(list(data.shape) + [len(experiment_ids)])
-            if tmp_dir is not None:
-                temp_file = tempfile.NamedTemporaryFile(dir=tmp_dir)
-                volume = np.memmap(temp_file, dtype=np.float32, shape=volume_shape)
-            else:
-                volume = np.zeros(volume_shape, dtype=np.float32)
-
-            logging.info('volume occupies {0} bytes ({1})'.format(volume.nbytes, volume.dtype.name))
-
+        ii = experiment_ids.index(eid)
         volume[:, :, :, ii] = data
         logging.info('pasted data from experiment {0} ({1})'.format(eid, ii))
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        executor.map(paste_grid_data_into_volume, experiment_ids)
 
     return volume
 
@@ -273,12 +334,12 @@ def make_injection_structures_arrays(experiments_ds, ontology_depth, structure_p
     Parameters
     ----------
     experiments_ds : xarray.DataSet
-        Contains information about experiments. Must have an attribute injection_structures whose values are / seperated 
+        Contains information about experiments. Must have an attribute injection_structures whose values are / seperated
         strings of experimentwise injection structures.
     ontology_depth : int
         Maximum node depth within the ontology tree.
     structure_paths : dict | int -> list of int
-        Maps structure ids to lists of int. Each such list describes the path from the root of the structure tree to 
+        Maps structure ids to lists of int. Each such list describes the path from the root of the structure tree to
         structure in question.
 
     Returns
@@ -286,13 +347,13 @@ def make_injection_structures_arrays(experiments_ds, ontology_depth, structure_p
     injection_structures_arr : numpy.ndarray
         Ragged array of experimentwise injection structures.
     injection_structures_path : numpy.ndarray
-        As injection_structures_arr, but with an additional dimension holding the full path to root of each injection 
+        As injection_structures_arr, but with an additional dimension holding the full path to root of each injection
         structure.
 
     '''
 
     injection_structures_list = [
-        [int(id) for id in s.split('/')] 
+        [int(id) for id in s.split('/')]
         for s in experiments_ds.injection_structures.values.tolist()
     ]
 
@@ -319,7 +380,7 @@ def rgb_to_hex(rgb):
 
     Returns
     -------
-    str : 
+    str :
         6-character hex string corresponding to input RGB values
 
     '''
@@ -349,7 +410,7 @@ def get_structure_information(tree, summary_set_id=SUMMARY_SET_ID, exclude_from_
     structure_colors : list of str
         The ontological color of each structure (as a hex string)
     structure_paths : dict | int -> list of int
-        Maps structure ids to lists of int. Each such list describes the path from the root of the structure tree to 
+        Maps structure ids to lists of int. Each such list describes the path from the root of the structure tree to
         structure in question.
     summary_structures : set of int
         Contains the ids of each summary structure (minus those specifically excluded)
@@ -363,7 +424,7 @@ def get_structure_information(tree, summary_set_id=SUMMARY_SET_ID, exclude_from_
     structure_paths = { row.id: row.structure_id_path for row in nodes.itertuples() }
 
     summary_structures = {
-        s['id'] for s in tree.get_structures_by_set_id([summary_set_id]) 
+        s['id'] for s in tree.get_structures_by_set_id([summary_set_id])
         if s['id'] not in exclude_from_summary
     }
 
@@ -399,11 +460,11 @@ def main():
     ontology_depth = max([len(p) for p in structure_paths.values()])
     ccf_anno_paths = make_annotation_volume_paths(ccf_anno, ontology_depth, structure_paths)
 
-    pv = make_unionize_tables('projection_volume', mcc, all_unionizes_path, experiment_ids, structure_ids)
-    npv = make_unionize_tables('normalized_projection_volume', mcc, all_unionizes_path, experiment_ids, structure_ids)
+    pv = make_unionize_tables('projection_volume', mcc, all_unionizes_path, experiment_ids, structure_ids, lims=lims)
+    npv = make_unionize_tables('normalized_projection_volume', mcc, all_unionizes_path, experiment_ids, structure_ids, lims=lims)
 
     projection_unionize = xr.concat([pv,npv],xr.DataArray([False,True],dims=['normalized'],name='normalized'))
-    structure_volumes = make_unionize_tables('volume', mcc, all_unionizes_path, experiment_ids, structure_ids)
+    structure_volumes = make_unionize_tables('volume', mcc, all_unionizes_path, experiment_ids, structure_ids, lims=lims)
 
     structure_paths_array = make_structure_paths_array(projection_unionize, ontology_depth, structure_paths)
 
@@ -413,14 +474,14 @@ def main():
     primary_structures = experiments_ds.structure_id.values
     primary_structure_paths = make_primary_structure_paths(primary_structures, ontology_depth, structure_paths)
 
-    volume = make_projection_volume(experiment_ids, mcc, tmp_dir=args.data_dir)
+    volume = make_projection_volume(experiment_ids, mcc, lims=lims, tmp_dir=args.data_dir)
 
     ccf_dims = ['anterior_posterior', 'superior_inferior', 'left_right']
     ds = xr.Dataset(
         data_vars={
             'ccf_structure': (ccf_dims, ccf_anno, {'spacing': [args.resolution]*3}),
             'ccf_structures': (ccf_dims+['depth'], ccf_anno_paths),
-            'projection': (ccf_dims+['experiment'], volume),
+            'projection': (ccf_dims+['experiment'], da.from_array(volume, chunks=volume.chunks)),
             'volume': projection_unionize,
             'structure_volumes': structure_volumes,
             'primary_structures': (['experiment', 'depth'], primary_structure_paths),
@@ -443,35 +504,149 @@ def main():
     ds.merge(structure_meta, inplace=True, join='left')
     ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly
     nc_file = os.path.join(args.data_dir, args.data_name + '.nc')
-    ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
-    ds.close()
-    # free up mem
-    del ds
-    del volume
-    del primary_structure_paths
-    del primary_structures
-    del injection_structure_paths
-    del injection_structures_arr
-    del structure_paths_array
-    del structure_volumes
-    del projection_unionize
-    logging.info('wrote dataset to {}'.format(nc_file))
-    
-    # generate mask of primary and secondary injection structures across all experiments
-    ds = xr.open_dataset(nc_file, engine='h5netcdf')
-    volume_shape = ds.projection.shape
-    volume_dims = ds.projection.dims
-    volume_coords = ds.projection.coords
-    ds.close()
-    is_projection = xr.DataArray(np.zeros(volume_shape, dtype=np.bool), dims=volume_dims, coords=volume_coords)
-    for i in range(ds.dims['experiment']):
-        logging.info('generating projection mask for experiment {} of {}'.format(i+1, ds.dims['experiment']))
-        injection_structures = ds.injection_structures_array.isel(experiment=i)
+#    logging.info('writing dataset to {}'.format(nc_file))
+#    ds = ds.chunk({'experiment': 1})
+#    ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
+#    ds.close()
+#    # free up mem
+#    del ds
+#    del volume
+#    del primary_structure_paths
+#    del primary_structures
+#    del injection_structure_paths
+#    del injection_structures_arr
+#    del structure_paths_array
+#    del structure_volumes
+#    del projection_unionize
+#    logging.info('wrote dataset to {}'.format(nc_file))
+
+    ## generate mask of primary and secondary injection structures across all experiments
+    #ds = xr.open_dataset(nc_file, engine='h5netcdf', chunks={'experiment': 1})
+    ##store = zarr.storage.TempStore(prefix='injection_mask_', dir=args.data_dir)
+    ##mask = zarr.creation.create(shape=ds.projection.shape, dtype=np.bool)
+    ##is_projection = xr.DataArray(mask, dims=ds.projection.dims, coords=ds.projection.coords)
+    #logging.info('generating projection mask')
+    #injection_structures = ds.injection_structures_array.where(ds.injection_structures_array>0)
+    #ds['is_projection'] = (ds.ccf_structures!=injection_structures).all(dim=['depth','secondary'])
+    #ds.close() # close nc file so we can write to it
+    #ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')#, mode='a')
+    #logging.info('appended projection mask to {}'.format(nc_file))
+
+    #ds = xr.open_dataset(nc_file, engine='h5netcdf')
+    store = zarr.storage.TempStore(prefix='injection_mask_', dir=args.data_dir)
+    chunks = ds.projection.shape[:-1]+(1,)
+    mask = zarr.creation.create(shape=ds.projection.shape, dtype=np.bool, chunks=chunks)
+    def generate_injection_mask(experiment_index):
+        logging.info('generating projection mask for experiment {} of {}'.format(experiment_index+1, ds.dims['experiment']))
+        injection_structures = ds.injection_structures_array.isel(experiment=experiment_index)
         injection_structures = injection_structures.where(injection_structures!=0, drop=True)
-        is_projection[dict(experiment=i)] = (ds.ccf_structures!=injection_structures).all(dim=['depth','secondary'])
+        mask[:,:,:,experiment_index] = (ds.ccf_structures!=injection_structures).all(dim=['depth','secondary'])
+    with ThreadPoolExecutor(max_workers=16) as executor:
+        executor.map(generate_injection_mask, range(ds.dims['experiment']))
+    is_projection = xr.DataArray(da.from_array(mask, chunks=mask.chunks),
+        dims=ds.projection.dims, coords=ds.projection.coords)
     ds['is_projection'] = is_projection
-    ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf', mode='a')
-    logging.info('appended projection mask to {}'.format(nc_file))
+
+
+
+
+    #from h5netcdf.core import _invalid_netcdf_feature
+    #def _create_child_variable(self, name, dimensions, dtype, data, fillvalue,
+    #                           **kwargs):
+    #    stacklevel = 4  # correct if name does not start with '/'
+    #    if name in self:
+    #        raise ValueError('unable to create variable %r '
+    #                         '(name already exists)' % name)
+    #    if data is not None:
+    #        if name not in ['projection', 'is_projection']: #if not isinstance(data, zarr.core.Array):
+    #            data = np.asarray(data)
+    #        for d, s in zip(dimensions, data.shape):
+    #            if d not in self.dimensions:
+    #                self.dimensions[d] = s
+    #    if dtype is None:
+    #        dtype = data.dtype
+    #    if dtype == np.bool_:
+    #        # never warn since h5netcdf has always errored here
+    #        _invalid_netcdf_feature('boolean dtypes',
+    #                                allow=bool(self._root.invalid_netcdf),
+    #                                file=self._root,
+    #                                stacklevel=stacklevel)
+    #    else:
+    #        self._root._check_valid_netcdf_dtype(dtype, stacklevel=stacklevel)
+    #    compression = kwargs.get('compression')
+    #    if compression not in {None, 'gzip'}:
+    #        _invalid_netcdf_feature('{} compression'.format(compression),
+    #                                allow=self._root.invalid_netcdf,
+    #                                file=self._root,
+    #                                stacklevel=stacklevel)
+    #    if 'scaleoffset' in kwargs:
+    #        _invalid_netcdf_feature('scale-offset filters',
+    #                                allow=self._root.invalid_netcdf,
+    #                                file=self._root,
+    #                                stacklevel=stacklevel)
+    #    if name in self.dimensions and name not in dimensions:
+    #        h5name = '_nc4_non_coord_' + name
+    #    else:
+    #        h5name = name
+    #    shape = tuple(self._current_dim_sizes[d] for d in dimensions)
+    #    maxshape = tuple(self._dim_sizes[d] for d in dimensions)
+    #    # If it is passed directly it will change the default compression
+    #    # settings.
+    #    if shape != maxshape:
+    #        kwargs["maxshape"] = maxshape
+    #    #if not isinstance(data, zarr.core.Array):
+    #    if name == 'projection':
+    #        print('using zarr copy for variable \'{}\'!'.format(name))
+    #        zarr.convenience.copy(volume, self._h5group, h5name)
+    #    elif name == 'is_projection':
+    #        print('using zarr copy for variable \'{}\'!'.format(name))
+    #        zarr.convenience.copy(mask, self._h5group, h5name)
+    #    else:
+    #        self._h5group.create_dataset(h5name, shape, dtype=dtype,
+    #                                     data=data, fillvalue=fillvalue,
+    #                                     **kwargs)
+    #    #else:
+    #    #    print('using zarr copy for variable \'{}\'!'.format(name))
+    #    #    zarr.convenience.copy(data, self._h5group, h5name)
+    #    import pdb
+    #    pdb.set_trace()
+    #    self._variables[h5name] = self._variable_cls(self, h5name, dimensions)
+    #    variable = self._variables[h5name]
+    #    if fillvalue is not None:
+    #        value = variable.dtype.type(fillvalue)
+    #        variable.attrs._h5attrs['_FillValue'] = value
+    #    return variable
+
+    #import h5netcdf
+    #h5netcdf.core.Group._create_child_variable = _create_child_variable
+
+    #ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
+
+
+
+    #import pdb
+    #pdb.set_trace()
+    logging.info('writing dataset to {}'.format(nc_file))
+    ds.drop(['projection', 'is_projection']).to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
+    ds.close()
+    #import h5netcdf
+    #f=h5netcdf.File(nc_file, 'r+', invalid_netcdf=True)
+    #f.create_variable('projection', ds.projection.dims, ds.projection.dtype)
+    #f.create_variable('is_projection', ds.is_projection.dims, ds.is_projection.dtype)
+    #f.close()
+    f=h5py.File(nc_file, 'r+')
+    logging.info('copying projection volume to {}'.format(nc_file))
+    zarr.convenience.copy(volume, f, 'projection')
+    logging.info('copying projection mask to {}'.format(nc_file))
+    zarr.convenience.copy(mask, f, 'is_projection')
+    ds['projection'].attrs['a'] = 1
+    for var in ['projection', 'is_projection']:
+        if len(ds[var].attrs) > 0:
+            raise NotImplementedError('failing because variable \'{}\' has attributes that won\'t be written'.format(var))
+        for dim in ds[var].dims:
+            f[var].dims[ds[var].dims.index(dim)].attach_scale(f[dim])
+    f.close()
+    logging.info('wrote dataset to {}'.format(nc_file))
 
     #PBS-1262:
     shutil.copy2(args.surface_coords_path, args.data_dir)
@@ -488,6 +663,13 @@ if __name__ == '__main__':
     parser.add_argument('--manifest_filename', type=str, default='mouse_connectivity_manifest.json')
     parser.add_argument('--resolution', type=int, default=100, help='isometric CCF resolution')
     parser.add_argument('--surface_coords_path', type=str, default=DEFAULT_SURFACE_COORDS_PATH)
+    parser.add_argument('--internal', action='store_true')
 
     args = parser.parse_args()
+
+    lims = None
+    if args.internal:
+        #todo: this ought to be configurable
+        lims = pg8000.connect(host="limsdb2", port=5432, database="lims2", user="atlasreader", password="atlasro")
+
     main()

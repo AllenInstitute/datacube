@@ -1,4 +1,4 @@
+-r scripts/requirements.txt
 crossbar
 klein
 simplejson
-cachetools
