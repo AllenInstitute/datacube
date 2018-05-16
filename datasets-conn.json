@@ -15,7 +15,7 @@
                 "calculate_stats": true
             }
         ],
-        "arguments": ["--data-src", "http://iwarehouse/", "--data-dir", "./conn_data/", "--data-name", "connectivity", "--resolution", "100"]
+        "arguments": ["--data-src", "http://iwarehouse/", "--internal", "--data-dir", "./conn_data/", "--data-name", "connectivity", "--resolution", "100"]
     },
     {
         "name": "mouse_ccf",

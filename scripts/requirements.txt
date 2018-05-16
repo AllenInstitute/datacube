@@ -6,5 +6,4 @@ pynrrd
 numba
 allensdk
 pandas
-distributed
 psycopg2

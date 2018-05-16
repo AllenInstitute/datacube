@@ -35,7 +35,7 @@ API_CONNECTIVITY_QUERY = '/api/v2/data/ApiConnectivity/query.csv?num_rows=all'
 DEFAULT_SURFACE_COORDS_PATH = (
     '/allen/programs/celltypes/production/0378/informatics/model/P56/corticalCoordinates/surface_coords_10.h5'
 )
-LIMS_CONNECTION_PARAMS = dict(host="limsdb2", port=5432, database="lims2", user="atlasreader", password="atlasro")
+LIMS_CONNECTION_PARAMS = json.load(open('lims_config.json'))
 
 
 def get_projection_table(unionizes, experiment_ids, structure_ids, data_field):
@@ -264,7 +264,7 @@ def make_primary_structure_paths(primary_structures, ontology_depth, structure_p
     return primary_structure_paths
 
 
-def get_projection_density_grid_data(experiment_id, mcc, lims=False):
+def get_projection_density_grid_data(experiment_id, mcc, lims=None):
     ''' Get 3D projection density volume by downloading nrrd through AllenSDK or reading
     from the filesystem (--internal) '''
 
@@ -273,7 +273,6 @@ def get_projection_density_grid_data(experiment_id, mcc, lims=False):
         cursor.execute('''select storage_directory from image_series where id={}'''.format(experiment_id))
         storage_directory = cursor.fetchone()[0]
         cursor.close()
-        lims.close()
         nrrd_path = os.path.join(storage_directory, 'grid', 'projection_density_{}.nrrd'.format(mcc.resolution))
         data, header = nrrd.read(nrrd_path)
     else:
@@ -281,7 +280,7 @@ def get_projection_density_grid_data(experiment_id, mcc, lims=False):
     return data, header
 
 
-def make_projection_volume(experiment_ids, mcc, lims=None, tmp_dir=None, max_workers=16):
+def make_projection_volume(experiment_ids, mcc, lims=None, tmp_dir=None, max_workers=8):
     ''' Build a 4D array of projection density volumes, with experiment as the 4th axis
 
     Parameters
