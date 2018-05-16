@@ -123,14 +123,6 @@
                                 "mime_types": {}
                             }
                         },
-                        "debug": {
-                            "type": "static",
-                            "directory": "../../",
-                            "options": {
-                                "enable_directory_listing": true,
-                                "mime_types": {}
-                            }
-                        },
                         "cgi": {
                             "type": "cgi",
                             "directory": "../../cgi",

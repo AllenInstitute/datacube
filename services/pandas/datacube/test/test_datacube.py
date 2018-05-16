@@ -24,14 +24,14 @@ def test_nd_netcdf(request, tmpdir_factory):
     return nc_file, ds
 
 
-@pytest.fixture(params=list(product((False,), (8*10, 8*200))))
+@pytest.fixture(params=list(product((False, True), (8*10, 8*200))))
 def test_datacube(request, test_nd_netcdf, redisdb):
     use_chunks, max_cacheable_bytes = request.param
     nc_file, ds = test_nd_netcdf
     chunks = None
     if use_chunks:
         chunks = {dim: 3 for dim in ds.dims}
-    d = Datacube('test', nc_file, redis_client=redisdb, chunks=chunks, max_cacheable_bytes=max_cacheable_bytes, num_chunks=1, max_workers=1)
+    d = Datacube('test', nc_file, redis_client=redisdb, chunks=chunks, max_cacheable_bytes=max_cacheable_bytes)
     return d, ds
 
 
@@ -183,7 +183,7 @@ def test_corr(test_datacube):
     r = d.corr('foo_0', 'dim_0', 0)
     xr.testing.assert_allclose(r, xr.Dataset({'corr': (['dim_0'], np.array([pearsonr(ds.foo_0.isel(dim_0=[0]), ds.foo_0.isel(dim_0=[i])) for i in range(ds.dims['dim_0'])])), 'dim_0': ds.dim_0}))
 
-    r = d.corr('foo_0', 'dim_0', 1)
+    r = d.corr('foo_0', 'dim_0', -1)
     assert np.all(np.isnan(r.corr.values)) and r.corr.values.shape == ds.coords['dim_0'].shape
 
     r = d.corr('foo_1', 'dim_0', 0)
