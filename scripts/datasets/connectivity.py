@@ -520,6 +520,8 @@ def main():
             'ccf_structure': (ccf_dims, ccf_anno, {'spacing': [args.resolution]*3}),
             'ccf_structures': (ccf_dims+['depth'], ccf_anno_paths),
             'projection': (ccf_dims+['experiment'], da.from_array(volume, chunks=volume.chunks)),
+            'is_summary_structure': (['structure'], [structure.item() in summary_structures for structure in projection_unionize.structure]),
+            'structure_color': structure_colors,
             'volume': projection_unionize,
             'structure_volumes': structure_volumes,
             'primary_structures': (['experiment', 'depth'], primary_structure_paths),
@@ -529,8 +531,6 @@ def main():
         coords={
             'experiment': experiment_ids,
             'structures': (['structure', 'depth'], structure_paths_array),
-            'is_summary_structure': (['structure'], [structure.item() in summary_structures for structure in projection_unionize.structure]),
-            'structure_color': structure_colors,
             'anterior_posterior': args.resolution*np.arange(ccf_anno.shape[0]),
             'superior_inferior': args.resolution*np.arange(ccf_anno.shape[1]),
             'left_right': args.resolution*np.arange(ccf_anno.shape[2]),
