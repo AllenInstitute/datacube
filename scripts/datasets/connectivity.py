@@ -11,7 +11,7 @@ from io import StringIO
 import shutil
 from collections import OrderedDict
 import tempfile
-import pg8000
+import psycopg2
 import csv
 from concurrent.futures import ThreadPoolExecutor
 
@@ -35,9 +35,7 @@ API_CONNECTIVITY_QUERY = '/api/v2/data/ApiConnectivity/query.csv?num_rows=all'
 DEFAULT_SURFACE_COORDS_PATH = (
     '/allen/programs/celltypes/production/0378/informatics/model/P56/corticalCoordinates/surface_coords_10.h5'
 )
-
-
-
+LIMS_CONNECTION_PARAMS = dict(host="limsdb2", port=5432, database="lims2", user="atlasreader", password="atlasro")
 
 
 def get_projection_table(unionizes, experiment_ids, structure_ids, data_field):
@@ -97,7 +95,7 @@ def get_all_unionizes(mcc, all_unionizes_path, experiment_ids, lims=None):
         Read the collated table from here, or if this file does not exists, write it to here.
     experiment_ids : list of int
         Get unionizes for these experiments
-    lims : pg8000.Connection or None
+    lims : psycopg2.Connection or None
         Lims database connection to use if running with --internal.
 
     Returns
@@ -156,7 +154,7 @@ def make_unionize_tables(data_field_key, mcc, all_unionizes_path, experiment_ids
         Ids of structures to include
     hemisphere_map : collections.OrderedDict
         Maps hemisphere ids to full names
-    lims : pg8000.Connection or None
+    lims : psycopg2.Connection or None
         Lims database connection to use if running with --internal.
 
     Returns
@@ -271,7 +269,6 @@ def get_projection_density_grid_data(experiment_id, mcc, lims=False):
     from the filesystem (--internal) '''
 
     if lims:
-        lims = pg8000.connect(host="limsdb2", port=5432, database="lims2", user="atlasreader", password="atlasro")
         cursor = lims.cursor()
         cursor.execute('''select storage_directory from image_series where id={}'''.format(experiment_id))
         storage_directory = cursor.fetchone()[0]
@@ -293,7 +290,7 @@ def make_projection_volume(experiment_ids, mcc, lims=None, tmp_dir=None, max_wor
         Ids of experiments to include
     mcc : allensdk.core.mouse_connectivity_cache.MouseConnectivityCache
         Used to manage data access
-    lims : pg8000.Connection or None
+    lims : psycopg2.Connection or None
         Lims database connection to use if running with --internal.
     tmp_dir : str
         Path to directory in which to build the array as a memmapped file, else the array
@@ -435,6 +432,48 @@ def get_structure_information(tree, summary_set_id=SUMMARY_SET_ID, exclude_from_
     return structure_meta, structure_ids, structure_colors, structure_paths, summary_structures
 
 
+def build_projection_mask(ds, tmp_dir=None, max_workers=8):
+    ''' Given a dataset with 'projection,' 'injection_structures_array,' and 'ccf_structures' variables,
+    generate a boolean DataArray masking elements of 'projection' whose structure annotation belongs
+    (ontologically) to one of the corresponding experiment's injection structures.
+
+    ds : xr.Dataset
+        Incoming dataset (not modified by this function).
+    tmp_dir : str, optional
+        Array will be built in a temporary zarr store at this path; else in-memory zarr (DictStore).
+    max_workers : int, optional
+        Number of threads to use when computing and writing the mask.
+
+    Returns
+    -------
+    is_projection : xarray.DataArray
+        Calculated projection mask as a DataArray which aligns to 'ds'.
+    projection_mask : zarr.core.Array
+        Projection mask as bare zarr Array, allowing bypass of xarray.
+
+    '''
+
+    chunks = ds.projection.shape[:-1]+(1,)
+    if tmp_dir is not None:
+        store = zarr.storage.TempStore(prefix='injection_mask_', dir=tmp_dir)
+        projection_mask = zarr.creation.create(shape=ds.projection.shape, dtype=np.bool, chunks=chunks, store=store)
+    else:
+        projection_mask = zarr.creation.create(shape=ds.projection.shape, dtype=np.bool, chunks=chunks)
+
+    def generate_injection_mask(experiment_index):
+        logging.info('generating projection mask for experiment {} of {}'.format(experiment_index+1, ds.dims['experiment']))
+        injection_structures = ds.injection_structures_array.isel(experiment=experiment_index)
+        injection_structures = injection_structures.where(injection_structures!=0, drop=True)
+        projection_mask[:,:,:,experiment_index] = (ds.ccf_structures!=injection_structures).all(dim=['depth','secondary'])
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        executor.map(generate_injection_mask, range(ds.dims['experiment']))
+
+    is_projection = xr.DataArray(da.from_array(projection_mask, chunks=projection_mask.chunks),
+        dims=ds.projection.dims, coords=ds.projection.coords)
+    return is_projection, projection_mask
+
+
 def main():
 
     mcc_dir = os.path.join(args.data_dir, 'mouse_connectivity_cache')
@@ -499,147 +538,35 @@ def main():
         }
     )
 
-
     ds.merge(experiments_ds, inplace=True, join='exact')
     ds.merge(structure_meta, inplace=True, join='left')
-    ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly
+    ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly (?)
+    ds['is_projection'], projection_mask = build_projection_mask(ds, tmp_dir=args.data_dir)
+
+
+    # write dataset to NETCDF4 file using h5netcdf.
+    #
+    # NOTE: writing projection or is_projection from dask arrays hangs for some reason. adding a
+    # sychronizer to the zarr store or using the dask synchronous (single-thread) scheduler
+    # makes no difference. debugging reveals the problem occurs within 'da.store'.
+    #   the alternative of loading the arrays fully into memory has been problematic. another
+    # alternative might be to downgrade some packages, since this used to work (albeit with slightly
+    # smaller variables).
+    #   the following contains a different workaround; the large variables are excluded from writing
+    # by xarray in the first pass, and then zarr's direct h5py copy function is used to add those
+    # variables manually. in this dataset, the dimensions already exist (from other variables) after
+    # the initial write by xarray, so they only need to be attached to the newly written variables.
+
     nc_file = os.path.join(args.data_dir, args.data_name + '.nc')
-#    logging.info('writing dataset to {}'.format(nc_file))
-#    ds = ds.chunk({'experiment': 1})
-#    ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
-#    ds.close()
-#    # free up mem
-#    del ds
-#    del volume
-#    del primary_structure_paths
-#    del primary_structures
-#    del injection_structure_paths
-#    del injection_structures_arr
-#    del structure_paths_array
-#    del structure_volumes
-#    del projection_unionize
-#    logging.info('wrote dataset to {}'.format(nc_file))
-
-    ## generate mask of primary and secondary injection structures across all experiments
-    #ds = xr.open_dataset(nc_file, engine='h5netcdf', chunks={'experiment': 1})
-    ##store = zarr.storage.TempStore(prefix='injection_mask_', dir=args.data_dir)
-    ##mask = zarr.creation.create(shape=ds.projection.shape, dtype=np.bool)
-    ##is_projection = xr.DataArray(mask, dims=ds.projection.dims, coords=ds.projection.coords)
-    #logging.info('generating projection mask')
-    #injection_structures = ds.injection_structures_array.where(ds.injection_structures_array>0)
-    #ds['is_projection'] = (ds.ccf_structures!=injection_structures).all(dim=['depth','secondary'])
-    #ds.close() # close nc file so we can write to it
-    #ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')#, mode='a')
-    #logging.info('appended projection mask to {}'.format(nc_file))
-
-    #ds = xr.open_dataset(nc_file, engine='h5netcdf')
-    store = zarr.storage.TempStore(prefix='injection_mask_', dir=args.data_dir)
-    chunks = ds.projection.shape[:-1]+(1,)
-    mask = zarr.creation.create(shape=ds.projection.shape, dtype=np.bool, chunks=chunks)
-    def generate_injection_mask(experiment_index):
-        logging.info('generating projection mask for experiment {} of {}'.format(experiment_index+1, ds.dims['experiment']))
-        injection_structures = ds.injection_structures_array.isel(experiment=experiment_index)
-        injection_structures = injection_structures.where(injection_structures!=0, drop=True)
-        mask[:,:,:,experiment_index] = (ds.ccf_structures!=injection_structures).all(dim=['depth','secondary'])
-    with ThreadPoolExecutor(max_workers=16) as executor:
-        executor.map(generate_injection_mask, range(ds.dims['experiment']))
-    is_projection = xr.DataArray(da.from_array(mask, chunks=mask.chunks),
-        dims=ds.projection.dims, coords=ds.projection.coords)
-    ds['is_projection'] = is_projection
-
-
-
-
-    #from h5netcdf.core import _invalid_netcdf_feature
-    #def _create_child_variable(self, name, dimensions, dtype, data, fillvalue,
-    #                           **kwargs):
-    #    stacklevel = 4  # correct if name does not start with '/'
-    #    if name in self:
-    #        raise ValueError('unable to create variable %r '
-    #                         '(name already exists)' % name)
-    #    if data is not None:
-    #        if name not in ['projection', 'is_projection']: #if not isinstance(data, zarr.core.Array):
-    #            data = np.asarray(data)
-    #        for d, s in zip(dimensions, data.shape):
-    #            if d not in self.dimensions:
-    #                self.dimensions[d] = s
-    #    if dtype is None:
-    #        dtype = data.dtype
-    #    if dtype == np.bool_:
-    #        # never warn since h5netcdf has always errored here
-    #        _invalid_netcdf_feature('boolean dtypes',
-    #                                allow=bool(self._root.invalid_netcdf),
-    #                                file=self._root,
-    #                                stacklevel=stacklevel)
-    #    else:
-    #        self._root._check_valid_netcdf_dtype(dtype, stacklevel=stacklevel)
-    #    compression = kwargs.get('compression')
-    #    if compression not in {None, 'gzip'}:
-    #        _invalid_netcdf_feature('{} compression'.format(compression),
-    #                                allow=self._root.invalid_netcdf,
-    #                                file=self._root,
-    #                                stacklevel=stacklevel)
-    #    if 'scaleoffset' in kwargs:
-    #        _invalid_netcdf_feature('scale-offset filters',
-    #                                allow=self._root.invalid_netcdf,
-    #                                file=self._root,
-    #                                stacklevel=stacklevel)
-    #    if name in self.dimensions and name not in dimensions:
-    #        h5name = '_nc4_non_coord_' + name
-    #    else:
-    #        h5name = name
-    #    shape = tuple(self._current_dim_sizes[d] for d in dimensions)
-    #    maxshape = tuple(self._dim_sizes[d] for d in dimensions)
-    #    # If it is passed directly it will change the default compression
-    #    # settings.
-    #    if shape != maxshape:
-    #        kwargs["maxshape"] = maxshape
-    #    #if not isinstance(data, zarr.core.Array):
-    #    if name == 'projection':
-    #        print('using zarr copy for variable \'{}\'!'.format(name))
-    #        zarr.convenience.copy(volume, self._h5group, h5name)
-    #    elif name == 'is_projection':
-    #        print('using zarr copy for variable \'{}\'!'.format(name))
-    #        zarr.convenience.copy(mask, self._h5group, h5name)
-    #    else:
-    #        self._h5group.create_dataset(h5name, shape, dtype=dtype,
-    #                                     data=data, fillvalue=fillvalue,
-    #                                     **kwargs)
-    #    #else:
-    #    #    print('using zarr copy for variable \'{}\'!'.format(name))
-    #    #    zarr.convenience.copy(data, self._h5group, h5name)
-    #    import pdb
-    #    pdb.set_trace()
-    #    self._variables[h5name] = self._variable_cls(self, h5name, dimensions)
-    #    variable = self._variables[h5name]
-    #    if fillvalue is not None:
-    #        value = variable.dtype.type(fillvalue)
-    #        variable.attrs._h5attrs['_FillValue'] = value
-    #    return variable
-
-    #import h5netcdf
-    #h5netcdf.core.Group._create_child_variable = _create_child_variable
-
-    #ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
-
-
-
-    #import pdb
-    #pdb.set_trace()
     logging.info('writing dataset to {}'.format(nc_file))
     ds.drop(['projection', 'is_projection']).to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
     ds.close()
-    #import h5netcdf
-    #f=h5netcdf.File(nc_file, 'r+', invalid_netcdf=True)
-    #f.create_variable('projection', ds.projection.dims, ds.projection.dtype)
-    #f.create_variable('is_projection', ds.is_projection.dims, ds.is_projection.dtype)
-    #f.close()
+
     f=h5py.File(nc_file, 'r+')
     logging.info('copying projection volume to {}'.format(nc_file))
     zarr.convenience.copy(volume, f, 'projection')
     logging.info('copying projection mask to {}'.format(nc_file))
-    zarr.convenience.copy(mask, f, 'is_projection')
-    ds['projection'].attrs['a'] = 1
+    zarr.convenience.copy(projection_mask, f, 'is_projection')
     for var in ['projection', 'is_projection']:
         if len(ds[var].attrs) > 0:
             raise NotImplementedError('failing because variable \'{}\' has attributes that won\'t be written'.format(var))
@@ -669,7 +596,7 @@ if __name__ == '__main__':
 
     lims = None
     if args.internal:
-        #todo: this ought to be configurable
-        lims = pg8000.connect(host="limsdb2", port=5432, database="lims2", user="atlasreader", password="atlasro")
+        # NOTE: this connection is used by multiple concurrent threads
+        lims = psycopg2.connect(**LIMS_CONNECTION_PARAMS)
 
     main()
