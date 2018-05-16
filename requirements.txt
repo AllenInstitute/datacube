@@ -21,7 +21,6 @@ cycler==0.10.0
 Cython==0.28.2
 dask==0.17.4
 decorator==4.3.0
-distributed==1.21.8
 enum34==1.1.6
 fasteners==0.14.1
 future==0.16.0

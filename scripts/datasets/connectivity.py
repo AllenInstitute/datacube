@@ -564,9 +564,10 @@ def main():
     f=h5py.File(nc_file, 'r+')
     logging.info('copying projection volume to {}'.format(nc_file))
     zarr.convenience.copy(volume, f, 'projection')
-    logging.info('copying projection mask to {}'.format(nc_file))
-    zarr.convenience.copy(projection_mask, f, 'is_projection')
-    for var in ['projection', 'is_projection']:
+    #TODO: uncomment once ram issue is taken care of
+    #logging.info('copying projection mask to {}'.format(nc_file))
+    #zarr.convenience.copy(projection_mask, f, 'is_projection')
+    for var in ['projection']: #, 'is_projection']:
         if len(ds[var].attrs) > 0:
             raise NotImplementedError('failing because variable \'{}\' has attributes that won\'t be written'.format(var))
         for dim in ds[var].dims:
