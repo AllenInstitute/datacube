@@ -27,5 +27,8 @@ if __name__ == '__main__':
                     command = [dataset['script']] + dataset['arguments']
                     print(' '.join(command))
                     subprocess.check_call(command, cwd=basepath)
+                    existing = [os.path.isfile(os.path.join(data_dir, f['path'])) for f in dataset['files']]
+                    if not all(existing):
+                        raise RuntimeError('Expected file(s) missing after running \'{}\' script.'.format(dataset['name']))
                 else:
                     print('file from dataset \'{}\' (\'{}\') exists; skipping...'.format(dataset['name'], datasets_json.name))
