@@ -1,9 +1,0 @@
-autobahn
-crossbar
-Twisted
-pg8000
-sqlalchemy
-txaio
-numpy
-scipy
-Pillow

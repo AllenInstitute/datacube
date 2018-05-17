@@ -9,7 +9,6 @@ def fold_change(d1_data, d2_data, axis, domain1=None, domain2=None, d1_mdata=Non
     not currently in use
 
     '''
-
     
     assert(d1_data.ndim == d2_data.ndim)
     ndim = d1_data.ndim
