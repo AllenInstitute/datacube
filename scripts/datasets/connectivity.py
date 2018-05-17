@@ -350,7 +350,8 @@ def make_projection_volume(experiment_ids, mcc, warehouse=None, tmp_dir=None, ma
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         paste_experiment = partial(paste_grid_data_into_volume, volume, mcc, experiment_ids, warehouse=warehouse)
-        executor.map(paste_experiment, experiment_ids)
+        for _ in executor.map(paste_experiment, experiment_ids):
+            pass
 
     return volume
 
@@ -511,7 +512,8 @@ def build_projection_mask(ds, tmp_dir=None, max_workers=8):
         projection_mask = zarr.creation.create(shape=ds.projection.shape, dtype=np.bool, chunks=chunks)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        executor.map(partial(generate_injection_mask, ds, projection_mask), range(ds.dims['experiment']))
+        for _ in executor.map(partial(generate_injection_mask, ds, projection_mask), range(ds.dims['experiment'])):
+            pass
 
     is_projection = xr.DataArray(da.from_array(projection_mask, chunks=projection_mask.chunks),
         dims=ds.projection.dims, coords=ds.projection.coords)
