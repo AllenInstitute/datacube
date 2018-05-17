@@ -60,6 +60,6 @@
                 "calculate_stats": true
             }
         ],
-        "arguments": ["--data-src", "http://testwarehouse:9000/", "--data-dir", "./conn_data/", "--data-name", "connectivity"]
+        "arguments": ["--data-src", "http://testwarehouse:9000/", "--internal", "--data-dir", "./conn_data/", "--data-name", "connectivity"]
     }
 ]
