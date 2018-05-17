@@ -26,6 +26,6 @@ if __name__ == '__main__':
                 if args.recache or (dataset['auto-generate'] and sum(existing) == 0):
                     command = [dataset['script']] + dataset['arguments']
                     print(' '.join(command))
-                    subprocess.call(command, cwd=basepath)
+                    subprocess.check_call(command, cwd=basepath)
                 else:
                     print('file from dataset \'{}\' (\'{}\') exists; skipping...'.format(dataset['name'], datasets_json.name))
