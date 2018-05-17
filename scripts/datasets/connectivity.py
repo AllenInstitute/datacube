@@ -5,7 +5,7 @@ import argparse
 import os
 import logging
 import json
-import urllib
+import urllib.parse
 import requests
 from io import StringIO
 import shutil
@@ -14,6 +14,7 @@ import tempfile
 import psycopg2
 import csv
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 
 import nrrd
 import numpy as np
@@ -35,7 +36,15 @@ API_CONNECTIVITY_QUERY = '/api/v2/data/ApiConnectivity/query.csv?num_rows=all'
 DEFAULT_SURFACE_COORDS_PATH = (
     '/allen/programs/celltypes/production/0378/informatics/model/P56/corticalCoordinates/surface_coords_10.h5'
 )
-LIMS_CONNECTION_PARAMS = json.load(open('lims_config.json'))
+WAREHOUSE_DATABASES = json.load(open('warehouse_databases.json'))
+UNIONIZE_QUERY = '''
+    select section_data_set_id, structure_id, hemisphere_id, is_injection,
+    projection_volume, normalized_projection_volume, volume
+    from projection_structure_unionizes
+    where section_data_set_id in ({})
+    '''
+DATASET_STORAGE_DIR_QUERY = '''select storage_directory from data_sets where id={}'''
+
 
 
 def get_projection_table(unionizes, experiment_ids, structure_ids, data_field):
@@ -83,7 +92,7 @@ def get_specified_projection_table(
     return get_projection_table(unionizes, experiment_ids, structure_ids, data_field)
 
 
-def get_all_unionizes(mcc, all_unionizes_path, experiment_ids, lims=None):
+def get_all_unionizes(mcc, all_unionizes_path, experiment_ids, warehouse=None):
     ''' Reads a table containing all projection structure unionizes for a given list of experiments. If necessary,
     this table will be compiled and stored.
 
@@ -95,8 +104,8 @@ def get_all_unionizes(mcc, all_unionizes_path, experiment_ids, lims=None):
         Read the collated table from here, or if this file does not exists, write it to here.
     experiment_ids : list of int
         Get unionizes for these experiments
-    lims : psycopg2.Connection or None
-        Lims database connection to use if running with --internal.
+    warehouse : psycopg2.Connection or None
+        Warehouse database connection to use if running with --internal.
 
     Returns
     -------
@@ -111,14 +120,10 @@ def get_all_unionizes(mcc, all_unionizes_path, experiment_ids, lims=None):
         assert( set(experiment_ids) - set(unionizes['experiment_id'].values) == set([]) )
 
     except (IOError, ValueError, AssertionError) as err:
-        if lims:
-            logging.info('downloading unionizes from lims...')
-            cursor = lims.cursor()
-            cursor.execute('''
-                select image_series_id, structure_id, hemisphere_id, is_injection,
-                projection_volume, normalized_projection_volume, volume
-                from projection_structure_unionizes
-                where image_series_id in ({})'''.format(','.join(str(eid) for eid in experiment_ids)))
+        if warehouse:
+            logging.info('downloading unionizes from warehouse...')
+            cursor = warehouse.cursor()
+            cursor.execute(UNIONIZE_QUERY.format(','.join(str(eid) for eid in experiment_ids)))
             with open(all_unionizes_path, 'w') as f:
                 writer = csv.writer(f, delimiter=',')
                 writer.writerow(['experiment_id', 'structure_id', 'hemisphere_id', 'is_injection',
@@ -137,7 +142,7 @@ def get_all_unionizes(mcc, all_unionizes_path, experiment_ids, lims=None):
     return unionizes
 
 
-def make_unionize_tables(data_field_key, mcc, all_unionizes_path, experiment_ids, structure_ids, hemisphere_map=HEMISPHERE_MAP, lims=None):
+def make_unionize_tables(data_field_key, mcc, all_unionizes_path, experiment_ids, structure_ids, hemisphere_map=HEMISPHERE_MAP, warehouse=None):
     ''' Build a 4D table of unionize values, organized by experiment, structure, hemisphere and injection status
 
     Parameters
@@ -154,8 +159,8 @@ def make_unionize_tables(data_field_key, mcc, all_unionizes_path, experiment_ids
         Ids of structures to include
     hemisphere_map : collections.OrderedDict
         Maps hemisphere ids to full names
-    lims : psycopg2.Connection or None
-        Lims database connection to use if running with --internal.
+    warehouse : psycopg2.Connection or None
+        Warehouse database connection to use if running with --internal.
 
     Returns
     -------
@@ -164,7 +169,7 @@ def make_unionize_tables(data_field_key, mcc, all_unionizes_path, experiment_ids
 
     '''
 
-    unionizes = get_all_unionizes(mcc, all_unionizes_path, experiment_ids, lims)
+    unionizes = get_all_unionizes(mcc, all_unionizes_path, experiment_ids, warehouse)
 
     nstructures = len(structure_ids)
     nhemispheres = len(hemisphere_map)
@@ -264,13 +269,13 @@ def make_primary_structure_paths(primary_structures, ontology_depth, structure_p
     return primary_structure_paths
 
 
-def get_projection_density_grid_data(experiment_id, mcc, lims=None):
+def get_projection_density_grid_data(experiment_id, mcc, warehouse=None):
     ''' Get 3D projection density volume by downloading nrrd through AllenSDK or reading
     from the filesystem (--internal) '''
 
-    if lims:
-        cursor = lims.cursor()
-        cursor.execute('''select storage_directory from image_series where id={}'''.format(experiment_id))
+    if warehouse:
+        cursor = warehouse.cursor()
+        cursor.execute(DATASET_STORAGE_DIR_QUERY.format(experiment_id))
         storage_directory = cursor.fetchone()[0]
         cursor.close()
         nrrd_path = os.path.join(storage_directory, 'grid', 'projection_density_{}.nrrd'.format(mcc.resolution))
@@ -280,7 +285,33 @@ def get_projection_density_grid_data(experiment_id, mcc, lims=None):
     return data, header
 
 
-def make_projection_volume(experiment_ids, mcc, lims=None, tmp_dir=None, max_workers=8):
+def paste_grid_data_into_volume(volume, mcc, experiment_ids, eid, warehouse=None):
+    ''' Paste NRRD data into zarr volume at the appropriate experiment index. Thread-safe.
+
+    Parameters
+    ----------
+    volume : zarr.corr.Array
+        Pre-initialized zarr array having grid data dimensions and a 4th dim of len(experiment_ids)
+    mcc : allensdk.core.mouse_connectivity_cache.MouseConnectivityCache
+        Used to manage data access
+    experiment_ids : list of int
+        List of experiment ids used to determine index of eid in array
+    eid : int
+        The experiment id whose data will be pasted
+    warehouse : psycopg2.Connection or None
+        Warehouse database connection to use if running with --internal.
+
+    '''
+
+    data, header = get_projection_density_grid_data(eid, mcc, warehouse)
+    logging.info('read in data for experiment {0}'.format(eid))
+
+    ii = experiment_ids.index(eid)
+    volume[:, :, :, ii] = data
+    logging.info('pasted data from experiment {0} ({1})'.format(eid, ii))
+
+
+def make_projection_volume(experiment_ids, mcc, warehouse=None, tmp_dir=None, max_workers=8):
     ''' Build a 4D array of projection density volumes, with experiment as the 4th axis
 
     Parameters
@@ -289,18 +320,25 @@ def make_projection_volume(experiment_ids, mcc, lims=None, tmp_dir=None, max_wor
         Ids of experiments to include
     mcc : allensdk.core.mouse_connectivity_cache.MouseConnectivityCache
         Used to manage data access
-    lims : psycopg2.Connection or None
-        Lims database connection to use if running with --internal.
+    warehouse : psycopg2.Connection or None
+        Warehouse database connection to use if running with --internal.
     tmp_dir : str
-        Path to directory in which to build the array as a memmapped file, else the array
-        will be built in memory. The memmap is written to a tempfile which will be deleted
-        when the memmap object is deallocated.
+        Path to directory in which to build the array as a zarr directory store, else the array
+        will be built in memory as a zarr dict store. The directory store will be automatically
+        deleted when the zarr array is de-allocated.
     max_workers : int
         Number of threads to use.
+
+    Returns
+    -------
+    volume : zarr.corr.Array
+        Zarr array shaped like grid data of the resolution passed to mcc followed by a
+        fourth dimension of size len(experiment_ids), fully populated.
+
     '''
 
-    data, _ = get_projection_density_grid_data(experiment_ids[0], mcc, lims)
-    volume_shape = tuple(list(data.shape) + [len(experiment_ids)])
+    data, _ = get_projection_density_grid_data(experiment_ids[0], mcc, warehouse)
+    volume_shape = data.shape + (len(experiment_ids),)
     chunks = volume_shape[:-1]+(1,)
     if tmp_dir is not None:
         store = zarr.storage.TempStore(prefix='volume_', dir=tmp_dir)
@@ -310,16 +348,9 @@ def make_projection_volume(experiment_ids, mcc, lims=None, tmp_dir=None, max_wor
 
     logging.info('volume occupies {0} bytes ({1})'.format(volume.nbytes, volume.dtype.name))
 
-    def paste_grid_data_into_volume(eid):
-        data, header = get_projection_density_grid_data(eid, mcc, lims)
-        logging.info('read in data for experiment {0}'.format(eid))
-
-        ii = experiment_ids.index(eid)
-        volume[:, :, :, ii] = data
-        logging.info('pasted data from experiment {0} ({1})'.format(eid, ii))
-
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        executor.map(paste_grid_data_into_volume, experiment_ids)
+        paste_experiment = partial(paste_grid_data_into_volume, volume, mcc, experiment_ids, warehouse=warehouse)
+        executor.map(paste_experiment, experiment_ids)
 
     return volume
 
@@ -431,6 +462,26 @@ def get_structure_information(tree, summary_set_id=SUMMARY_SET_ID, exclude_from_
     return structure_meta, structure_ids, structure_colors, structure_paths, summary_structures
 
 
+def generate_injection_mask(ds, projection_mask, experiment_index):
+    ''' Generate injection mask at the given experiment_index and paste into a large zarr array. Thread-safe.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Incoming dataset (not modified by this function).
+    projection_mask : zarr.core.Array
+        Boolean zarr array shaped like ds.projection.
+    experiment_index : int
+        Positional index on the experiment dimension for which to generate and paste the mask.
+
+    '''
+
+    logging.info('generating projection mask for experiment {} of {}'.format(experiment_index+1, ds.dims['experiment']))
+    injection_structures = ds.injection_structures_array.isel(experiment=experiment_index)
+    injection_structures = injection_structures.where(injection_structures!=0, drop=True)
+    projection_mask[:,:,:,experiment_index] = (ds.ccf_structures!=injection_structures).all(dim=['depth','secondary'])
+
+
 def build_projection_mask(ds, tmp_dir=None, max_workers=8):
     ''' Given a dataset with 'projection,' 'injection_structures_array,' and 'ccf_structures' variables,
     generate a boolean DataArray masking elements of 'projection' whose structure annotation belongs
@@ -459,14 +510,8 @@ def build_projection_mask(ds, tmp_dir=None, max_workers=8):
     else:
         projection_mask = zarr.creation.create(shape=ds.projection.shape, dtype=np.bool, chunks=chunks)
 
-    def generate_injection_mask(experiment_index):
-        logging.info('generating projection mask for experiment {} of {}'.format(experiment_index+1, ds.dims['experiment']))
-        injection_structures = ds.injection_structures_array.isel(experiment=experiment_index)
-        injection_structures = injection_structures.where(injection_structures!=0, drop=True)
-        projection_mask[:,:,:,experiment_index] = (ds.ccf_structures!=injection_structures).all(dim=['depth','secondary'])
-
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        executor.map(generate_injection_mask, range(ds.dims['experiment']))
+        executor.map(partial(generate_injection_mask, ds, projection_mask), range(ds.dims['experiment']))
 
     is_projection = xr.DataArray(da.from_array(projection_mask, chunks=projection_mask.chunks),
         dims=ds.projection.dims, coords=ds.projection.coords)
@@ -498,11 +543,11 @@ def main():
     ontology_depth = max([len(p) for p in structure_paths.values()])
     ccf_anno_paths = make_annotation_volume_paths(ccf_anno, ontology_depth, structure_paths)
 
-    pv = make_unionize_tables('projection_volume', mcc, all_unionizes_path, experiment_ids, structure_ids, lims=lims)
-    npv = make_unionize_tables('normalized_projection_volume', mcc, all_unionizes_path, experiment_ids, structure_ids, lims=lims)
+    pv = make_unionize_tables('projection_volume', mcc, all_unionizes_path, experiment_ids, structure_ids, warehouse=warehouse)
+    npv = make_unionize_tables('normalized_projection_volume', mcc, all_unionizes_path, experiment_ids, structure_ids, warehouse=warehouse)
 
     projection_unionize = xr.concat([pv,npv],xr.DataArray([False,True],dims=['normalized'],name='normalized'))
-    structure_volumes = make_unionize_tables('volume', mcc, all_unionizes_path, experiment_ids, structure_ids, lims=lims)
+    structure_volumes = make_unionize_tables('volume', mcc, all_unionizes_path, experiment_ids, structure_ids, warehouse=warehouse)
 
     structure_paths_array = make_structure_paths_array(projection_unionize, ontology_depth, structure_paths)
 
@@ -512,7 +557,7 @@ def main():
     primary_structures = experiments_ds.structure_id.values
     primary_structure_paths = make_primary_structure_paths(primary_structures, ontology_depth, structure_paths)
 
-    volume = make_projection_volume(experiment_ids, mcc, lims=lims, tmp_dir=args.data_dir)
+    volume = make_projection_volume(experiment_ids, mcc, warehouse=warehouse, tmp_dir=args.data_dir)
 
     ccf_dims = ['anterior_posterior', 'superior_inferior', 'left_right']
     ds = xr.Dataset(
@@ -594,9 +639,10 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    lims = None
+    warehouse = None
     if args.internal:
         # NOTE: this connection is used by multiple concurrent threads
-        lims = psycopg2.connect(**LIMS_CONNECTION_PARAMS)
+        warehouse_key = urllib.parse.urlparse(args.data_src).netloc
+        warehouse = psycopg2.connect(**WAREHOUSE_DATABASES[warehouse_key])
 
     main()

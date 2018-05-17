@@ -1,0 +1,16 @@
+{
+    "testwarehouse:9000": {
+        "host": "testwarehouse1",
+        "port": 5432,
+        "database": "warehouse-R193",
+        "user": "postgres",
+        "password": "postgres"
+    },
+    "iwarehouse": {
+        "host": "iwarehouse",
+        "port": 5432,
+        "database": "warehouse",
+        "user": "atlasreader",
+        "password": "atlasro"
+    }
+}
