@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.stats import t
+import scipy.stats
 
 
 def differential(d1_data, d2_data, axis, domain1=None, domain2=None, d1_mdata=None, d2_mdata=None):
@@ -54,6 +54,6 @@ def differential(d1_data, d2_data, axis, domain1=None, domain2=None, d1_mdata=No
 
     t_stat = np.abs(np.divide(d1_mean - d2_mean, np.sqrt(d1_var / d1_num_samples + d2_var / d2_num_samples)))
 
-    p_val = t.sf(t_stat, degrees_freedom) / domain1[axis].flat # intentional divide by zero
+    p_val = scipy.stats.t.sf(t_stat, degrees_freedom) / domain1[axis].flat # intentional divide by zero
     fold_change = np.divide(d1_mean, d2_mean) / domain1[axis].flat # intentional divide by zero
 return p_val, fold_change
