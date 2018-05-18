@@ -9,94 +9,75 @@ import xarray as xr
 import xarray.ufuncs as xr_ufuncs
 import dask
 import dask.array as da
+import opt_einsum
 import multiprocessing
 from PIL import Image
 from io import BytesIO
+import shutil
 import base64
-from functools import reduce
+import functools
+from functools import reduce, wraps
 import operator
+import inspect
+import types
+import concurrent.futures
+
 
 from six import iteritems
 from builtins import int, map
 
 
-#todo: https://github.com/dask/dask/issues/732
-#def da_einsum(*args, **kwargs):
-#    args = list(args)
-#    out_inds = args.pop()
-#    in_inds = args[1::2]
-#    arrays = args[0::2]
-#    dtype = kwargs.get('dtype')
-#    einsum_dtype = dtype
-#    if dtype is None:
-#        dtype = np.result_type(*[a.dtype for a in arrays])
-#    casting = kwargs.get('casting')
-#    if casting is None:
-#        casting = 'safe'
-#    
-#    full_inds = list(set().union(*in_inds))
-#    contract_inds = tuple(set(full_inds)-set(out_inds))
-#    
-#    def einsum(*operands, **kwargs):
-#        kernel_dtype = kwargs.get('kernel_dtype')
-#        casting = kwargs.get('casting')
-#        chunk = np.einsum(dtype=kernel_dtype, casting=casting, *([arg for arg_pair in zip(operands, in_inds) for arg in arg_pair]+[out_inds]))
-#        chunk = np.array(chunk)
-#        #chunk.shape = tuple([1 if ind not in out_inds else chunk.shape[out_inds.index(ind)] for ind in full_inds])
-#        return chunk
-#    
-#    #adjust_chunks = {ind: 1 for ind in contract_inds}
-#    #result = da.atop(einsum, full_inds, *args, dtype=dtype, kernel_dtype=einsum_dtype, casting=casting, adjust_chunks=adjust_chunks)
-#    #if contract_inds:
-#    #    result = da.sum(result, axis=contract_inds)
-#    result = da.atop(einsum, out_inds, *args, dtype=dtype, kernel_dtype=einsum_dtype, casting=casting, concatenate=True)
-#    return result
-#
-# monkey-patch the method into the module for now
-#setattr(da, 'einsum', da_einsum)
+def copy_func(f):
+    g = types.FunctionType(f.__code__, f.__globals__, name=f.__name__,
+                           argdefs=f.__defaults__,
+                           closure=f.__closure__)
+    g = functools.update_wrapper(g, f)
+    g.__kwdefaults__ = f.__kwdefaults__
+    return g
+orig_determine_zarr_chunks = copy_func(xr.backends.zarr._determine_zarr_chunks)
 
 
-if False:
-    import opt_einsum
-    class oe:
-    
-        @staticmethod
-        def einsum(*args, **kwargs):
-            args = list(args)
-            out_inds = args.pop()
-            in_inds = args[1::2]
-            arrays = args[0::2]
-            dtype = kwargs.get('dtype')
-            einsum_dtype = dtype
-            if dtype is None:
-                dtype = np.result_type(*[a.dtype for a in arrays])
-            casting = kwargs.get('casting')
-            if casting is None:
-                casting = 'safe'
-    
-            import string
-            alpha = string.ascii_lowercase
-            einsum_string = '->'.join([','.join([''.join(alpha[i] for i in iinds) for iinds in in_inds])]+[''.join(alpha[i] for i in out_inds)])
-            return opt_einsum.contract(einsum_string, *arrays, backend='dask')
-    
-    
-        @staticmethod
-        def sum(*args, **kwargs):
-            return da.sum(*args, **kwargs)
-    
-    
-        @staticmethod
-        def reshape(*args, **kwargs):
-            return da.reshape(*args, **kwargs)
-    
-    
-        @staticmethod
-        def clip(*args, **kwargs):
-            return da.clip(*args, **kwargs)
+class opt_einsum_backend:
+
+    @staticmethod
+    def einsum(*args, **kwargs):
+        args = list(args)
+        out_inds = args.pop()
+        in_inds = args[1::2]
+        arrays = args[0::2]
+        dtype = kwargs.get('dtype')
+        einsum_dtype = dtype
+        if dtype is None:
+            dtype = np.result_type(*[a.dtype for a in arrays])
+        casting = kwargs.get('casting')
+        if casting is None:
+            casting = 'safe'
+
+        import string
+        alpha = string.ascii_lowercase
+        einsum_string = '->'.join([','.join([''.join(alpha[i] for i in iinds) for iinds in in_inds])]+[''.join(alpha[i] for i in out_inds)])
+        return opt_einsum.contract(einsum_string, *arrays, backend='dask')
+
+
+    @staticmethod
+    def sum(*args, **kwargs):
+        return da.sum(*args, **kwargs)
+
+
+    @staticmethod
+    def reshape(*args, **kwargs):
+        return da.reshape(*args, **kwargs)
+
+
+    @staticmethod
+    def clip(*args, **kwargs):
+        return da.clip(*args, **kwargs)
+oe = opt_einsum_backend
 
 
 def get_num_samples(data, axis, mdata, backend=np):
-    sample_axes = np.array([i for i in range(data.ndim) if i != axis])
+    sample_axes = tuple([i for i in range(data.ndim) if i != axis])
+
     if mdata is None or (mdata.ndim == 0 and mdata):
         num_samples = np.prod(np.array([data.shape[i] for i in sample_axes], dtype=np.uint64))
         if backend == da:
@@ -105,82 +86,55 @@ def get_num_samples(data, axis, mdata, backend=np):
     elif mdata.ndim == 0 and not mdata:
         num_samples = np.array(0, np.uint64)
     else:
-        dims = range(mdata.ndim)
-        num_samples = backend.einsum(mdata, dims, [axis], dtype=np.uint64)
-        num_samples = backend.reshape(num_samples, tuple(mdata.shape[i] if i == axis else 1 for i in range(data.ndim))) # restore dims after einsum
-        mdata_args = [mdata, dims]
+        ddims = range(data.ndim)
+        mdims = range(mdata.ndim)
+        output_shape = tuple(mdata.shape[i] if i == axis else 1 for i in ddims)
+        num_samples = backend.einsum(mdata, mdims, [axis], dtype=np.uint64)
+        num_samples = backend.reshape(num_samples, output_shape) # restore dims after einsum
+        mdata_args = [mdata, mdims]
         if len(sample_axes)>0:
             num_samples *= np.prod(np.array([data.shape[i] for i in sample_axes if mdata.shape[i]==1 and data.shape[i]>1], dtype=np.uint64))
     return num_samples, mdata_args
-
-
-
-#def get_num_samples(data, axis, mdata, backend=np):
-#    sample_axes = np.array([i for i in range(data.ndim) if i != axis])
-#    if mdata is None:
-#        num_samples = np.prod(np.array([data.shape[i] for i in sample_axes], dtype=np.uint64))
-#        if backend == da:
-#            num_samples = da.from_array(num_samples, chunks=data.chunks)
-#        mdata_args = []
-#    else:
-#        dims = range(mdata.ndim)
-#        #num_samples = backend.einsum(mdata.astype(np.uint64), dims, [axis], dtype=np.uint64)
-#        num_samples = backend.count_nonzero(mdata, axis=tuple(sample_axes))
-#        num_samples = backend.reshape(num_samples, tuple(mdata.shape[i] if i == axis else 1 for i in range(mdata.ndim)))
-#        mdata_args = [mdata, dims]
-#        if len(sample_axes)>0:
-#            num_samples *= np.prod(np.array([data.shape[i] for i in sample_axes if mdata.shape[i]==1 and data.shape[i]>1], dtype=np.uint64))
-#    return num_samples, mdata_args
 
 
 def einsum_corr(data, seed, axis, mdata, mseed, backend=np, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
     np.seterr(divide='ignore', invalid='ignore')
     dtype = np.result_type(np.float64, data.dtype, mdata.dtype, seed.dtype, mseed.dtype) # use f64 at least
     
-    sdims = range(seed.ndim)
     ddims = range(data.ndim)
-    sample_axes = np.array([i for i in ddims if i != axis])
+    sdims = range(seed.ndim)
+    mddims = range(mdata.ndim)
+    msdims = range(mseed.ndim)
+    sample_axes = tuple([i for i in ddims if i != axis])
+    output_shape = tuple(data.shape[i] if i == axis else 1 for i in ddims)
 
     seed_num_samples, _ = get_num_samples(seed, axis, mseed, backend=backend)
     num_samples = memoize(['num_samples'], lambda *a,**kw: get_num_samples(*a,**kw)[0], data, axis, mdata, backend=backend)
 
-    seed_mean = backend.einsum(seed, sdims, mseed, range(0, mseed.ndim), [], dtype=dtype) / seed_num_samples
-    data_sum = memoize(['data_sum'], backend.einsum, data, ddims, mdata, range(0, mdata.ndim), [axis], dtype=dtype)
-    data_sum = backend.reshape(data_sum, tuple(data.shape[i] if i == axis else 1 for i in ddims)) # restore dims after einsum
+    seed_mean = backend.einsum(seed, sdims, mseed, msdims, [], dtype=dtype) / seed_num_samples
+    data_sum = memoize(['data_sum'], backend.einsum, data, ddims, mdata, mddims, [axis], dtype=dtype)
+    data_sum = backend.reshape(data_sum, output_shape) # restore dims after einsum
     data_mean = data_sum / num_samples
 
-    seed_dev = backend.einsum(seed-seed_mean, sdims, mseed, range(0, mseed.ndim), sdims, dtype=dtype)
-    seed_denominator = backend.sum(seed_dev**2, axis=tuple(sample_axes), dtype=dtype)
-    numerator = backend.einsum(seed_dev, ddims, data, ddims, mdata, range(0, mdata.ndim), [axis], dtype=dtype)
+    seed_dev = backend.einsum(seed-seed_mean, sdims, mseed, msdims, sdims, dtype=dtype)
+    seed_denominator = backend.sum(seed_dev**2, axis=sample_axes, dtype=dtype)
+    numerator = backend.einsum(seed_dev, ddims, data, ddims, mdata, mddims, [axis], dtype=dtype)
     numerator -= backend.einsum(seed_dev, ddims, data_mean, ddims, [axis], dtype=dtype)
-    numerator = backend.reshape(numerator, tuple(data.shape[i] if i == axis else 1 for i in ddims)) # restore dims after einsum
+    numerator = backend.reshape(numerator, output_shape) # restore dims after einsum
 
-    data_denominator = memoize(['data_denominator'], backend.einsum, data, ddims, data, ddims, mdata, range(0, mdata.ndim), [axis], dtype=dtype)
-    # data_mean has already been masked
-    #denominator += -2.0*backend.einsum(data, ddims, data_mean, ddims, mdata, range(0, mdata.ndim), [axis])
-    data_denominator = backend.reshape(data_denominator, tuple(data.shape[i] if i == axis else 1 for i in ddims)) # restore dims after einsum
-    #denominator += backend.sum(data_mean**2, axis=tuple(sample_axes), keepdims=True) * num_samples
+    data_denominator = memoize(['data_denominator'], backend.einsum, data, ddims, data, ddims, mdata, mddims, [axis], dtype=dtype)
+    data_denominator = backend.reshape(data_denominator, output_shape) # restore dims after einsum
     data_denominator = data_denominator+data_mean**2*num_samples
     data_denominator = data_denominator-2.0*data_mean*data_sum
 
     denominator = np.sqrt(seed_denominator*data_denominator)
-    #denominator *= backend.sum(seed_dev**2, axis=tuple(sample_axes))
-    #denominator = backend.sqrt(denominator)
     denominator = np.sqrt(seed_denominator*data_denominator)
 
     corr = backend.clip(numerator / denominator, -1.0, 1.0)
     #both_samples, _ = get_num_samples(data, axis, mdata*mseed, backend=backend)
     #corr = corr * backend.sign(np.inf*(both_samples>1))
     corr = backend.reshape(corr, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
-    #if np.any(np.isnan(corr)) and data.ndim>1:
-    #    import pdb
-    #    pdb.set_trace()
     return corr
-
-
-from functools import wraps
-import inspect
-import concurrent.futures
 
 
 def get_chunk_inds(ds, dim, num_chunks, chunk_idx):
@@ -189,16 +143,6 @@ def get_chunk_inds(ds, dim, num_chunks, chunk_idx):
 
 
 def get_chunk(ds, *args):
-    #res = xr.Dataset()
-    #inds = get_chunk_inds(ds, *args)
-    #for var in ds.variables:
-    #    if isinstance(ds[var].data, np.ndarray):
-    #        res[var] = xr.DataArray(ds[var].data[tuple(inds.get(dim,slice(None)) for dim in ds[var].dims)],
-    #            coords={dim: ds[var].coords[dim][inds.get(dim,slice(None))] for dim in ds[var].coords},
-    #            dims=ds[var].dims, attrs=ds[var].attrs, encoding=ds[var].encoding)
-    #    else:
-    #        res[var] = ds[var][{dim: inds.get(dim,slice(None)) for dim in ds[var].dims}]
-    #return res
     return ds[get_chunk_inds(ds, *args)]
 
 
@@ -323,13 +267,14 @@ class Datacube:
                  max_response_size=10*1024*1024,
                  max_cacheable_bytes=100*1024*1024,
                  num_chunks=multiprocessing.cpu_count(),
-                 max_workers=multiprocessing.cpu_count()):
+                 max_workers=multiprocessing.cpu_count(),
+                 recache=False):
         self.name = name
         self.max_response_size = max_response_size
         self.max_cacheable_bytes = max_cacheable_bytes
         self.num_chunks = num_chunks
         self.max_workers = max_workers
-        if nc_file: self.load(nc_file, chunks, missing_data, calculate_stats)
+        if nc_file: self.load(nc_file, chunks, missing_data, calculate_stats, recache)
         #todo: would be nice to find a way to swap these out,
         # and also to be able to run without redis (numpy-only)
         #if reactor.running:
@@ -341,7 +286,7 @@ class Datacube:
             self.redis_client = redis.StrictRedis('localhost', 6379)
 
 
-    def load(self, nc_file, chunks=None, missing_data=False, calculate_stats=True):
+    def load(self, nc_file, chunks=None, missing_data=False, calculate_stats=True, recache=False):
         #dask.set_options(scheduler='processes')
         #todo: rename df
         #todo: argsorts need to be cached to a file (?)
@@ -357,25 +302,21 @@ class Datacube:
         import zarr
         import numcodecs
         #store = zarr.storage.DictStore()
-        store = zarr.storage.LMDBStore('/dev/shm/{}.zarr.lmdb'.format(self.name))
-        import types
-        import functools
+        store_file = '/dev/shm/{}.zarr.lmdb'.format(self.name)
+        if recache:
+            try:
+                shutil.rmtree(store_file)
+            except OSError:
+                pass
+        store = zarr.storage.LMDBStore(store_file)
 
-        def copy_func(f):
-            g = types.FunctionType(f.__code__, f.__globals__, name=f.__name__,
-                                   argdefs=f.__defaults__,
-                                   closure=f.__closure__)
-            g = functools.update_wrapper(g, f)
-            g.__kwdefaults__ = f.__kwdefaults__
-            return g
-        orig_determine_zarr_chunks = copy_func(xr.backends.zarr._determine_zarr_chunks) # todo: move up to file-level so this doesn't get repeated
         xr.backends.zarr._determine_zarr_chunks = lambda enc_chunks, var_chunks, ndim: orig_determine_zarr_chunks(enc_chunks, None, ndim)
         encoding = {}
         if self.name == 'connectivity':
             encoding = {
-                'is_projection': {'filters': [numcodecs.packbits.PackBits()]}, #, 'chunks': (132, 80, 114, chunks['experiment'])}
+                'is_projection': {'filters': [numcodecs.packbits.PackBits()]} #, 'chunks': (132, 80, 114, chunks['experiment'])}
                 #'projection': {'chunks': (132,80,114,100)}
-                'projection': {'filters': [numcodecs.quantize.Quantize(3, np.float32)]}
+                #'projection': {'filters': [numcodecs.quantize.Quantize(3, np.float32)]}
                 #'projection': {'compressor': None}
                 }
         PERSIST = [] #'projection', 'is_projection']
@@ -580,7 +521,7 @@ class Datacube:
             mask_ds = xr.Dataset({'__mask': xr.DataArray(np.array(True, dtype=np.bool), attrs={'is_mask': True})})
         ds = xr.Dataset({'data': data})
         ds = ds.merge(mask_ds, inplace=True)
-        return ds
+        return ds, f
 
 
     def info(self):
@@ -708,7 +649,7 @@ class Datacube:
     def corr(self, field, dim, seed_idx, select=None, coords=None, filters=None):
         #if any([d and dim in d for d in [select, coords, filters]]):
         #    raise ValueError('Filtering / selecting on query dimension for correlation not supported.')
-        ds = self._get_field(field, select, coords, filters)
+        ds, f = self._get_field(field, select, coords, filters)
         key_prefix = [self.name, 'mdata', field, select, filters]
         memoize = lambda key, f, *args, **kwargs: self._memoize(key_prefix+key, f, *args, **kwargs)
         res = par_correlation(ds, seed_idx, dim, self.num_chunks, self.max_workers, memoize=memoize)
