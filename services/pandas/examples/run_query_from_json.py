@@ -54,10 +54,10 @@ def main(query_path, host, port, output_path):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('query_path', type=str)
-    parser.add_argument('host', type=str)
-    parser.add_argument('--port', type=int, default=8080)
-    parser.add_argument('--output_path', type=str, default=None)
+    parser.add_argument('query_path', type=str, help='path to json file containing query. The file may contain the query as is, or as the value associated with a top-level \"query\" key.')
+    parser.add_argument('host', type=str, help='Datacube host. If \"http\" is not in the hostname, it will be prepended.')
+    parser.add_argument('--port', type=int, default=8080, help='Datacube port. Defaults to 8080.')
+    parser.add_argument('--output_path', type=str, default=None, help='If provided, outputs will be written to this file. Otherwise, they will be written to stdout.')
 
     args = parser.parse_args()
     main(args.query_path, args.host, args.port, args.output_path)
