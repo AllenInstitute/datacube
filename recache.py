@@ -2,6 +2,7 @@ import os
 import json
 import argparse
 import subprocess
+from string import Template
 
 if __name__ == '__main__':
     ''' Generate any data files in specified manifest that don't already exist, or force all
@@ -14,8 +15,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     for datasets_json in args.dataset_manifests:
-        basepath = os.path.dirname(os.path.abspath(datasets_json.name))
-        datasets = json.load(datasets_json)
+        datasets = json.loads(Template(datasets_json.read()).substitute(**os.environ))
         for dataset in datasets:
             if dataset['enabled']:
                 data_dir = os.path.join(os.path.dirname(datasets_json.name), dataset['data-dir'])
@@ -26,6 +26,7 @@ if __name__ == '__main__':
                 if args.recache or (dataset['auto-generate'] and sum(existing) == 0):
                     command = [dataset['script']] + dataset['arguments']
                     print(' '.join(command))
+                    basepath = os.path.dirname(os.path.abspath(datasets_json.name))
                     subprocess.check_call(command, cwd=basepath)
                     existing = [os.path.isfile(os.path.join(data_dir, f['path'])) for f in dataset['files']]
                     if not all(existing):
