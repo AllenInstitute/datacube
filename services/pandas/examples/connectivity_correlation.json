@@ -1,0 +1,31 @@
+{
+    "query": {
+        "procedure": "org.brain-map.api.datacube.corr.connectivity",
+        "args": [
+            "projection",
+            "experiment",
+            126907302
+        ],
+        "kwargs": {
+            "fields": [
+                "data_set_id",
+                "experiment",
+                "transgenic_line",
+                "product_id",
+                "structure_id",
+                "structure_abbrev",
+                "structure_name",
+                "specimen_name",
+                "injection_volume",
+                "injection_structures",
+                "injection_x",
+                "injection_y",
+                "injection_z",
+                "gender",
+                "strain"
+            ],
+            "filters": []
+        }
+    },
+    "description": "Does a simple correlation search on a connectivity experiment"
+}
