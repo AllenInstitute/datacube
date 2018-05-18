@@ -15,7 +15,7 @@
                 "calculate_stats": true
             }
         ],
-        "arguments": ["--data-src", "http://iwarehouse/", "--internal", "--data-dir", "./conn_data/", "--data-name", "connectivity", "--resolution", "100"]
+        "arguments": ["--data-src", "$DATACUBE_DATA_SOURCE", "--internal", "--data-dir", "./conn_data/", "--data-name", "connectivity", "--resolution", "100"]
     },
     {
         "name": "mouse_ccf",
@@ -30,6 +30,6 @@
                 "chunks": {"left_right": 100, "anterior_posterior": 100, "superior_inferior": 100}
             }
         ],
-        "arguments": ["--data-src", "http://iwarehouse/", "--data-dir", "./mouse_ccf_data/", "--data-name", "mouse_ccf", "--resolution", "25"]
+        "arguments": ["--data-src", "$DATACUBE_DATA_SOURCE", "--data-dir", "./mouse_ccf_data/", "--data-name", "mouse_ccf", "--resolution", "25"]
     }
 ]

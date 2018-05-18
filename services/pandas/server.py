@@ -321,7 +321,6 @@ if __name__ == '__main__':
     parser.add_argument('password', help='WAMP-CRA secret')
     parser.add_argument('dataset_manifest', help='JSON dataset manifest')
     parser.add_argument('--max-records', default=1000, help='maximum records to serve in a single request (default: %(default)s)')
-    parser.add_argument('--recache', action='store_true', help='regenerate all data files and exit', default=('DATACUBE_RECACHE' in os.environ))
     parser.add_argument('--projection-map-dir', help='path to root of projection map directory structure e.g. /allen/aibs/informatics/heatmap/mouseconn_projection_maps_2017_09_11/P56/')
     args = parser.parse_args()
     txaio.use_twisted()
@@ -348,29 +347,19 @@ if __name__ == '__main__':
                 if not os.path.exists(data_dir):
                     os.makedirs(data_dir)
                 existing = [os.path.isfile(os.path.join(data_dir, f['path'])) for f in dataset['files']]
-                if args.recache or (dataset['auto-generate'] and sum(existing) == 0):
-                    command = [dataset['script']] + dataset['arguments']
-                    print(' '.join(command))
-                    subprocess.call(command, cwd=basepath)
-                else:
-                    if sum(existing) < len(dataset['files']):
-                        raise RuntimeError('Refusing to run with ' + str(sum(existing)) + ' files when expecting ' + str(len(dataset['files'])) + ', for dataset "' + dataset['name'] + '". Specify --recache option to generate files (will overwrite existing files).')
-                        exit(1)
+                if sum(existing) < len(dataset['files']):
+                    raise RuntimeError('Refusing to run with ' + str(sum(existing)) + ' files when expecting ' + str(len(dataset['files'])) + ', for dataset "' + dataset['name'] + '". Specify --recache option to generate files (will overwrite existing files).')
+                    exit(1)
                 nc_file = next(f for f in dataset['files'] if re.search('\.nc$', f['path']))
                 option_keys = ['chunks', 'max_response_size', 'max_cacheable_bytes', 'missing_data', 'calculate_stats']
                 options = {k:v for k,v in iteritems(nc_file) if k in option_keys}
                 if not nc_file['use_chunks']:
                     del options['chunks']
 
-                if not args.recache:
-                    datacubes[dataset['name']] = Datacube(
-                        dataset['name'],
-                        os.path.join(data_dir, nc_file['path']),
-                        **options)
+                datacubes[dataset['name']] = Datacube(
+                    dataset['name'],
+                    os.path.join(data_dir, nc_file['path']),
+                    **options)
 
-    if args.recache:
-        print('data recached... restart server without --recache option.')
-        exit(0)
-    else:
-        runner = ApplicationRunner(str(args.router), str(args.realm))
-        runner.run(PandasServiceComponent, auto_reconnect=True)
+    runner = ApplicationRunner(str(args.router), str(args.realm))
+    runner.run(PandasServiceComponent, auto_reconnect=True)

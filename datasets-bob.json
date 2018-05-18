@@ -12,6 +12,6 @@
                 "chunks": {"dim_0": 8000}
             }
         ],
-        "arguments": ["--data-src", "http://iwarehouse/", "--data-dir", "./bob_data/", "--data-name", "cell_specimens"]
+        "arguments": ["--data-src", "$DATACUBE_DATA_SOURCE", "--data-dir", "./bob_data/", "--data-name", "cell_specimens"]
     }
 ]
