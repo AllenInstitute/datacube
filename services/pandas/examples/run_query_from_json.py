@@ -5,7 +5,7 @@ import sys
 import requests
 
 
-def load_query_from_json(query_path)
+def load_query_from_json(query_path):
 
     with open(query_path) as query_file:
         query = json.load(query_file)
@@ -36,10 +36,19 @@ def produce_output(result, output_path):
         json.dump(result, sys.stdout, indent=2)
 
 
+def clean_host(host):
+    if not 'http' in host:
+        host = 'http://{}'.format(host)
+    return host
+
+
 def main(query_path, host, port, output_path):
 
     query = load_query_from_json(query_path)
+
+    host = clean_host(host)
     result = post_datacube_request(query, host, port)
+
     produce_output(result, output_path)
 
 
