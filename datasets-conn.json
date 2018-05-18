@@ -9,13 +9,13 @@
             {
                 "path": "connectivity.nc",
                 "use_chunks": true,
-                "chunks": {"experiment": 375},
+                "chunks": {"experiment": 50},
                 "max_cacheable_bytes": 104857600,
                 "missing_data": false,
                 "calculate_stats": true
             }
         ],
-        "arguments": ["--data-src", "http://iwarehouse/", "--data-dir", "./conn_data/", "--data-name", "connectivity", "--resolution", "100"]
+        "arguments": ["--data-src", "http://iwarehouse/", "--internal", "--data-dir", "./conn_data/", "--data-name", "connectivity", "--resolution", "100"]
     },
     {
         "name": "mouse_ccf",

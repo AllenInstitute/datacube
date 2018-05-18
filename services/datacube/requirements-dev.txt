@@ -1,4 +1,0 @@
--r requirements-prod.txt
-allensdk
-h5py
-pynrrd

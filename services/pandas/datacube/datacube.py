@@ -119,7 +119,7 @@ def einsum_corr(data, seed, axis, mdata, mseed, backend=np, memoize=lambda k,f,*
     seed_dev = backend.einsum(seed-seed_mean, sdims, mseed, msdims, sdims, dtype=dtype)
     seed_denominator = backend.sum(seed_dev**2, axis=sample_axes, dtype=dtype)
     numerator = backend.einsum(seed_dev, ddims, data, ddims, mdata, mddims, [axis], dtype=dtype)
-    numerator -= backend.einsum(seed_dev, ddims, data_mean, ddims, [axis], dtype=dtype)
+    numerator -= backend.einsum(seed_dev, ddims, data_mean, ddims, mdata, mddims, [axis], dtype=dtype)
     numerator = backend.reshape(numerator, output_shape) # restore dims after einsum
 
     data_denominator = memoize(['data_denominator'], backend.einsum, data, ddims, data, ddims, mdata, mddims, [axis], dtype=dtype)
@@ -131,8 +131,8 @@ def einsum_corr(data, seed, axis, mdata, mseed, backend=np, memoize=lambda k,f,*
     denominator = np.sqrt(seed_denominator*data_denominator)
 
     corr = backend.clip(numerator / denominator, -1.0, 1.0)
-    #both_samples, _ = get_num_samples(data, axis, mdata*mseed, backend=backend)
-    #corr = corr * backend.sign(np.inf*(both_samples>1))
+    both_samples, _ = get_num_samples(data, axis, mdata*mseed, backend=backend)
+    corr = corr * backend.sign(np.inf*(both_samples>1))
     corr = backend.reshape(corr, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
     return corr
 
@@ -173,7 +173,7 @@ def parallelize(dim_arg, num_chunks_arg, max_workers_arg, exclude_args=[]):
                     chunk_result = future.result()
                     chunk_idx = futures.index(future)
                     chunk_results[chunk_idx] = chunk_result
-    
+
                 result = xr.concat(chunk_results, dim=dim)
                 return result
         return parallel
@@ -264,7 +264,7 @@ class Datacube:
                  missing_data=False,
                  calculate_stats=True,
                  chunks=None,
-                 max_response_size=10*1024*1024,
+                 max_response_size=100*1024*1024,
                  max_cacheable_bytes=100*1024*1024,
                  num_chunks=multiprocessing.cpu_count(),
                  max_workers=multiprocessing.cpu_count(),
@@ -290,12 +290,10 @@ class Datacube:
         #dask.set_options(scheduler='processes')
         #todo: rename df
         #todo: argsorts need to be cached to a file (?)
-        print('opening {}...'.format(nc_file))
         self.df = xr.open_dataset(nc_file, chunks=chunks, engine='h5netcdf')
-        print('converting bytes and object fields to str...')
         for field in self.df.variables:
-            if self.df[field].dtype.name.startswith('bytes') or self.df[field].dtype.name == 'object':
-                self.df[field] = self.df[field].astype('str')
+            if self.df[field].dtype.name.startswith('bytes'):
+                #self.df[field] = self.df[field].astype('str')
                 self.df[field] = self.df[field].astype(self.df[field].values.dtype)
         #print('building dataset as zarr DictStore (in-memory)...')
         print('building dataset as zarr LMDBStore (in-memory)...')
@@ -334,54 +332,38 @@ class Datacube:
         #    del store
         #    self.df = xr.open_zarr(store=store2)
         #todo: rework _query so this is not needed:
-        #todo: is this dead code?
         for dim in self.df.dims:
             if dim not in self.df.dims:
                 self.df.coords[dim] = range(self.df.dims[dim])
         #todo: add option whether to create mdata
         if missing_data:
-            print('setting up missing data...')
             #todo: need to reintroduce this and test
             #self.mdata = xr.ufuncs.logical_not(xr.ufuncs.isnan(self.df))
             #self.mdata = self.mdata.persist()
             #todo: can nan-only chunks be dropped?
             self.df = self.df.fillna(0.)
-        #if chunks:
-        #    self.backend = da
-        #    self.df = self.df.persist()
-        #else:
-        #    self.backend = np
-        #    self.df = self.df.load()
-        print('building indexes...')
+        if chunks:
+            self.backend = da
+            self.df = self.df.persist()
+        else:
+            self.backend = np
+            self.df = self.df.load()
         self.argsorts = {}
         for field in self.df.variables:
             if self.df[field].size*np.dtype('int64').itemsize <= self.max_cacheable_bytes:
-                print('building index for field \'{}\'...'.format(field))
                 self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
         #todo: would be nice to cache these instead of computing on every startup
         if calculate_stats:
-            print('calculating stats...')
             self.mins = {}
             self.maxes = {}
             self.means = {}
             self.stds = {}
             for field in self.df.variables:
-                print('calculating stats for field \'{}\'...'.format(field))
                 self.mins[field] = self.df[field].min().values
                 self.maxes[field] = self.df[field].max().values
                 if not self.df[field].dtype.kind in 'OSU':
                     self.means[field] = self.df[field].mean().values
                     self.stds[field] = self.df[field].std().values
-        for var in set(df.variables).intersection(PERSIST):
-            print('persisting uncompressed \'{}\' to memory...'.format(var))
-            del zarr.hierarchy.group(store=store)[var]
-            self.df[var] = df[var]
-            #self.df[var] = self.df[var].chunk({**{dim: self.df.dims[dim] for dim in self.df[var].dims}, **chunks})
-            #if var=='projection':
-            #    self.df[var] = self.df[var].astype(np.float16).load()
-            #else:
-            self.df[var] = self.df[var].load()
-        print('done loading {}.'.format(nc_file))
 
 
     def _validate_select(self, select):
@@ -653,6 +635,7 @@ class Datacube:
         key_prefix = [self.name, 'mdata', field, select, filters]
         memoize = lambda key, f, *args, **kwargs: self._memoize(key_prefix+key, f, *args, **kwargs)
         res = par_correlation(ds, seed_idx, dim, self.num_chunks, self.max_workers, memoize=memoize)
+        res = res.dropna(dim, how='all', subset=['corr'])
         return res
 
 
@@ -686,20 +669,15 @@ class Datacube:
                 mdata = mdata.expand_dims(set(data.dims)-set(mdata.dims))
                 mdata = mdata.transpose(*data.dims)
             axis = data.dims.index(dim)
+            if mdata.size<data.size:
+                mdata = mdata.astype(data.dtype)
             if dim in mdata.dims and mdata.sizes[dim]==1:
                 bounds = tuple(slice(inds.min(), inds.max()+1) if mdata.shape[i]>1 and i!=axis else slice(None) for i,inds in enumerate(np.nonzero(mdata.values)))
                 data = data[bounds]
                 mdata = mdata[bounds]
             key = [self.name, 'mdata', field, select, filters]
-            if mdata.size<data.size:
-                mdata = mdata.astype(data.dtype)
-            #mdata = mdata.chunk({dim: c for dim, c in enumerate(data.chunks) if dim in mdata.dims and mdata.dims[dim]>1})
             res = self._corr(data.data, mdata.data, seed_idx, axis, cache_key=key)
             res = xr.Dataset({'corr': ([dim], res.squeeze()), dim: data.coords[dim]})
-            res = res.compute()
-        import time
-        print('.')
-        startt=time.time()
         if masks:
             mask = reduce(xr_ufuncs.logical_and, masks)
             reduce_dims = [d for d in mask.dims if d != dim]
@@ -707,7 +685,6 @@ class Datacube:
         if row_masks:
             mask = reduce(xr_ufuncs.logical_and, row_masks)
             res = res.reindex_like(mask).where(mask, drop=True)
-        print(time.time()-startt)
         return res
 
 
@@ -751,24 +728,8 @@ class Datacube:
             return pickle.loads(cached)
 
 
-    #@staticmethod
-    #def _cache(fun, key, redis_client, disable=False):
-    #    if disable:
-    #        return fun()
-    #    cached = redis_client.get(key)
-    #    if not cached:
-    #        res = fun()
-    #        redis_client.setnx(key, pickle.dumps(res))
-    #        return res
-    #    else:
-    #        return pickle.loads(cached)
-
-
     #todo: use xr.DataArray's as parameters to this function instead of just dask arrays
     def _corr(self, data, mdata, seed_idx, axis, cache_key=None):
-        import time
-        startt=time.time()
-        print('---')
         np.seterr(divide='ignore', invalid='ignore')
         use_cache = cache_key is not None
         if use_cache:
@@ -796,7 +757,6 @@ class Datacube:
         def _num_samples():
             return _compute(Datacube._get_num_samples(data, axis, mdata, backend=backend)[0])
         num_samples = self._cache(_num_samples, json.dumps(cache_key+['num_samples', axis]), redis_client, disable=(not use_cache))
-        print(time.time()-startt)
         seed_num_samples, _ = Datacube._get_num_samples(seed, axis, mseed2, backend=backend)
         seed_mean = backend.einsum(seed, range(seed.ndim), mseed2, range(mseed2.ndim), [], dtype=data.dtype) / seed_num_samples.astype(data.dtype)
         seed_dev = backend.einsum(seed-seed_mean, range(seed.ndim), mseed2, range(mseed2.ndim), range(seed.ndim), dtype=data.dtype)
@@ -826,7 +786,6 @@ class Datacube:
             else:
                 return _sum(data, mdata, axis)
         data_sum = self._cache(_data_sum, json.dumps(cache_key+['data_sum', axis]), redis_client, disable=(not use_cache))
-        print(time.time()-startt)
         data_mean = data_sum / num_samples.astype(data.dtype)
 
         def _einsum_corr_chunk(data, data_mean, seed, axis, mdata, mseed, seed_mean, block_id=None, redis_client=None):
@@ -858,7 +817,6 @@ class Datacube:
             result = result.compute()
         else:
             result = _einsum_corr_chunk(data, data_mean, seed, axis, mdata, mseed, seed_mean, redis_client=redis_client)
-        print(time.time()-startt)
         numerator = result[..., 0]
         data_denominator = result[..., 1]
         numerator = np.sum(numerator, axis=tuple(sample_axes), keepdims=True)
@@ -869,10 +827,8 @@ class Datacube:
         denominator = np.sqrt(seed_denominator*data_denominator)
         corr = np.clip(numerator/denominator, -1.0, 1.0)
         both_samples, _ = Datacube._get_num_samples(data, axis, mdata*mseed, backend=backend)
-        #both_samples = backend.einsum(mdata, range(mdata.ndim), mseed, range(mseed.ndim), [axis])
         corr = corr * backend.sign(np.inf*(both_samples>1))
         corr = np.reshape(corr, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
-        print(time.time()-startt)
         return corr
 
 
@@ -916,6 +872,7 @@ class Datacube:
         if not filters:
             return (df, {'inds': {}, 'masks': []})
         else:
+            #todo: add ability to filter on a boolean field without any op/value
             #todo: add not-equals
             def _filter(f):
                 #todo: refactor out as a custom filter type
@@ -955,10 +912,7 @@ class Datacube:
                     return json.dumps([self.name, 'filter', f['op'], f['field'], f['value'], select, coords])
 
                 res = {'inds': {}, 'masks': []}
-                if False: #self.df[field].dtype == 'bool' and (op == "=" or op == "is") and "value" == True:
-                    lhs = self._get_data(fields=field, select=select, coords=coords, df=df, drop=True)
-                    res['masks'].append(lhs)
-                elif df is not self.df or field not in self.argsorts or select or coords:
+                if df is not self.df or field not in self.argsorts or select or coords:
                     lhs = self._get_data(fields=field, select=select, coords=coords, df=df, drop=True)
                     if op == '=' or op == 'is':
                         mask = (lhs == value)

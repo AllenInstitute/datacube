@@ -173,7 +173,17 @@ def pearsonr(x, y):
     mx = np.ma.array(x, mask=np.isnan(x))
     my = np.ma.array(y, mask=np.isnan(y))
     from scipy.stats.mstats import pearsonr as mstats_pearsonr
-    return mstats_pearsonr(mx,my)[0]
+    return np.array(mstats_pearsonr(mx,my)[0])
+
+
+def corr(ds, field, dim, label):
+    seed = ds[field].sel(**{dim: label})
+    rvalues = [pearsonr(seed, ds[field].sel(**{dim: i})) for i in ds[dim]]
+    corr = xr.Dataset({'corr': ([dim], rvalues), dim: ds[dim]})
+    sample_dims = set(ds[field].dims)-set([dim])
+    both_samples_count = xr.ufuncs.logical_and(~np.isnan(seed), ~np.isnan(ds[field])).sum(dim=sample_dims)
+    corr = corr.where(both_samples_count>1, drop=True)
+    return corr.dropna(dim, how='all', subset=['corr'])
 
 
 @pytest.mark.filterwarnings('ignore')
@@ -181,26 +191,32 @@ def test_corr(test_datacube):
     d, ds = test_datacube
 
     r = d.corr('foo_0', 'dim_0', 0)
-    xr.testing.assert_allclose(r, xr.Dataset({'corr': (['dim_0'], np.array([pearsonr(ds.foo_0.isel(dim_0=[0]), ds.foo_0.isel(dim_0=[i])) for i in range(ds.dims['dim_0'])])), 'dim_0': ds.dim_0}))
+    expected = corr(ds, 'foo_0', 'dim_0', 0)
+    xr.testing.assert_allclose(r, expected)
 
-    r = d.corr('foo_0', 'dim_0', 1)
-    assert np.all(np.isnan(r.corr.values)) and r.corr.values.shape == ds.coords['dim_0'].shape
+    with pytest.raises(KeyError):
+        r = d.corr('foo_0', 'dim_0', -1)
 
     r = d.corr('foo_1', 'dim_0', 0)
-    xr.testing.assert_allclose(r, xr.Dataset({'corr': (['dim_0'], np.array([pearsonr(ds.foo_1.isel(dim_0=0), ds.foo_1.isel(dim_0=i)) for i in range(ds.dims['dim_0'])])), 'dim_0': ds.dim_0}))
+    expected = corr(ds, 'foo_1', 'dim_0', 0)
+    xr.testing.assert_allclose(r, expected)
 
     r = d.corr('foo_1', 'dim_1', 0)
-    xr.testing.assert_allclose(r, xr.Dataset({'corr': (['dim_1'], np.array([pearsonr(ds.foo_1.isel(dim_1=0), ds.foo_1.isel(dim_1=i)) for i in range(ds.dims['dim_1'])])), 'dim_1': ds.dim_1}))
+    expected = corr(ds, 'foo_1', 'dim_1', 0)
+    xr.testing.assert_allclose(r, expected)
 
     if 'foo_2' in ds:
         r = d.corr('foo_2', 'dim_0', 0)
-        xr.testing.assert_allclose(r, xr.Dataset({'corr': (['dim_0'], np.array([pearsonr(ds.foo_2.isel(dim_0=0).values.flat, ds.foo_2.isel(dim_0=i).values.flat) for i in range(ds.dims['dim_0'])])), 'dim_0': ds.dim_0}))
+        expected = corr(ds, 'foo_2', 'dim_0', 0)
+        xr.testing.assert_allclose(r, expected)
 
         r = d.corr('foo_2', 'dim_1', 0)
-        xr.testing.assert_allclose(r, xr.Dataset({'corr': (['dim_1'], np.array([pearsonr(ds.foo_2.isel(dim_1=0).values.flat, ds.foo_2.isel(dim_1=i).values.flat) for i in range(ds.dims['dim_1'])])), 'dim_1': ds.dim_1}))
+        expected = corr(ds, 'foo_2', 'dim_1', 0)
+        xr.testing.assert_allclose(r, expected)
 
         r = d.corr('foo_2', 'dim_2', 0)
-        xr.testing.assert_allclose(r, xr.Dataset({'corr': (['dim_2'], np.array([pearsonr(ds.foo_2.isel(dim_2=0).values.flat, ds.foo_2.isel(dim_2=i).values.flat) for i in range(ds.dims['dim_2'])])), 'dim_2': ds.dim_2}))
+        expected = corr(ds, 'foo_2', 'dim_2', 0)
+        xr.testing.assert_allclose(r, expected)
 
 
 @pytest.mark.filterwarnings('ignore')
@@ -209,11 +225,13 @@ def test_corr_select(test_datacube):
 
     r = d.corr('foo_1', 'dim_0', 0, select={'dim_1': {'start': 0, 'stop': 8}})
     s = ds[{'dim_1': slice(0,8)}]
-    xr.testing.assert_allclose(r, xr.Dataset({'corr': (['dim_0'], np.array([pearsonr(s.foo_1.isel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])])), 'dim_0': s.dim_0}))
+    expected = corr(s, 'foo_1', 'dim_0', 0)
+    xr.testing.assert_allclose(r, expected)
 
     r = d.corr('foo_1', 'dim_0', 0, select={'dim_0': [0,2,5], 'dim_1': [3,5,7,9]})
     s = ds[{'dim_0': [0,2,5], 'dim_1': [3,5,7,9]}]
-    xr.testing.assert_allclose(r, xr.Dataset({'corr': (['dim_0'], np.array([pearsonr(s.foo_1.isel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])])), 'dim_0': s.dim_0}))
+    expected = corr(s, 'foo_1', 'dim_0', 0)
+    xr.testing.assert_allclose(r, expected)
 
 
 #todo: make sure and test when mask has different dimensions than data
@@ -231,35 +249,39 @@ def test_corr_filters(test_datacube):
     r = d.corr('foo_1', 'dim_0', 0, filters={'or': [{'field': 'foo_0', 'op': '<=', 'value': 0.75}]})
     cond = ds.foo_0 <= 0.75
     s = ds.where(cond, drop=True)
-    xr.testing.assert_allclose(r, xr.Dataset({'corr': (['dim_0'], np.array([pearsonr(s.foo_1.sel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])])), 'dim_0': s.dim_0}))
+    expected = corr(s, 'foo_1', 'dim_0', 0)
+    xr.testing.assert_allclose(r, expected)
 
     r = d.corr('foo_1', 'dim_0', 0, filters={'or': [{'field': 'foo_0', 'op': '<=', 'value': 0.25},{'field': 'foo_1', 'op': '<=', 'value': 0.1}]})
     cond = (ds.foo_0 <= 0.25) | (ds.foo_1 <= 0.1)
     s = ds.where(cond, drop=True)
-    xr.testing.assert_allclose(r, xr.Dataset({'corr': (['dim_0'], np.array([pearsonr(s.foo_1.sel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])])), 'dim_0': s.dim_0}))
+    expected = corr(s, 'foo_1', 'dim_0', 0)
+    xr.testing.assert_allclose(r, expected)
 
     r = d.corr('foo_1', 'dim_0', 0, filters={'or': [{'field': 'foo_1', 'op': '<=', 'value': 0.5}]})
     cond = ds.foo_1 <= 0.5
     s = ds.where(cond, drop=True)
-    xr.testing.assert_allclose(r, xr.Dataset({'corr': (['dim_0'], np.array([pearsonr(s.foo_1.sel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])])), 'dim_0': s.dim_0}))
+    expected = corr(s, 'foo_1', 'dim_0', 0)
+    xr.testing.assert_allclose(r, expected)
 
     if 'foo_2' in ds:
         r = d.corr('foo_1', 'dim_0', 0, filters={'or': [{'field': 'foo_2', 'op': '<=', 'value': 0.01}]})
         cond = ds.foo_2 <= 0.01
         s = ds.where(cond.any(dim='dim_2'), drop=True)
-        xr.testing.assert_allclose(r, xr.Dataset({'corr': (['dim_0'], np.array([pearsonr(s.foo_1.sel(dim_0=0), s.foo_1.isel(dim_0=i)) for i in range(s.dims['dim_0'])])), 'dim_0': s.dim_0}))
+        expected = corr(s, 'foo_1', 'dim_0', 0)
+        xr.testing.assert_allclose(r, expected)
 
         r = d.corr('foo_2', 'dim_2', 0, filters={'or': [{'field': 'foo_1', 'op': '<=', 'value': 0.1}]})
         cond = ds.foo_1 <= 0.1
         s = ds.where(cond, drop=True)
-        xr.testing.assert_allclose(r, xr.Dataset({'corr': (['dim_2'], np.array([pearsonr(s.foo_2.sel(dim_2=0), s.foo_2.isel(dim_2=i)) for i in range(s.dims['dim_2'])])), 'dim_2': s.dim_2}))
+        expected = corr(s, 'foo_2', 'dim_2', 0)
+        xr.testing.assert_allclose(r, expected)
 
         r = d.corr('foo_2', 'dim_1', 0, filters={'or': [{'field': 'foo_1', 'op': '<=', 'value': 0.1},{'field': 'dim_1', 'op': '=', 'value': 0}]})
         cond = (ds.foo_1 <= 0.1) | (ds.dim_1 == 0)
         s = ds.where(cond, drop=True)
-        xr.testing.assert_allclose(r, xr.Dataset({'corr': (['dim_1'], np.array([pearsonr(s.foo_2.sel(dim_1=0), s.foo_2.isel(dim_1=i)) for i in range(s.dims['dim_1'])])), 'dim_1': s.dim_1}))
+        expected = corr(s, 'foo_2', 'dim_1', 0)
+        xr.testing.assert_allclose(r, expected)
 
-        r = d.corr('foo_2', 'dim_1', -1, filters={'or': [{'field': 'foo_1', 'op': '<=', 'value': 0.1}]})
-        cond = (ds.foo_1 <= 0.1)
-        s = ds.where(cond, drop=True)
-        assert np.all(np.isnan(r.corr.values)) and r.corr.values.shape == s.coords['dim_1'].shape
+        with pytest.raises(KeyError):
+            r = d.corr('foo_2', 'dim_1', -1, filters={'or': [{'field': 'foo_1', 'op': '<=', 'value': 0.1}]})
