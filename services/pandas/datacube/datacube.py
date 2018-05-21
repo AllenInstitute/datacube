@@ -11,7 +11,6 @@ import zarr
 import numcodecs
 import dask
 import dask.array as da
-import opt_einsum
 import multiprocessing
 from PIL import Image
 from io import BytesIO
@@ -29,54 +28,6 @@ import concurrent.futures
 
 from six import iteritems
 from builtins import int, map
-
-
-def copy_func(f):
-    g = types.FunctionType(f.__code__, f.__globals__, name=f.__name__,
-                           argdefs=f.__defaults__,
-                           closure=f.__closure__)
-    g = functools.update_wrapper(g, f)
-    g.__kwdefaults__ = f.__kwdefaults__
-    return g
-orig_determine_zarr_chunks = copy_func(xr.backends.zarr._determine_zarr_chunks)
-
-
-class opt_einsum_backend:
-
-    @staticmethod
-    def einsum(*args, **kwargs):
-        args = list(args)
-        out_inds = args.pop()
-        in_inds = args[1::2]
-        arrays = args[0::2]
-        dtype = kwargs.get('dtype')
-        einsum_dtype = dtype
-        if dtype is None:
-            dtype = np.result_type(*[a.dtype for a in arrays])
-        casting = kwargs.get('casting')
-        if casting is None:
-            casting = 'safe'
-
-        import string
-        alpha = string.ascii_lowercase
-        einsum_string = '->'.join([','.join([''.join(alpha[i] for i in iinds) for iinds in in_inds])]+[''.join(alpha[i] for i in out_inds)])
-        return opt_einsum.contract(einsum_string, *arrays, backend='dask')
-
-
-    @staticmethod
-    def sum(*args, **kwargs):
-        return da.sum(*args, **kwargs)
-
-
-    @staticmethod
-    def reshape(*args, **kwargs):
-        return da.reshape(*args, **kwargs)
-
-
-    @staticmethod
-    def clip(*args, **kwargs):
-        return da.clip(*args, **kwargs)
-oe = opt_einsum_backend
 
 
 def get_num_samples(data, axis, masks, backend=np):
@@ -218,20 +169,14 @@ def get_seed(ds, seed_label, dim):
     seed_ds = ds.sel(**{dim: [seed_label]})
     seed = seed_ds['data']
     mseed = mask_field(seed_ds, 'data')
-    #if dim in mdata.dims and mdata.shape[mdata.dims.index(dim)]>1:
-    #    mseed = mdata.sel(**{dim: [seed_label]})
-    #else:
-    #    mseed = mdata
     return seed, mseed
 
 
 @parallelize('dim', 'num_chunks', 'max_workers')
 def do_correlation(ds, seed, mseed, dim, num_chunks, max_workers, chunk_idx, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
     data = ds['data']
-    #mdata = mask_field(ds, 'data')
     masks = [align_mask(data, mask) for mask in get_masks(ds)]
     axis = data.dims.index(dim)
-    #backend = da if isinstance(data.data, da.Array) else np
     _memoize = lambda key, f, *args, **kwargs: memoize([chunk_idx]+key, f, *args, **kwargs)
     return xr.Dataset({'corr': (data.dims, einsum_corr(data.data, seed, axis, masks, mseed, backend=np, memoize=_memoize))}).squeeze()
 
@@ -246,22 +191,23 @@ def par_correlation(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda
     return corr
 
 
-def par_correlation_tmp(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
-    data = ds['data']
-    mdata = mask_field(ds, 'data')
-    axis = data.dims.index(dim)
-    seed, mseed = get_seed(ds, seed_label, dim)
-    def _compute(arr):
-        if isinstance(arr, da.Array):
-            tmp = arr.compute()
-            return da.from_array(tmp, chunks=arr.chunks)
-        else:
-            return arr
-    _memoize = lambda key, f, *args, **kwargs: memoize([dim]+key, lambda: _compute(f(*args, **kwargs)))
-    corr = einsum_corr(data.data, seed.data, axis, [mdata.data], mseed.data, backend=da, memoize=_memoize)
-    corr = xr.Dataset({'corr': (data.dims, corr)}).squeeze()
-    corr.coords[dim] = ds.coords[dim]
-    return corr
+# this version uses dask; should add a configuration option to choose
+#def par_correlation(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
+#    data = ds['data']
+#    mdata = mask_field(ds, 'data')
+#    axis = data.dims.index(dim)
+#    seed, mseed = get_seed(ds, seed_label, dim)
+#    def _compute(arr):
+#        if isinstance(arr, da.Array):
+#            tmp = arr.compute()
+#            return da.from_array(tmp, chunks=arr.chunks)
+#        else:
+#            return arr
+#    _memoize = lambda key, f, *args, **kwargs: memoize([dim]+key, lambda: _compute(f(*args, **kwargs)))
+#    corr = einsum_corr(data.data, seed.data, axis, [mdata.data], mseed.data, backend=da, memoize=_memoize)
+#    corr = xr.Dataset({'corr': (data.dims, corr)}).squeeze()
+#    corr.coords[dim] = ds.coords[dim]
+#    return corr
 
 
 class Datacube:
@@ -471,24 +417,7 @@ class Datacube:
             df = self.df
         data = self._get_data(select=select, coords=coords, df=df)
         data, f = self._query(filters, df=data)
-        #if self.mdata:
-        #    mdata = self.mdata[field].reindex_like(data)
-        #else:
-        #mdata = xr.DataArray(da.from_array(np.ones((1,)*data[field].ndim, dtype=np.bool), chunks=1), dims=['mdim_{0}'.format(i) for i in range(data[field].ndim)])
         data = self._get_data(fields=field, df=data)
-        #if f['masks']:
-        #    if len(f['masks'])>1:
-        #        mdata = reduce(xr_ufuncs.logical_and, f['masks'], mdata)
-        #    else:
-        #        mdata = xr_ufuncs.logical_and(f['masks'][0], mdata)
-        #    mdata = mdata.any(dim=set(mdata.dims)-set(data.dims))
-        #    if data.chunks is not None:
-        #        mdata = mdata.chunk(tuple(data.chunks[data.dims.index(dim)] for dim in mdata.dims))
-        #    mdata = mdata.expand_dims(set(data.dims)-set(mdata.dims))
-        #    mdata = mdata.transpose(*data.dims)
-        #if mdata.size<data.size:
-        #    mdata = mdata.astype(data.dtype)
-        #ds = xr.Dataset({'data': data, 'mask': ([d if mdata.shape[i] > 1 else d+'__' for i,d in enumerate(data.dims)], mdata)})
         if f['masks']:
             for mask in f['masks']:
                 mask.attrs['is_mask'] = True
@@ -623,93 +552,12 @@ class Datacube:
 
 
     def corr(self, field, dim, seed_idx, select=None, coords=None, filters=None):
-        #if any([d and dim in d for d in [select, coords, filters]]):
-        #    raise ValueError('Filtering / selecting on query dimension for correlation not supported.')
         ds, f = self._get_field(field, select, coords, filters)
         key_prefix = [self.name, 'mdata', field, select, filters]
         memoize = lambda key, f, *args, **kwargs: self._memoize(key_prefix+key, f, *args, **kwargs)
         res = par_correlation(ds, seed_idx, dim, self.num_chunks, self.max_workers, memoize=memoize)
         res = res.dropna(dim, how='all', subset=['corr'])
         return res
-
-
-    def corr_old(self, field, dim, seed_idx, select=None, coords=None, filters=None):
-        data = self._get_data(select=select, coords=coords)
-        data, f = self._query(filters, df=data)
-        #todo: use self.mdata if it exists
-        #mdata = self.mdata[field].reindex_like(data)
-        data = self._get_data(fields=field, df=data)
-        mdata = xr.DataArray(da.from_array(np.ones((1,)*data.ndim, dtype=np.bool), chunks=1), dims=['mdim_{0}'.format(i) for i in range(data.ndim)])
-        masks = []
-        row_masks = []
-        for m in f['masks']:
-            if 1==m.ndim and dim==m.dims[0]:
-                row_masks.append(m)
-            else:
-                masks.append(m)
-        if seed_idx not in data.coords[dim].values:
-            res = xr.Dataset({'corr': ([dim], np.full((data.coords[dim].size,), np.nan))})
-        else:
-            #todo: more xarray-esque way of doing the following:
-            seed_idx = np.where(data.coords[dim].values==seed_idx)[0][0]
-            if masks:
-                if len(masks)>1:
-                    mdata = reduce(xr_ufuncs.logical_and, masks, mdata)
-                else:
-                    mdata = masks[0]
-                mdata = mdata.any(dim=set(mdata.dims)-set(data.dims))
-                if data.chunks is not None:
-                    mdata = mdata.chunk(tuple(data.chunks[data.dims.index(dim)] for dim in mdata.dims))
-                mdata = mdata.expand_dims(set(data.dims)-set(mdata.dims))
-                mdata = mdata.transpose(*data.dims)
-            axis = data.dims.index(dim)
-            if mdata.size<data.size:
-                mdata = mdata.astype(data.dtype)
-            if dim in mdata.dims and mdata.sizes[dim]==1:
-                bounds = tuple(slice(inds.min(), inds.max()+1) if mdata.shape[i]>1 and i!=axis else slice(None) for i,inds in enumerate(np.nonzero(mdata.values)))
-                data = data[bounds]
-                mdata = mdata[bounds]
-            key = [self.name, 'mdata', field, select, filters]
-            res = self._corr(data.data, mdata.data, seed_idx, axis, cache_key=key)
-            res = xr.Dataset({'corr': ([dim], res.squeeze()), dim: data.coords[dim]})
-        if masks:
-            mask = reduce(xr_ufuncs.logical_and, masks)
-            reduce_dims = [d for d in mask.dims if d != dim]
-            res = res.reindex_like(mask).where(mask.any(dim=reduce_dims), drop=True)
-        if row_masks:
-            mask = reduce(xr_ufuncs.logical_and, row_masks)
-            res = res.reindex_like(mask).where(mask, drop=True)
-        return res
-
-
-    @staticmethod
-    def _get_num_samples(data, axis, mdata, backend=np):
-        sample_axes = np.array([i for i in range(data.ndim) if i != axis])
-        if mdata is None:
-            num_samples = np.prod(np.array([data.shape[i] for i in sample_axes], dtype=np.uint64))
-            if backend == da:
-                num_samples = da.from_array(num_samples, chunks=data.chunks)
-            mdata_args = []
-        else:
-            dims = range(mdata.ndim)
-            #num_samples = backend.einsum(mdata.astype(np.uint64), dims, [axis], dtype=np.uint64)
-            num_samples = backend.count_nonzero(mdata, axis=tuple(sample_axes))
-            num_samples = backend.reshape(num_samples, tuple(mdata.shape[i] if i == axis else 1 for i in range(mdata.ndim)))
-            mdata_args = [mdata, dims]
-            num_samples *= np.prod(np.array([data.shape[i] for i in sample_axes if mdata.shape[i]==1 and data.shape[i]>1], dtype=np.uint64))
-        return num_samples, mdata_args
-
-
-    @staticmethod
-    def _get_seed(data, seed_idx, axis, mdata, backend=np):
-        seed = backend.take(data, int(seed_idx), axis=axis)
-        seed = backend.reshape(seed, tuple(data.shape[i] if i != axis else 1 for i in range(data.ndim)))
-        if mdata.shape[axis]>1:
-            mseed = backend.take(mdata, int(seed_idx), axis=axis)
-            mseed = backend.reshape(mseed, tuple(mdata.shape[i] if i != axis else 1 for i in range(data.ndim)))
-        else:
-            mseed = mdata
-        return seed, mseed
 
 
     def _memoize(self, key, f, *args, **kwargs):
@@ -720,110 +568,6 @@ class Datacube:
             return res
         else:
             return pickle.loads(cached)
-
-
-    #todo: use xr.DataArray's as parameters to this function instead of just dask arrays
-    def _corr(self, data, mdata, seed_idx, axis, cache_key=None):
-        np.seterr(divide='ignore', invalid='ignore')
-        use_cache = cache_key is not None
-        if use_cache:
-            redis_client = self.redis_client
-        else:
-            redis_client = None
-
-        def _compute(arr):
-            if isinstance(arr, da.Array):
-                tmp = arr.compute()
-                return da.from_array(tmp, chunks=arr.chunks)
-            else:
-                return arr
-
-        if isinstance(data, da.Array):
-            backend = da
-        else:
-            backend = np
-
-        sample_axes = np.array([i for i in range(data.ndim) if i != axis])
-        seed, mseed = Datacube._get_seed(data, seed_idx, axis, mdata, backend=backend)
-
-        mseed2 = mseed * ~np.isnan(seed)
-
-        def _num_samples():
-            return _compute(Datacube._get_num_samples(data, axis, mdata, backend=backend)[0])
-        num_samples = self._cache(_num_samples, json.dumps(cache_key+['num_samples', axis]), redis_client, disable=(not use_cache))
-        seed_num_samples, _ = Datacube._get_num_samples(seed, axis, mseed2, backend=backend)
-        seed_mean = backend.einsum(seed, range(seed.ndim), mseed2, range(mseed2.ndim), [], dtype=data.dtype) / seed_num_samples.astype(data.dtype)
-        seed_dev = backend.einsum(seed-seed_mean, range(seed.ndim), mseed2, range(mseed2.ndim), range(seed.ndim), dtype=data.dtype)
-        seed_denominator = backend.sum(seed_dev**2, axis=tuple(sample_axes))
-
-        #data_mean = np.nanmean(data*backend.sign(np.inf*mdata), axis=tuple(sample_axes), keepdims=True)
-
-        #data_mean = backend.einsum(data, range(data.ndim), mdata, range(mdata.ndim), [axis]) / num_samples
-        #data_mean = backend.reshape(data_mean, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
-
-        def _sum(data, mdata, axis):
-            sample_axes = np.array([i for i in range(data.ndim) if i != axis])
-            result_shape = tuple(data.shape[i] if i==axis else 1 for i in range(data.ndim))
-            if mdata.size<data.size and np.all(0==mdata):
-                return np.zeros(result_shape, dtype=data.dtype)
-            else:
-                #return np.sum(data*mdata, axis=tuple(sample_axes), keepdims=True)
-                res = np.einsum(data, range(data.ndim), mdata, range(data.ndim), [axis], dtype=data.dtype)
-                res = np.reshape(res, result_shape)
-                return res
-
-        def _data_sum():
-            if isinstance(data, da.Array):
-                data_sum = da.map_blocks(_sum, data, mdata, axis, dtype=data.dtype)
-                data_sum = np.sum(data_sum, axis=tuple(sample_axes), keepdims=True)
-                return _compute(data_sum)
-            else:
-                return _sum(data, mdata, axis)
-        data_sum = self._cache(_data_sum, json.dumps(cache_key+['data_sum', axis]), redis_client, disable=(not use_cache))
-        data_mean = data_sum / num_samples.astype(data.dtype)
-
-        def _einsum_corr_chunk(data, data_mean, seed, axis, mdata, mseed, seed_mean, block_id=None, redis_client=None):
-            if mdata.size<data.size and np.all(0==mdata):
-                return np.zeros(data_mean.shape+(2,), dtype=data.dtype)
-            else:
-                np.seterr(divide='ignore', invalid='ignore')
-
-                dtype = data.dtype
-                sdims = range(seed.ndim)
-                ddims = range(data.ndim)
-                sample_axes = tuple(i for i in ddims if i != axis)
-
-                seed_dev = np.einsum(seed-seed_mean, sdims, mseed, range(mseed.ndim), sdims, dtype=dtype)
-                numerator = np.einsum(seed_dev, ddims, data, ddims, mdata, range(mdata.ndim), [axis], dtype=dtype)
-                numerator -= np.einsum(seed_dev, ddims, data_mean, ddims, mdata, range(mdata.ndim), [axis], dtype=dtype)
-
-                def _data_denominator():
-                    data_denominator = np.einsum(data, ddims, data, ddims, mdata, range(mdata.ndim), [axis], dtype=dtype)
-                    return np.reshape(data_denominator, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
-                data_denominator = Datacube._cache(_data_denominator, json.dumps(cache_key+['data_denominator', axis, block_id]), redis_client, disable=(redis_client is None))
-
-                numerator = np.reshape(numerator, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
-                
-                return np.concatenate([numerator[...,np.newaxis], data_denominator[...,np.newaxis]], axis=data.ndim)
-
-        if isinstance(data, da.Array):
-            result = da.map_blocks(_einsum_corr_chunk, data, data_mean, seed, axis, mdata, mseed, seed_mean, redis_client=redis_client, new_axis=data.ndim, dtype=data.dtype)
-            result = result.compute()
-        else:
-            result = _einsum_corr_chunk(data, data_mean, seed, axis, mdata, mseed, seed_mean, redis_client=redis_client)
-        numerator = result[..., 0]
-        data_denominator = result[..., 1]
-        numerator = np.sum(numerator, axis=tuple(sample_axes), keepdims=True)
-        data_denominator = np.sum(data_denominator, axis=tuple(sample_axes), keepdims=True)
-        data_denominator = data_denominator+data_mean**2*num_samples
-        data_denominator = data_denominator-2.0*data_mean*data_sum
-
-        denominator = np.sqrt(seed_denominator*data_denominator)
-        corr = np.clip(numerator/denominator, -1.0, 1.0)
-        both_samples, _ = Datacube._get_num_samples(data, axis, mdata*mseed, backend=backend)
-        corr = corr * backend.sign(np.inf*(both_samples>1))
-        corr = np.reshape(corr, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
-        return corr
 
 
     #todo: use _cache()
