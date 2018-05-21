@@ -9,7 +9,7 @@
             {
                 "path": "connectivity.nc",
                 "use_chunks": true,
-                "chunks": {"experiment": 50},
+                "chunks": {"experiment": 375},
                 "max_cacheable_bytes": 104857600,
                 "missing_data": false,
                 "calculate_stats": true
@@ -19,7 +19,7 @@
     },
     {
         "name": "mouse_ccf",
-        "enabled": true,
+        "enabled": false,
         "auto-generate": true,
         "script": "./scripts/datasets/mouse_ccf.py",
         "data-dir": "./mouse_ccf_data/",

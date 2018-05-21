@@ -14,13 +14,16 @@ import tempfile
 import psycopg2
 import csv
 from concurrent.futures import ThreadPoolExecutor
+import functools
 from functools import partial
+import types
 
 import nrrd
 import numpy as np
 import xarray as xr
 import pandas as pd
 import zarr
+import numcodecs
 import h5py
 import dask
 import dask.array as da
@@ -593,8 +596,9 @@ def main():
     # write dataset to NETCDF4 file using h5netcdf.
     #
     # NOTE: writing projection or is_projection from dask arrays hangs for some reason. adding a
-    # sychronizer to the zarr store or using the dask synchronous (single-thread) scheduler
-    # makes no difference. debugging reveals the problem occurs within 'da.store'.
+    # sychronizer to the zarr store or using the dask synchronous (single-thread) scheduler,
+    # or using ndarrays (without zarr), makes no difference. debugging reveals the problem occurs
+    # within 'da.store'.
     #   the alternative of loading the arrays fully into memory has been problematic. another
     # alternative might be to downgrade some packages, since this used to work (albeit with slightly
     # smaller variables).
@@ -603,24 +607,57 @@ def main():
     # variables manually. in this dataset, the dimensions already exist (from other variables) after
     # the initial write by xarray, so they only need to be attached to the newly written variables.
 
-    nc_file = os.path.join(args.data_dir, args.data_name + '.nc')
-    logging.info('writing dataset to {}'.format(nc_file))
-    ds.drop(['projection', 'is_projection']).to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
-    ds.close()
+    #nc_file = os.path.join(args.data_dir, args.data_name + '.nc')
+    #logging.info('writing dataset to {}'.format(nc_file))
+    #ds.drop(['projection', 'is_projection']).to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
+    #ds.close()
 
-    f=h5py.File(nc_file, 'r+')
-    logging.info('copying projection volume to {}'.format(nc_file))
-    zarr.convenience.copy(volume, f, 'projection')
-    #TODO: uncomment once ram issue is taken care of
+    #f=h5py.File(nc_file, 'r+')
+    #logging.info('copying projection volume to {}'.format(nc_file))
+    #compression_kws = dict(compression=None, compression_opts=None)
+    #zarr.convenience.copy(volume, f, 'projection', **compression_kws)
     #logging.info('copying projection mask to {}'.format(nc_file))
-    #zarr.convenience.copy(projection_mask, f, 'is_projection')
-    for var in ['projection']: #, 'is_projection']:
-        if len(ds[var].attrs) > 0:
-            raise NotImplementedError('failing because variable \'{}\' has attributes that won\'t be written'.format(var))
-        for dim in ds[var].dims:
-            f[var].dims[ds[var].dims.index(dim)].attach_scale(f[dim])
-    f.close()
-    logging.info('wrote dataset to {}'.format(nc_file))
+    #zarr.convenience.copy(projection_mask, f, 'is_projection', **compression_kws)
+    #for var in ['projection', 'is_projection']:
+    #    if len(ds[var].attrs) > 0:
+    #        raise NotImplementedError('failing because variable \'{}\' has attributes that won\'t be written'.format(var))
+    #    for dim in ds[var].dims:
+    #        f[var].dims[ds[var].dims.index(dim)].attach_scale(f[dim])
+    #f.close()
+    #logging.info('wrote dataset to {}'.format(nc_file))
+
+    def copy_func(f):
+        g = types.FunctionType(f.__code__, f.__globals__, name=f.__name__,
+                               argdefs=f.__defaults__,
+                               closure=f.__closure__)
+        g = functools.update_wrapper(g, f)
+        g.__kwdefaults__ = f.__kwdefaults__
+        return g
+    orig_determine_zarr_chunks = copy_func(xr.backends.zarr._determine_zarr_chunks)
+    xr.backends.zarr._determine_zarr_chunks = lambda enc_chunks, var_chunks, ndim: orig_determine_zarr_chunks(enc_chunks, None, ndim)
+    encoding = {
+        'is_projection': {'filters': [numcodecs.packbits.PackBits()]},
+        'projection': {'filters': [numcodecs.quantize.Quantize(3, np.float32)]}
+        }
+    store_file = os.path.join(args.data_dir, args.data_name + '.zarr.lmdb')
+    store = zarr.storage.LMDBStore(store_file)
+    compressor = numcodecs.blosc.Blosc(cname='snappy', clevel=1, shuffle=numcodecs.blosc.Blosc.SHUFFLE)
+    def sync_using_zarr_copy(self, compute=True):
+        if self.sources:
+            import dask.array as da
+            rechunked_sources = [source.rechunk(target.chunks)
+                for source, target in zip(self.sources, self.targets)]
+            delayed_store = da.store(rechunked_sources, self.targets,
+                                     lock=self.lock, compute=compute,
+                                     flush=True)
+            self.sources = []
+            self.targets = []
+            return delayed_store
+    xr.backends.common.ArrayWriter.sync = sync_using_zarr_copy
+    ds.to_zarr(
+        store=store,
+        encoding={var: {**{'chunks': None, 'compressor': compressor}, **encoding.get(var, {})} for var in ds.variables}
+        )
 
     #PBS-1262:
     shutil.copy2(args.surface_coords_path, args.data_dir)

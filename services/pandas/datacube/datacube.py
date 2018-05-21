@@ -13,8 +13,10 @@ import opt_einsum
 import multiprocessing
 from PIL import Image
 from io import BytesIO
+import os
 import shutil
 import base64
+import itertools
 import functools
 from functools import reduce, wraps
 import operator
@@ -75,54 +77,57 @@ class opt_einsum_backend:
 oe = opt_einsum_backend
 
 
-def get_num_samples(data, axis, mdata, backend=np):
+def get_num_samples(data, axis, masks, backend=np):
     sample_axes = tuple([i for i in range(data.ndim) if i != axis])
 
-    if mdata is None or (mdata.ndim == 0 and mdata):
+    if not masks or all(mask.ndim == 0 for mask in masks):
         num_samples = np.prod(np.array([data.shape[i] for i in sample_axes], dtype=np.uint64))
         if backend == da:
             num_samples = da.from_array(num_samples)
-        mdata_args = []
-    elif mdata.ndim == 0 and not mdata:
+    elif len(masks) == 1 and masks[0].ndim == 0 and not masks[0]:
         num_samples = np.array(0, np.uint64)
     else:
         ddims = range(data.ndim)
-        mdims = range(mdata.ndim)
-        output_shape = tuple(mdata.shape[i] if i == axis else 1 for i in ddims)
-        num_samples = backend.einsum(mdata, mdims, [axis], dtype=np.uint64)
+        output_shape = tuple(max(mask.shape[i] for mask in masks) if i == axis else 1 for i in ddims)
+        mdata_args = list(it.__next__() for it in itertools.cycle([iter(masks), iter(range(mask.ndim) for mask in masks)]))
+        num_samples = backend.einsum(*mdata_args, [axis], dtype=np.uint64)
         num_samples = backend.reshape(num_samples, output_shape) # restore dims after einsum
-        mdata_args = [mdata, mdims]
         if len(sample_axes)>0:
-            num_samples *= np.prod(np.array([data.shape[i] for i in sample_axes if mdata.shape[i]==1 and data.shape[i]>1], dtype=np.uint64))
-    return num_samples, mdata_args
+            num_samples *= np.prod(np.array([data.shape[i] for i in sample_axes
+                if all(mask.shape[i]==1 for mask in masks) and data.shape[i]>1], dtype=np.uint64))
+    return num_samples
 
 
-def einsum_corr(data, seed, axis, mdata, mseed, backend=np, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
+def einsum_corr(data, seed, axis, masks, mseed, backend=np, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
     np.seterr(divide='ignore', invalid='ignore')
-    dtype = np.result_type(np.float64, data.dtype, mdata.dtype, seed.dtype, mseed.dtype) # use f64 at least
+    dtype = np.result_type(np.float64, data.dtype, *[mask.dtype for mask in masks], seed.dtype, mseed.dtype) # use f64 at least
     
     ddims = range(data.ndim)
     sdims = range(seed.ndim)
-    mddims = range(mdata.ndim)
     msdims = range(mseed.ndim)
+    mdata_args = list(it.__next__() for it in itertools.cycle([iter(masks), iter(range(mask.ndim) for mask in masks)]))
     sample_axes = tuple([i for i in ddims if i != axis])
     output_shape = tuple(data.shape[i] if i == axis else 1 for i in ddims)
 
-    seed_num_samples, _ = get_num_samples(seed, axis, mseed, backend=backend)
-    num_samples = memoize(['num_samples'], lambda *a,**kw: get_num_samples(*a,**kw)[0], data, axis, mdata, backend=backend)
+    seed_num_samples = get_num_samples(seed, axis, [mseed], backend=backend)
+    num_samples = memoize(['num_samples'], get_num_samples, data, axis, masks, backend=backend)
+    both_samples = get_num_samples(data, axis, masks+[mseed], backend=backend)
+    for i, mask in enumerate(masks):
+        if mask.size<=mseed.size:
+            masks[i] = mask.astype(data.dtype)
 
     seed_mean = backend.einsum(seed, sdims, mseed, msdims, [], dtype=dtype) / seed_num_samples
-    data_sum = memoize(['data_sum'], backend.einsum, data, ddims, mdata, mddims, [axis], dtype=dtype)
+    data_sum = memoize(['data_sum'], backend.einsum, data, ddims, *mdata_args, [axis], dtype=dtype)
     data_sum = backend.reshape(data_sum, output_shape) # restore dims after einsum
     data_mean = data_sum / num_samples
 
     seed_dev = backend.einsum(seed-seed_mean, sdims, mseed, msdims, sdims, dtype=dtype)
     seed_denominator = backend.sum(seed_dev**2, axis=sample_axes, dtype=dtype)
-    numerator = backend.einsum(seed_dev, ddims, data, ddims, mdata, mddims, [axis], dtype=dtype)
-    numerator -= backend.einsum(seed_dev, ddims, data_mean, ddims, mdata, mddims, [axis], dtype=dtype)
+    numerator = backend.einsum(seed_dev, ddims, data, ddims, *mdata_args, [axis], dtype=dtype)
+    numerator -= backend.einsum(seed_dev, ddims, data_mean, ddims, *mdata_args, [axis], dtype=dtype)
     numerator = backend.reshape(numerator, output_shape) # restore dims after einsum
 
-    data_denominator = memoize(['data_denominator'], backend.einsum, data, ddims, data, ddims, mdata, mddims, [axis], dtype=dtype)
+    data_denominator = memoize(['data_denominator'], backend.einsum, data, ddims, data, ddims, *mdata_args, [axis], dtype=dtype)
     data_denominator = backend.reshape(data_denominator, output_shape) # restore dims after einsum
     data_denominator = data_denominator+data_mean**2*num_samples
     data_denominator = data_denominator-2.0*data_mean*data_sum
@@ -131,7 +136,6 @@ def einsum_corr(data, seed, axis, mdata, mseed, backend=np, memoize=lambda k,f,*
     denominator = np.sqrt(seed_denominator*data_denominator)
 
     corr = backend.clip(numerator / denominator, -1.0, 1.0)
-    both_samples, _ = get_num_samples(data, axis, mdata*mseed, backend=backend)
     corr = corr * backend.sign(np.inf*(both_samples>1))
     corr = backend.reshape(corr, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
     return corr
@@ -180,13 +184,20 @@ def parallelize(dim_arg, num_chunks_arg, max_workers_arg, exclude_args=[]):
     return parallelize_decorator
 
 
+def get_masks(ds):
+    return [ds[v] for v in ds.data_vars if 'is_mask' in ds[v].attrs and ds[v].attrs['is_mask']]
+
+
 def mask_field(ds, field):
-    masks = [ds[v] for v in ds.data_vars if 'is_mask' in ds[v].attrs and ds[v].attrs['is_mask']]
+    masks = get_masks(ds)
     if len(masks)>1:
         mask = reduce(xr.ufuncs.logical_and, masks)
     else:
         mask = masks[0]
-    data = ds[field]
+    return align_mask(ds[field], mask)
+
+
+def align_mask(data, mask):
     reduce_dims = set(mask.dims)-set(data.dims)
     if reduce_dims:
         mask = mask.any(dim=reduce_dims)
@@ -215,14 +226,15 @@ def get_seed(ds, seed_label, dim):
 @parallelize('dim', 'num_chunks', 'max_workers')
 def do_correlation(ds, seed, mseed, dim, num_chunks, max_workers, chunk_idx, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
     data = ds['data']
-    mdata = mask_field(ds, 'data')
+    #mdata = mask_field(ds, 'data')
+    masks = [align_mask(data, mask) for mask in get_masks(ds)]
     axis = data.dims.index(dim)
     #backend = da if isinstance(data.data, da.Array) else np
     _memoize = lambda key, f, *args, **kwargs: memoize([chunk_idx]+key, f, *args, **kwargs)
-    return xr.Dataset({'corr': (data.dims, einsum_corr(data.data, seed, axis, mdata.data, mseed, backend=np, memoize=_memoize))}).squeeze()
+    return xr.Dataset({'corr': (data.dims, einsum_corr(data.data, seed, axis, masks, mseed, backend=np, memoize=_memoize))}).squeeze()
 
 
-def par_correlation_tmp(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
+def par_correlation(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
     seed, mseed = get_seed(ds, seed_label, dim)
     seed = seed.compute()
     mseed = mseed.compute()
@@ -232,7 +244,7 @@ def par_correlation_tmp(ds, seed_label, dim, num_chunks, max_workers, memoize=la
     return corr
 
 
-def par_correlation(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
+def par_correlation_tmp(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
     data = ds['data']
     mdata = mask_field(ds, 'data')
     axis = data.dims.index(dim)
@@ -244,7 +256,7 @@ def par_correlation(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda
         else:
             return arr
     _memoize = lambda key, f, *args, **kwargs: memoize([dim]+key, lambda: _compute(f(*args, **kwargs)))
-    corr = einsum_corr(data.data, seed.data, axis, mdata.data, mseed.data, backend=da, memoize=_memoize)
+    corr = einsum_corr(data.data, seed.data, axis, [mdata.data], mseed.data, backend=da, memoize=_memoize)
     corr = xr.Dataset({'corr': (data.dims, corr)}).squeeze()
     corr.coords[dim] = ds.coords[dim]
     return corr
@@ -287,44 +299,76 @@ class Datacube:
 
 
     def load(self, nc_file, chunks=None, missing_data=False, calculate_stats=True, recache=False):
-        #dask.set_options(scheduler='processes')
+        #dask.set_options(scheduler='sync')
         #todo: rename df
         #todo: argsorts need to be cached to a file (?)
-        self.df = xr.open_dataset(nc_file, chunks=chunks, engine='h5netcdf')
-        for field in self.df.variables:
-            if self.df[field].dtype.name.startswith('bytes'):
-                #self.df[field] = self.df[field].astype('str')
-                self.df[field] = self.df[field].astype(self.df[field].values.dtype)
+        ###self.df = xr.open_dataset(nc_file, chunks=chunks, engine='h5netcdf')
+        ###for field in self.df.variables:
+        ###    if self.df[field].dtype.name.startswith('bytes'):
+        ###        #self.df[field] = self.df[field].astype('str')
+        ###        self.df[field] = self.df[field].astype(self.df[field].values.dtype)
         #print('building dataset as zarr DictStore (in-memory)...')
-        print('building dataset as zarr LMDBStore (in-memory)...')
+        #print('building \'{}\' dataset as zarr LMDBStore (in-memory)...'.format(self.name))
         import zarr
         import numcodecs
+        #store = zarr.storage.NestedDirectoryStore('/dev/shm/{}.zarr'.format(self.name))
+        #synchronizer = zarr.sync.ProcessSynchronizer('/dev/shm/{}.zarr.lock'.format(self.name))
         #store = zarr.storage.DictStore()
-        store_file = '/dev/shm/{}.zarr.lmdb'.format(self.name)
-        if recache:
-            try:
-                shutil.rmtree(store_file)
-            except OSError:
-                pass
-        store = zarr.storage.LMDBStore(store_file)
+        #store_file = '/dev/shm/{}.zarr.lmdb'.format(self.name)
+        store_file = nc_file.replace('.nc', '.zarr.lmdb')
+        #if recache:
+        #    try:
+        #        shutil.rmtree(store_file)
+        #    except OSError:
+        #        pass
 
-        xr.backends.zarr._determine_zarr_chunks = lambda enc_chunks, var_chunks, ndim: orig_determine_zarr_chunks(enc_chunks, None, ndim)
-        encoding = {}
-        if self.name == 'connectivity':
-            encoding = {
-                'is_projection': {'filters': [numcodecs.packbits.PackBits()]} #, 'chunks': (132, 80, 114, chunks['experiment'])}
-                #'projection': {'chunks': (132,80,114,100)}
-                #'projection': {'filters': [numcodecs.quantize.Quantize(3, np.float32)]}
-                #'projection': {'compressor': None}
-                }
-        PERSIST = [] #'projection', 'is_projection']
-        df = self.df
-        #for var in set(self.df.variables).intersection(PERSIST):
-        #    self.df = self.df.drop(var)
-        self.df.to_zarr(store=store, encoding={var: {**{'chunks': None, 'compressor': numcodecs.blosc.Blosc(cname='snappy', clevel=1, shuffle=numcodecs.blosc.Blosc.SHUFFLE)}, **encoding.get(var, {})} for var in self.df.variables})
-        print('loading zarr dict as xarray dataset...')
+        #if not os.path.exists(store_file):
+        if os.path.exists(store_file):
+            lmdb_store = zarr.storage.LMDBStore(store_file)
+            store = zarr.storage.DictStore()
+            zarr.convenience.copy_all(zarr.hierarchy.open_group(lmdb_store), zarr.hierarchy.open_group(store))
+            print('loading \'{}\' zarr LMDBstore as xarray dataset...'.format(self.name))
+            self.df = xr.open_zarr(store=lmdb_store, auto_chunk=True)
+        else:
+            self.df = xr.open_dataset(nc_file, chunks=chunks, engine='h5netcdf')
+        #xr.backends.zarr._determine_zarr_chunks = lambda enc_chunks, var_chunks, ndim: orig_determine_zarr_chunks(enc_chunks, None, ndim)
+        #encoding = {}
+        #if self.name == 'connectivity':
+        #    encoding = {
+        #        'is_projection': {'filters': [numcodecs.packbits.PackBits()]} #, 'chunks': (132, 80, 114, chunks['experiment'])}
+        #        #'projection': {'chunks': (132,80,114,100)}
+        #        #'projection': {'filters': [numcodecs.quantize.Quantize(3, np.float32)]}
+        #        #'projection': {'compressor': None}
+        #        }
+        #PERSIST = [] #'projection', 'is_projection']
+        ##df = self.df
+        ##for var in set(self.df.variables).intersection(PERSIST):
+        ##    self.df = self.df.drop(var)
+        #self.df.to_zarr(store=store,
+        #    encoding={var: {**{'chunks': None, 'compressor': numcodecs.blosc.Blosc(cname='snappy', clevel=1, shuffle=numcodecs.blosc.Blosc.SHUFFLE)}, **encoding.get(var, {})} for var in self.df.variables}
+        #    )
         #dask.set_options(scheduler='threads')
-        self.df = xr.open_zarr(store=store, auto_chunk=True)
+        #store = zarr.storage.LMDBStore(store_file, readonly=True)
+        #da.set_options(scheduler='sync')
+        ####def condense(chunk):
+        ####    uniq = np.unique(chunk)
+        ####    if uniq.size == 1:
+        ####        elem = np.reshape(uniq, (1,)*chunk.ndim)
+        ####        strided = np.lib.stride_tricks.as_strided(elem, shape=chunk.shape, strides=(0,)*chunk.ndim)
+        ####        chunk = strided
+        ####    return chunk
+        ####def mask(chunk, mask, fill_value):
+        ####    if np.all(mask):
+        ####        elem = np.reshape(np.array(fill_value), (1,)*chunk.ndim)
+        ####        strided = np.lib.stride_tricks.as_strided(elem, shape=chunk.shape, strides=(0,)*chunk.ndim)
+        ####        chunk = strided
+        ####    return chunk
+        ####self.df['projection'] = (self.df.projection.dims, da.map_blocks(condense, self.df.projection.data))
+        ####self.df['projection'] = (self.df.projection.dims, da.map_blocks(mask, self.df.projection.data, self.df.is_projection.chunk(self.df.projection.chunks).data, 0.))
+        ####self.df['projection'] = self.df.projection.persist()
+        ####self.df['is_projection'] = (self.df.is_projection.dims, da.map_blocks(condense, self.df.is_projection.data))
+        ####self.df['is_projection'] = self.df.is_projection.persist()
+        #self.df = self.df.chunk(chunks)
         #store2 = None
         #if self.name == 'connectivity':
         #    store2 = zarr.storage.DictStore()
@@ -337,33 +381,54 @@ class Datacube:
                 self.df.coords[dim] = range(self.df.dims[dim])
         #todo: add option whether to create mdata
         if missing_data:
+            print('setting up missing data...')
             #todo: need to reintroduce this and test
             #self.mdata = xr.ufuncs.logical_not(xr.ufuncs.isnan(self.df))
             #self.mdata = self.mdata.persist()
             #todo: can nan-only chunks be dropped?
             self.df = self.df.fillna(0.)
-        if chunks:
-            self.backend = da
-            self.df = self.df.persist()
-        else:
-            self.backend = np
-            self.df = self.df.load()
+        #if chunks:
+        #    self.backend = da
+        #    self.df = self.df.persist()
+        #else:
+        #    self.backend = np
+        #    self.df = self.df.load()
+        print('building indexes...')
         self.argsorts = {}
         for field in self.df.variables:
             if self.df[field].size*np.dtype('int64').itemsize <= self.max_cacheable_bytes:
                 self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
         #todo: would be nice to cache these instead of computing on every startup
-        if calculate_stats:
+        if False: #calculate_stats:
+            print('calculating stats...')
             self.mins = {}
             self.maxes = {}
             self.means = {}
             self.stds = {}
             for field in self.df.variables:
+                print('calculating stats for field \'{}\'...'.format(field))
                 self.mins[field] = self.df[field].min().values
                 self.maxes[field] = self.df[field].max().values
                 if not self.df[field].dtype.kind in 'OSU':
                     self.means[field] = self.df[field].mean().values
                     self.stds[field] = self.df[field].std().values
+        if self.name == 'connectivity':
+            #self.df['projection'] = self.df.projection.load()
+            #self.df['is_projection'] = self.df.is_projection.load()
+            ds = self.df[['projection', 'is_projection', 'ccf_structure', 'ccf_structures']]
+            ds.rename({var: '{}_flat'.format(var) for var in set(ds.variables)-set(['experiment'])}, inplace=True)
+            ds = ds.stack(ccf=ds.ccf_structure_flat.dims)
+            ds = ds.where(ds.ccf_structure_flat!=0, drop=True)
+            ds['projection_flat'] = ds.projection_flat.astype(self.df.projection.dtype)
+            ds['is_projection_flat'] = ds.is_projection_flat.astype(self.df.is_projection.dtype)
+            ds['ccf_structure_flat'] = ds.ccf_structure_flat.astype(self.df.ccf_structure.dtype)
+            ds['ccf_structures_flat'] = ds.ccf_structures_flat.astype(self.df.ccf_structures.dtype)
+            self.df.merge(ds, inplace=True)
+            self.df['projection_flat'] = self.df.projection_flat.load()
+            self.df['is_projection_flat'] = self.df.is_projection_flat.load()
+            self.df['ccf_structure_flat'] = self.df.ccf_structure_flat.load()
+            self.df['ccf_structures_flat'] = self.df.ccf_structures_flat.load()
+        print('done loading \'{}\'.'.format(self.name))
 
 
     def _validate_select(self, select):
@@ -912,7 +977,9 @@ class Datacube:
                     return json.dumps([self.name, 'filter', f['op'], f['field'], f['value'], select, coords])
 
                 res = {'inds': {}, 'masks': []}
-                if df is not self.df or field not in self.argsorts or select or coords:
+                if df[field].dtype == 'bool' and op in ['=', 'is'] and value == True:
+                    res['masks'].append(df[field])
+                elif df is not self.df or field not in self.argsorts or select or coords:
                     lhs = self._get_data(fields=field, select=select, coords=coords, df=df, drop=True)
                     if op == '=' or op == 'is':
                         mask = (lhs == value)
@@ -1110,7 +1177,6 @@ class Datacube:
 
 
             res = _reduce(filters)
-            res['masks'] = [mask[{dim: res['inds'][dim] for dim in set(res['inds'].keys()).intersection(mask.dims)}] for mask in res['masks']]
 
             for dim in df.dims.keys():
                 if dim in res['inds'] and res['inds'][dim].size > 0:
@@ -1125,5 +1191,7 @@ class Datacube:
                             res['inds'][dim] = slice(inds_min,inds_max)
                         else:
                             res['inds'].pop(dim, None)
+
+            res['masks'] = [mask[{dim: res['inds'][dim] for dim in set(res['inds'].keys()).intersection(mask.dims)}] for mask in res['masks']]
 
             return (df[res['inds']], res)
