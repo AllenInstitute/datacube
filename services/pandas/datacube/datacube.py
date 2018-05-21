@@ -7,6 +7,8 @@ import redis
 #from twisted.internet import reactor
 import xarray as xr
 import xarray.ufuncs as xr_ufuncs
+import zarr
+import numcodecs
 import dask
 import dask.array as da
 import opt_einsum
@@ -271,7 +273,7 @@ class Datacube:
 
     def __init__(self,
                  name,
-                 nc_file,
+                 path,
                  redis_client=None,
                  missing_data=False,
                  calculate_stats=True,
@@ -280,13 +282,13 @@ class Datacube:
                  max_cacheable_bytes=100*1024*1024,
                  num_chunks=multiprocessing.cpu_count(),
                  max_workers=multiprocessing.cpu_count(),
-                 recache=False):
+                 persist=[]):
         self.name = name
         self.max_response_size = max_response_size
         self.max_cacheable_bytes = max_cacheable_bytes
         self.num_chunks = num_chunks
         self.max_workers = max_workers
-        if nc_file: self.load(nc_file, chunks, missing_data, calculate_stats, recache)
+        if path: self.load(path, chunks, missing_data, calculate_stats, persist)
         #todo: would be nice to find a way to swap these out,
         # and also to be able to run without redis (numpy-only)
         #if reactor.running:
@@ -298,88 +300,34 @@ class Datacube:
             self.redis_client = redis.StrictRedis('localhost', 6379)
 
 
-    def load(self, nc_file, chunks=None, missing_data=False, calculate_stats=True, recache=False):
-        #dask.set_options(scheduler='sync')
+    def load(self, path, chunks=None, missing_data=False, calculate_stats=True, persist=[]):
         #todo: rename df
         #todo: argsorts need to be cached to a file (?)
-        ###self.df = xr.open_dataset(nc_file, chunks=chunks, engine='h5netcdf')
-        ###for field in self.df.variables:
-        ###    if self.df[field].dtype.name.startswith('bytes'):
-        ###        #self.df[field] = self.df[field].astype('str')
-        ###        self.df[field] = self.df[field].astype(self.df[field].values.dtype)
-        #print('building dataset as zarr DictStore (in-memory)...')
-        #print('building \'{}\' dataset as zarr LMDBStore (in-memory)...'.format(self.name))
-        import zarr
-        import numcodecs
-        #store = zarr.storage.NestedDirectoryStore('/dev/shm/{}.zarr'.format(self.name))
-        #synchronizer = zarr.sync.ProcessSynchronizer('/dev/shm/{}.zarr.lock'.format(self.name))
-        #store = zarr.storage.DictStore()
-        #store_file = '/dev/shm/{}.zarr.lmdb'.format(self.name)
-        store_file = nc_file.replace('.nc', '.zarr.lmdb')
-        #if recache:
-        #    try:
-        #        shutil.rmtree(store_file)
-        #    except OSError:
-        #        pass
-
-        #if not os.path.exists(store_file):
-        if os.path.exists(store_file):
-            lmdb_store = zarr.storage.LMDBStore(store_file)
-            store = zarr.storage.DictStore()
-            zarr.convenience.copy_all(zarr.hierarchy.open_group(lmdb_store), zarr.hierarchy.open_group(store))
-            print('loading \'{}\' zarr LMDBstore as xarray dataset...'.format(self.name))
-            self.df = xr.open_zarr(store=lmdb_store, auto_chunk=True)
+        if path.endswith('.nc'):
+            print('loading \'{}\' NETCDF4 file as xarray dataset...'.format(path))
+            self.df = xr.open_dataset(path, chunks=chunks, engine='h5netcdf')
+            for field in self.df.variables:
+                if self.df[field].dtype.name.startswith('bytes'):
+                    self.df[field] = self.df[field].astype(self.df[field].values.dtype)
+        elif path.endswith('.zarr.lmdb'):
+            shm_path = os.path.join('/dev/shm/', os.path.basename(path))
+            print('deleting \'{}\'...'.format(shm_path))
+            try:
+                shutil.rmtree(shm_path)
+            except OSError:
+                pass
+            disk_store = zarr.storage.LMDBStore(path)
+            shm_store = zarr.storage.LMDBStore(shm_path)
+            print('cloning \'{}\' store to \'{}\'...'.format(path, shm_path))
+            zarr.convenience.copy_all(zarr.hierarchy.open_group(disk_store), zarr.hierarchy.open_group(shm_store))
+            print('loading \'{}\' zarr LMDBstore as xarray dataset...'.format(shm_path))
+            self.df = xr.open_zarr(store=shm_store, auto_chunk=True)
         else:
-            self.df = xr.open_dataset(nc_file, chunks=chunks, engine='h5netcdf')
-        #xr.backends.zarr._determine_zarr_chunks = lambda enc_chunks, var_chunks, ndim: orig_determine_zarr_chunks(enc_chunks, None, ndim)
-        #encoding = {}
-        #if self.name == 'connectivity':
-        #    encoding = {
-        #        'is_projection': {'filters': [numcodecs.packbits.PackBits()]} #, 'chunks': (132, 80, 114, chunks['experiment'])}
-        #        #'projection': {'chunks': (132,80,114,100)}
-        #        #'projection': {'filters': [numcodecs.quantize.Quantize(3, np.float32)]}
-        #        #'projection': {'compressor': None}
-        #        }
-        #PERSIST = [] #'projection', 'is_projection']
-        ##df = self.df
-        ##for var in set(self.df.variables).intersection(PERSIST):
-        ##    self.df = self.df.drop(var)
-        #self.df.to_zarr(store=store,
-        #    encoding={var: {**{'chunks': None, 'compressor': numcodecs.blosc.Blosc(cname='snappy', clevel=1, shuffle=numcodecs.blosc.Blosc.SHUFFLE)}, **encoding.get(var, {})} for var in self.df.variables}
-        #    )
-        #dask.set_options(scheduler='threads')
-        #store = zarr.storage.LMDBStore(store_file, readonly=True)
-        #da.set_options(scheduler='sync')
-        ####def condense(chunk):
-        ####    uniq = np.unique(chunk)
-        ####    if uniq.size == 1:
-        ####        elem = np.reshape(uniq, (1,)*chunk.ndim)
-        ####        strided = np.lib.stride_tricks.as_strided(elem, shape=chunk.shape, strides=(0,)*chunk.ndim)
-        ####        chunk = strided
-        ####    return chunk
-        ####def mask(chunk, mask, fill_value):
-        ####    if np.all(mask):
-        ####        elem = np.reshape(np.array(fill_value), (1,)*chunk.ndim)
-        ####        strided = np.lib.stride_tricks.as_strided(elem, shape=chunk.shape, strides=(0,)*chunk.ndim)
-        ####        chunk = strided
-        ####    return chunk
-        ####self.df['projection'] = (self.df.projection.dims, da.map_blocks(condense, self.df.projection.data))
-        ####self.df['projection'] = (self.df.projection.dims, da.map_blocks(mask, self.df.projection.data, self.df.is_projection.chunk(self.df.projection.chunks).data, 0.))
-        ####self.df['projection'] = self.df.projection.persist()
-        ####self.df['is_projection'] = (self.df.is_projection.dims, da.map_blocks(condense, self.df.is_projection.data))
-        ####self.df['is_projection'] = self.df.is_projection.persist()
-        #self.df = self.df.chunk(chunks)
-        #store2 = None
-        #if self.name == 'connectivity':
-        #    store2 = zarr.storage.DictStore()
-        #    self.df.to_zarr(store=store2, encoding={'is_projection': {'chunks': zarr.core.Array(store=store, path='projection/').chunks}})
-        #    del store
-        #    self.df = xr.open_zarr(store=store2)
+            raise ArgumentError('invalid file type; expected *.nc or *.zarr.lmdb')
         #todo: rework _query so this is not needed:
         for dim in self.df.dims:
             if dim not in self.df.dims:
                 self.df.coords[dim] = range(self.df.dims[dim])
-        #todo: add option whether to create mdata
         if missing_data:
             print('setting up missing data...')
             #todo: need to reintroduce this and test
@@ -387,19 +335,14 @@ class Datacube:
             #self.mdata = self.mdata.persist()
             #todo: can nan-only chunks be dropped?
             self.df = self.df.fillna(0.)
-        #if chunks:
-        #    self.backend = da
-        #    self.df = self.df.persist()
-        #else:
-        #    self.backend = np
-        #    self.df = self.df.load()
         print('building indexes...')
         self.argsorts = {}
         for field in self.df.variables:
             if self.df[field].size*np.dtype('int64').itemsize <= self.max_cacheable_bytes:
+                print('building index for field \'{}\'...'.format(field))
                 self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
         #todo: would be nice to cache these instead of computing on every startup
-        if False: #calculate_stats:
+        if calculate_stats:
             print('calculating stats...')
             self.mins = {}
             self.maxes = {}
@@ -412,22 +355,8 @@ class Datacube:
                 if not self.df[field].dtype.kind in 'OSU':
                     self.means[field] = self.df[field].mean().values
                     self.stds[field] = self.df[field].std().values
-        if self.name == 'connectivity':
-            #self.df['projection'] = self.df.projection.load()
-            #self.df['is_projection'] = self.df.is_projection.load()
-            ds = self.df[['projection', 'is_projection', 'ccf_structure', 'ccf_structures']]
-            ds.rename({var: '{}_flat'.format(var) for var in set(ds.variables)-set(['experiment'])}, inplace=True)
-            ds = ds.stack(ccf=ds.ccf_structure_flat.dims)
-            ds = ds.where(ds.ccf_structure_flat!=0, drop=True)
-            ds['projection_flat'] = ds.projection_flat.astype(self.df.projection.dtype)
-            ds['is_projection_flat'] = ds.is_projection_flat.astype(self.df.is_projection.dtype)
-            ds['ccf_structure_flat'] = ds.ccf_structure_flat.astype(self.df.ccf_structure.dtype)
-            ds['ccf_structures_flat'] = ds.ccf_structures_flat.astype(self.df.ccf_structures.dtype)
-            self.df.merge(ds, inplace=True)
-            self.df['projection_flat'] = self.df.projection_flat.load()
-            self.df['is_projection_flat'] = self.df.is_projection_flat.load()
-            self.df['ccf_structure_flat'] = self.df.ccf_structure_flat.load()
-            self.df['ccf_structures_flat'] = self.df.ccf_structures_flat.load()
+        for field in persist:
+            self.df[field] = self.df[field].load()
         print('done loading \'{}\'.'.format(self.name))
 
 

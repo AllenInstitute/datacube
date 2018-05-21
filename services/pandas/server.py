@@ -346,19 +346,19 @@ if __name__ == '__main__':
 
                 if not os.path.exists(data_dir):
                     os.makedirs(data_dir)
-                existing = [os.path.isfile(os.path.join(data_dir, f['path'])) for f in dataset['files']]
+                existing = [os.path.exists(os.path.join(data_dir, f['path'])) for f in dataset['files']]
                 if sum(existing) < len(dataset['files']):
                     raise RuntimeError('Refusing to run with ' + str(sum(existing)) + ' files when expecting ' + str(len(dataset['files'])) + ', for dataset "' + dataset['name'] + '". Specify --recache option to generate files (will overwrite existing files).')
                     exit(1)
-                nc_file = next(f for f in dataset['files'] if re.search('\.nc$', f['path']))
-                option_keys = ['chunks', 'max_response_size', 'max_cacheable_bytes', 'missing_data', 'calculate_stats']
-                options = {k:v for k,v in iteritems(nc_file) if k in option_keys}
-                if not nc_file['use_chunks']:
+                data_file = next(f for f in dataset['files'] if re.search('(\.nc|\.zarr\.lmdb)$', f['path']))
+                option_keys = ['chunks', 'max_response_size', 'max_cacheable_bytes', 'missing_data', 'calculate_stats', 'persist']
+                options = {k:v for k,v in iteritems(data_file) if k in option_keys}
+                if not data_file['use_chunks']:
                     del options['chunks']
 
                 datacubes[dataset['name']] = Datacube(
                     dataset['name'],
-                    os.path.join(data_dir, nc_file['path']),
+                    os.path.join(data_dir, data_file['path']),
                     **options)
 
     runner = ApplicationRunner(str(args.router), str(args.realm))

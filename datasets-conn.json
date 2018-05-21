@@ -7,19 +7,20 @@
         "data-dir": "./conn_data/",
         "files": [
             {
-                "path": "connectivity.nc",
+                "path": "connectivity.zarr.lmdb",
                 "use_chunks": true,
                 "chunks": {"experiment": 375},
                 "max_cacheable_bytes": 104857600,
                 "missing_data": false,
-                "calculate_stats": true
+                "calculate_stats": true,
+                "persist": ["projection_flat", "is_projection_flat", "ccf_structure_flat", "ccf_structures_flat"]
             }
         ],
         "arguments": ["--data-src", "$DATACUBE_DATA_SOURCE", "--internal", "--data-dir", "./conn_data/", "--data-name", "connectivity", "--resolution", "100"]
     },
     {
         "name": "mouse_ccf",
-        "enabled": false,
+        "enabled": true,
         "auto-generate": true,
         "script": "./scripts/datasets/mouse_ccf.py",
         "data-dir": "./mouse_ccf_data/",

@@ -592,40 +592,23 @@ def main():
     ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly (?)
     ds['is_projection'], projection_mask = build_projection_mask(ds, tmp_dir=args.data_dir)
 
+    # make flat versions of ccf-shaped fields and drop non-annotated voxels
+    ds_flat = ds[['projection', 'is_projection', 'ccf_structure', 'ccf_structures']]
+    ds_flat.rename({var: '{}_flat'.format(var) for var in set(ds_flat.variables)-set(['experiment'])}, inplace=True)
+    ds_flat = ds_flat.stack(ccf=ds_flat.ccf_structure_flat.dims)
+    ds_flat.reset_index('ccf', inplace=True) # multi-index not netcdf compatible
+    ds_flat = ds_flat.where(ds_flat.ccf_structure_flat!=0, drop=True)
+    # where seems to clobber some dtypes
+    ds_flat['projection_flat'] = ds_flat.projection_flat.astype(ds.projection.dtype)
+    ds_flat['is_projection_flat'] = ds_flat.is_projection_flat.astype(ds.is_projection.dtype)
+    ds_flat['ccf_structure_flat'] = ds_flat.ccf_structure_flat.astype(ds.ccf_structure.dtype)
+    ds_flat['ccf_structures_flat'] = ds_flat.ccf_structures_flat.astype(ds.ccf_structures.dtype)
+    ds.merge(ds_flat, inplace=True)
 
-    # write dataset to NETCDF4 file using h5netcdf.
-    #
-    # NOTE: writing projection or is_projection from dask arrays hangs for some reason. adding a
-    # sychronizer to the zarr store or using the dask synchronous (single-thread) scheduler,
-    # or using ndarrays (without zarr), makes no difference. debugging reveals the problem occurs
-    # within 'da.store'.
-    #   the alternative of loading the arrays fully into memory has been problematic. another
-    # alternative might be to downgrade some packages, since this used to work (albeit with slightly
-    # smaller variables).
-    #   the following contains a different workaround; the large variables are excluded from writing
-    # by xarray in the first pass, and then zarr's direct h5py copy function is used to add those
-    # variables manually. in this dataset, the dimensions already exist (from other variables) after
-    # the initial write by xarray, so they only need to be attached to the newly written variables.
-
-    #nc_file = os.path.join(args.data_dir, args.data_name + '.nc')
-    #logging.info('writing dataset to {}'.format(nc_file))
-    #ds.drop(['projection', 'is_projection']).to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
-    #ds.close()
-
-    #f=h5py.File(nc_file, 'r+')
-    #logging.info('copying projection volume to {}'.format(nc_file))
-    #compression_kws = dict(compression=None, compression_opts=None)
-    #zarr.convenience.copy(volume, f, 'projection', **compression_kws)
-    #logging.info('copying projection mask to {}'.format(nc_file))
-    #zarr.convenience.copy(projection_mask, f, 'is_projection', **compression_kws)
-    #for var in ['projection', 'is_projection']:
-    #    if len(ds[var].attrs) > 0:
-    #        raise NotImplementedError('failing because variable \'{}\' has attributes that won\'t be written'.format(var))
-    #    for dim in ds[var].dims:
-    #        f[var].dims[ds[var].dims.index(dim)].attach_scale(f[dim])
-    #f.close()
-    #logging.info('wrote dataset to {}'.format(nc_file))
-
+    store_file = os.path.join(args.data_dir, args.data_name + '.zarr.lmdb')
+    store = zarr.storage.LMDBStore(store_file)
+    logging.info('writing dataset to {}'.format(store_file))
+    # monkey patch to get zarr to ignore dask chunks and use its own heuristics
     def copy_func(f):
         g = types.FunctionType(f.__code__, f.__globals__, name=f.__name__,
                                argdefs=f.__defaults__,
@@ -635,13 +618,14 @@ def main():
         return g
     orig_determine_zarr_chunks = copy_func(xr.backends.zarr._determine_zarr_chunks)
     xr.backends.zarr._determine_zarr_chunks = lambda enc_chunks, var_chunks, ndim: orig_determine_zarr_chunks(enc_chunks, None, ndim)
+    # encoding settings; these could be tweaked
     encoding = {
         'is_projection': {'filters': [numcodecs.packbits.PackBits()]},
         'projection': {'filters': [numcodecs.quantize.Quantize(3, np.float32)]}
         }
-    store_file = os.path.join(args.data_dir, args.data_name + '.zarr.lmdb')
-    store = zarr.storage.LMDBStore(store_file)
     compressor = numcodecs.blosc.Blosc(cname='snappy', clevel=1, shuffle=numcodecs.blosc.Blosc.SHUFFLE)
+    # monkey patch to make dask arrays writable with different chunks than zarr dest
+    # could without this but would have to contend with 'inconsistent chunks' on dataset
     def sync_using_zarr_copy(self, compute=True):
         if self.sources:
             import dask.array as da
@@ -654,10 +638,13 @@ def main():
             self.targets = []
             return delayed_store
     xr.backends.common.ArrayWriter.sync = sync_using_zarr_copy
+
+    # write to zarr with overridable default encoding settings
     ds.to_zarr(
         store=store,
         encoding={var: {**{'chunks': None, 'compressor': compressor}, **encoding.get(var, {})} for var in ds.variables}
         )
+    logging.info('wrote dataset to {}'.format(store_file))
 
     #PBS-1262:
     shutil.copy2(args.surface_coords_path, args.data_dir)

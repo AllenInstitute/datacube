@@ -22,7 +22,7 @@ if __name__ == '__main__':
 
                 if not os.path.exists(data_dir):
                     os.makedirs(data_dir)
-                existing = [os.path.isfile(os.path.join(data_dir, f['path'])) for f in dataset['files']]
+                existing = [os.path.exists(os.path.join(data_dir, f['path'])) for f in dataset['files']]
                 if args.recache or (dataset['auto-generate'] and sum(existing) == 0):
                     command = [dataset['script']] + dataset['arguments']
                     print(' '.join(command))
