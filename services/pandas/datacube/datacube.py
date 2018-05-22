@@ -376,6 +376,8 @@ class Datacube:
         if filters:
             res, f = self._query(filters, df=res)
         subscripts=None
+        if fields:
+            res = res[fields]
         if select:
             self._validate_select(select)
             subscripts = self._get_subscripts_from_select(select)
@@ -390,8 +392,6 @@ class Datacube:
                     res = res.sel(**{dim: coord}, drop=drop, method='nearest')
                 except ValueError:
                     res = res.sel(**{dim: coord}, drop=drop)
-        if fields:
-            res = res[fields]
         if filters and f['masks']:
             #ds = res.load()
             ds = res
