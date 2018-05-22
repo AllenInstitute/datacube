@@ -638,6 +638,10 @@ def main():
             self.targets = []
             return delayed_store
     xr.backends.common.ArrayWriter.sync = sync_using_zarr_copy
+    # to_zarr will fail with object columns containing None
+    for field in ds.variables:
+        if ds[field].dtype.name == 'object':
+            ds[field] = ds[field].astype('str')
 
     # write to zarr with overridable default encoding settings
     ds.to_zarr(

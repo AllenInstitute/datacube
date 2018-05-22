@@ -302,6 +302,7 @@ class Datacube:
                     self.means[field] = self.df[field].mean().values
                     self.stds[field] = self.df[field].std().values
         for field in persist:
+            print('loading field \'{}\' into memory as ndarray...'.format(field))
             self.df[field] = self.df[field].load()
         print('done loading \'{}\'.'.format(self.name))
 
