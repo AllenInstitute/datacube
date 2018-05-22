@@ -1,0 +1,18 @@
+{
+    "query": {
+        "procedure": "org.brain-map.api.datacube.raw.connectivity",
+        "args": [],
+        "kwargs": {
+            "filters": {
+                "field": "data_set_id",
+                "op": "=",
+                "value": 126907302
+            },
+            "fields": [
+                "data_set_id",
+                "structure_id"
+            ]
+        }
+    },
+    "description": "Uses a dataset id to select a connectivity dataset and its structure id"
+}

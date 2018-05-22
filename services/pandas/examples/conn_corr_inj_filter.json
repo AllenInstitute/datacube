@@ -1,0 +1,82 @@
+{
+    "query": {
+        "procedure": "org.brain-map.api.datacube.corr.connectivity",
+        "args": [
+            "projection",
+            "experiment",
+            126907302
+        ],
+        "kwargs": {
+            "fields": [
+                "data_set_id",
+                "experiment",
+                "transgenic_line",
+                "product_id",
+                "structure_id",
+                "structure_abbrev",
+                "structure_color",
+                "structure_name",
+                "specimen_name",
+                "injection_volume",
+                "injection_structures",
+                "injection_x",
+                "injection_y",
+                "injection_z",
+                "gender",
+                "strain"
+            ],
+            "filters": {
+                "or": [
+                    {
+                        "field": "experiment",
+                        "op": "=",
+                        "value": 126907302
+                    },
+                    {
+                        "and": [
+                            {
+                                "and": [
+                                    {
+                                        "field": "volume",
+                                        "coords": {
+                                            "injection": true,
+                                            "hemisphere": "bilateral",
+                                            "normalized": true
+                                        },
+                                        "op": ">=",
+                                        "value": 0.005
+                                    },
+                                    {
+                                        "dims": "depth",
+                                        "any": {
+                                            "field": "structures",
+                                            "op": "in",
+                                            "value": [
+                                                985,
+                                                1089
+                                            ]
+                                        }
+                                    },
+                                    {
+                                        "field": "is_primary",
+                                        "op": "=",
+                                        "value": true
+                                    }
+                                ],
+                                "coords": [
+                                    "experiment"
+                                ]
+                            },
+                            {
+                                "field": "experiment",
+                                "op": ">",
+                                "value": -1
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    "description": "Gets a full connectivity correlation search response. Includes a couple bits of hacky logic for reincluding the seed and preserving the experiment dimension."
+}
