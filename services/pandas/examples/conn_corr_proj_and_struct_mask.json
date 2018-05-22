@@ -1,0 +1,27 @@
+{
+    "procedure": "org.brain-map.api.datacube.corr.connectivity",
+    "args": [
+        "projection_flat",
+        "experiment",
+        126907302
+    ],
+    "kwargs": {
+        "filters": [
+            {
+                "field": "is_projection_flat",
+                "op": "is",
+                "value": true
+            },
+            {
+                "dims": [
+                    "depth"
+                ],
+                "any": {
+                    "field": "ccf_structures_flat",
+                    "op": "=",
+                    "value": 997
+                }
+            }
+        ]
+    }
+}

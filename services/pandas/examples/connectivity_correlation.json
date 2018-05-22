@@ -2,7 +2,7 @@
     "query": {
         "procedure": "org.brain-map.api.datacube.corr.connectivity",
         "args": [
-            "projection",
+            "projection_flat",
             "experiment",
             126907302
         ],

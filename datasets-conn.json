@@ -9,7 +9,7 @@
             {
                 "path": "connectivity.zarr.lmdb",
                 "use_chunks": true,
-                "chunks": {"experiment": 375},
+                "chunks": {"experiment": 20},
                 "max_cacheable_bytes": 104857600,
                 "missing_data": false,
                 "calculate_stats": true,

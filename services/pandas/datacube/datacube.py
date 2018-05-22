@@ -268,6 +268,7 @@ class Datacube:
             zarr.convenience.copy_all(zarr.hierarchy.open_group(disk_store), zarr.hierarchy.open_group(shm_store))
             print('loading \'{}\' zarr LMDBstore as xarray dataset...'.format(shm_path))
             self.df = xr.open_zarr(store=shm_store, auto_chunk=True)
+            self.df = self.df.chunk(chunks)
         else:
             raise ArgumentError('invalid file type; expected *.nc or *.zarr.lmdb')
         #todo: rework _query so this is not needed:
