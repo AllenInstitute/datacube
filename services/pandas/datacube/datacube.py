@@ -315,11 +315,13 @@ class Datacube:
         stats_path = os.path.join(cache_dir, 'summary_statistics.json')
 
         if os.path.exists(stats_path) and not force:
+            print('reading summary statistics from {}'.format(stats_path))
             with open(stats_path, 'r') as stats_file:
                 stats = json.load(stats_path)
 
         else:
-            stats = self.calculate_stats(self.df)
+            print('Calculating summary statistics. Will write to {}'.format(stats_path))
+            stats = calculate_stats(self.df)
             with open(stats_path, 'w') as stats_file:
                 json.dump(stats, stats_file, indent=2)
 
