@@ -320,6 +320,7 @@ if __name__ == '__main__':
     parser.add_argument('username', help='WAMP-CRA username')
     parser.add_argument('password', help='WAMP-CRA secret')
     parser.add_argument('dataset_manifest', help='JSON dataset manifest')
+    parser.add_argument('--session_name', type=str, default=None, help='Human-readable unique identifier for this session.')
     parser.add_argument('--max-records', default=1000, help='maximum records to serve in a single request (default: %(default)s)')
     parser.add_argument('--projection-map-dir', help='path to root of projection map directory structure e.g. /allen/aibs/informatics/heatmap/mouseconn_projection_maps_2017_09_11/P56/')
     args = parser.parse_args()
@@ -359,6 +360,7 @@ if __name__ == '__main__':
                 datacubes[dataset['name']] = Datacube(
                     dataset['name'],
                     os.path.join(data_dir, data_file['path']),
+                    session_name=args.session_name,
                     **options)
 
     runner = ApplicationRunner(str(args.router), str(args.realm))

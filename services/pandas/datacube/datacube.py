@@ -220,6 +220,7 @@ class Datacube:
     def __init__(self,
                  name,
                  path,
+                 session_name=None,
                  redis_client=None,
                  missing_data=False,
                  calculate_stats=True,
@@ -229,7 +230,10 @@ class Datacube:
                  num_chunks=multiprocessing.cpu_count(),
                  max_workers=multiprocessing.cpu_count(),
                  persist=[]):
+
         self.name = name
+        self.session_name = session_name
+
         self.max_response_size = max_response_size
         self.max_cacheable_bytes = max_cacheable_bytes
         self.num_chunks = num_chunks
@@ -246,6 +250,38 @@ class Datacube:
             self.redis_client = redis.StrictRedis('localhost', 6379)
 
 
+    def load_zarr_lmdb(self, path, chunks):
+        ''' Load zarr data lazily from a lightning db store on the filesystem. Uses the in-memory 
+        filesystem at /dev/shm for performance.
+        '''
+
+        shm_prefix = '/dev/shm'
+        if self.session_name is not None:
+            shm_prefix = os.path.join(shm_prefix, self.session_name)
+        shm_path = os.path.join(shm_prefix, os.path.basename(path))
+
+        print('deleting \'{}\'...'.format(shm_path))
+        try:
+            shutil.rmtree(shm_path)
+        except OSError:
+            pass
+
+        try:
+            os.makedirs(shm_prefix)
+        except OSError:
+            pass
+
+        disk_store = zarr.storage.LMDBStore(path)
+        shm_store = zarr.storage.LMDBStore(shm_path)
+
+        print('cloning \'{}\' store to \'{}\'...'.format(path, shm_path))
+        zarr.convenience.copy_all(zarr.hierarchy.open_group(disk_store), zarr.hierarchy.open_group(shm_store))
+
+        print('loading \'{}\' zarr LMDBstore as xarray dataset...'.format(shm_path))
+        self.df = xr.open_zarr(store=shm_store, auto_chunk=True)
+        self.df = self.df.chunk(chunks)
+
+
     def load(self, path, chunks=None, missing_data=False, calculate_stats=True, persist=[]):
         #todo: rename df
         #todo: argsorts need to be cached to a file (?)
@@ -256,19 +292,7 @@ class Datacube:
                 if self.df[field].dtype.name.startswith('bytes'):
                     self.df[field] = self.df[field].astype(self.df[field].values.dtype)
         elif path.endswith('.zarr.lmdb'):
-            shm_path = os.path.join('/dev/shm/', os.path.basename(path))
-            print('deleting \'{}\'...'.format(shm_path))
-            try:
-                shutil.rmtree(shm_path)
-            except OSError:
-                pass
-            disk_store = zarr.storage.LMDBStore(path)
-            shm_store = zarr.storage.LMDBStore(shm_path)
-            print('cloning \'{}\' store to \'{}\'...'.format(path, shm_path))
-            zarr.convenience.copy_all(zarr.hierarchy.open_group(disk_store), zarr.hierarchy.open_group(shm_store))
-            print('loading \'{}\' zarr LMDBstore as xarray dataset...'.format(shm_path))
-            self.df = xr.open_zarr(store=shm_store, auto_chunk=True)
-            self.df = self.df.chunk(chunks)
+            self.load_zarr_lmdb(path, chunks)
         else:
             raise ArgumentError('invalid file type; expected *.nc or *.zarr.lmdb')
         #todo: rework _query so this is not needed:
