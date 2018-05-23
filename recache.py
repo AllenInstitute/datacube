@@ -49,7 +49,7 @@ def recache_dataset(dataset, base_path, file_paths):
     logging.info(' '.join(command))
     subprocess.check_call(command, cwd=base_path)
 
-    existing_files, missing_files_str = (file_paths, check=os.path.isfile) # not sure why isfile here vs. exists
+    existing_files, missing_files_str = (file_paths)
     if not all(existing_files.values()):
         raise RuntimeError('files missing after generating dataset {}: {}'.format(dataset['name'], missing_files_str))
 
