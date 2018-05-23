@@ -24,6 +24,7 @@ import operator
 import inspect
 import types
 import concurrent.futures
+import collections
 
 
 from six import iteritems
@@ -191,6 +192,26 @@ def par_correlation(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda
     return corr
 
 
+def calculate_stats(df):
+    ''' Calculate summary_statistics for each field in a Dataset.
+    '''
+
+    print('calculating stats...')
+    stats = collections.defaultdict(dict, {})
+
+    for field in df.variables:
+        print('calculating stats for field \'{}\'...'.format(field))
+
+        stats['mins'][field] = df[field].min().values
+        stats['maxes'][field] = df[field].max().values
+
+        if not df[field].dtype.kind in 'OSU':
+            stats['means'][field] = df[field].mean().values
+            stats['stds'][field] = df[field].std().values
+
+    return stats
+
+
 # this version uses dask; should add a configuration option to choose
 #def par_correlation(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
 #    data = ds['data']
@@ -210,8 +231,7 @@ def par_correlation(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda
 #    return corr
 
 
-class Datacube:
-
+class Datacube:    
 
     def test(self):
         return 1
@@ -238,7 +258,8 @@ class Datacube:
         self.max_cacheable_bytes = max_cacheable_bytes
         self.num_chunks = num_chunks
         self.max_workers = max_workers
-        if path: self.load(path, chunks, missing_data, calculate_stats, persist)
+        if path: 
+            self.load(path, chunks, missing_data, calculate_stats, persist)
         #todo: would be nice to find a way to swap these out,
         # and also to be able to run without redis (numpy-only)
         #if reactor.running:
@@ -282,7 +303,31 @@ class Datacube:
         self.df = self.df.chunk(chunks)
 
 
+    def lazy_calculate_stats(self, force=False):
+
+        cache_dir = os.path.join(self.path, self.session_name)
+        
+        try:
+            os.makedirs(cache_dir)
+        except OSError:
+            pass
+
+        stats_path = os.path.join(cache_dir, 'summary_statistics.json')
+
+        if os.path.exists(stats_path) and not force:
+            with open(stats_path, 'r') as stats_file:
+                stats = json.load(stats_path)
+
+        else:
+            stats = self.calculate_stats(self.df)
+            with open(stats_path, 'w') as stats_file:
+                json.dump(stats, stats_file, indent=2)
+
+        self.stats = stats
+
+
     def load(self, path, chunks=None, missing_data=False, calculate_stats=True, persist=[]):
+        
         #todo: rename df
         #todo: argsorts need to be cached to a file (?)
         if path.endswith('.nc'):
@@ -295,10 +340,12 @@ class Datacube:
             self.load_zarr_lmdb(path, chunks)
         else:
             raise ArgumentError('invalid file type; expected *.nc or *.zarr.lmdb')
+
         #todo: rework _query so this is not needed:
         for dim in self.df.dims:
             if dim not in self.df.dims:
                 self.df.coords[dim] = range(self.df.dims[dim])
+
         if missing_data:
             print('setting up missing data...')
             #todo: need to reintroduce this and test
@@ -306,26 +353,16 @@ class Datacube:
             #self.mdata = self.mdata.persist()
             #todo: can nan-only chunks be dropped?
             self.df = self.df.fillna(0.)
+
         print('building indexes...')
         self.argsorts = {}
         for field in self.df.variables:
             if self.df[field].size*np.dtype('int64').itemsize <= self.max_cacheable_bytes:
                 print('building index for field \'{}\'...'.format(field))
                 self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
-        #todo: would be nice to cache these instead of computing on every startup
-        if calculate_stats:
-            print('calculating stats...')
-            self.mins = {}
-            self.maxes = {}
-            self.means = {}
-            self.stds = {}
-            for field in self.df.variables:
-                print('calculating stats for field \'{}\'...'.format(field))
-                self.mins[field] = self.df[field].min().values
-                self.maxes[field] = self.df[field].max().values
-                if not self.df[field].dtype.kind in 'OSU':
-                    self.means[field] = self.df[field].mean().values
-                    self.stds[field] = self.df[field].std().values
+
+        self.lazy_calculate_stats(force=calculate_stats)
+
         for field in persist:
             print('loading field \'{}\' into memory as ndarray...'.format(field))
             self.df[field] = self.df[field].load()
