@@ -303,9 +303,9 @@ class Datacube:
         self.df = self.df.chunk(chunks)
 
 
-    def lazy_calculate_stats(self, force=False):
+    def lazy_calculate_stats(self, data_dir, force=False):
 
-        cache_dir = os.path.join(self.path, self.session_name)
+        cache_dir = os.path.join(data_dir, self.session_name)
         
         try:
             os.makedirs(cache_dir)
@@ -327,7 +327,7 @@ class Datacube:
 
 
     def load(self, path, chunks=None, missing_data=False, calculate_stats=True, persist=[]):
-        
+
         #todo: rename df
         #todo: argsorts need to be cached to a file (?)
         if path.endswith('.nc'):
@@ -361,7 +361,7 @@ class Datacube:
                 print('building index for field \'{}\'...'.format(field))
                 self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
 
-        self.lazy_calculate_stats(force=calculate_stats)
+        self.lazy_calculate_stats(os.path.dirname(path), force=calculate_stats)
 
         for field in persist:
             print('loading field \'{}\' into memory as ndarray...'.format(field))
