@@ -32,7 +32,7 @@ def process_dataset(dataset, dirname, base_path, recache):
         logging.info('force recaching dataset {}'.format(dataset['name']))
         recache_dataset(dataset, base_path, file_paths)
     
-    elif dataset['auto-generate'] and all(existing_files.values()) == 0:
+    elif dataset['auto-generate'] and not any(existing_files.values()):
         logging.info('files for dataset {} don\'t exist, regenerating'.format(dataset['name']))
         recache_dataset(dataset, base_path, file_paths)
 
