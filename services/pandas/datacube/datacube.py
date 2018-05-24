@@ -25,10 +25,19 @@ import inspect
 import types
 import concurrent.futures
 import collections
-
+from twisted.python import log
+import logging
 
 from six import iteritems
 from builtins import int, map
+
+
+SUMMARY_STATS_CALCULATORS = {
+    'min': lambda dataset, field: dataset[field].min().values,
+    'max': lambda dataset, field: dataset[field].max().values,
+    'mean': lambda dataset, field: dataset[field].mean().values if not dataset[field].dtype.kind in 'OSU' else None,
+    'std': lambda dataset, field: dataset[field].std().values if not dataset[field].dtype.kind in 'OSU' else None,
+}
 
 
 def get_num_samples(data, axis, masks, backend=np):
@@ -192,25 +201,24 @@ def par_correlation(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda
     return corr
 
 
-def calculate_stats(df):
+def calculate_summary_stats(dataset, calculators=None):
     ''' Calculate summary_statistics for each field in a Dataset.
     '''
 
-    print('calculating stats...')
+    if calculators is None:
+        calculators = SUMMARY_STATS_CALCULATORS
+
     stats = collections.defaultdict(dict, {})
+    for field in dataset.variables:
+        log.msg('calculating stats for field \'{}\'...'.format(field), logLevel=logging.INFO)
 
-    for field in df.variables:
-        print('calculating stats for field \'{}\'...'.format(field))
-
-        stats['mins'][field] = df[field].min().values
-        stats['maxes'][field] = df[field].max().values
-
-        if not df[field].dtype.kind in 'OSU':
-            stats['means'][field] = df[field].mean().values
-            stats['stds'][field] = df[field].std().values
+        for stat_type, stat_calculator in calculators.items():
+            stats[stat_type][field] = stat_calculator(dataset, field)
+            log.msg('{} of field {} is: {}'.format(stat_type, field, stats[stat_type][field]), logLevel=logging.INFO)
 
     return stats
 
+        
 
 # this version uses dask; should add a configuration option to choose
 #def par_correlation(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
@@ -281,7 +289,7 @@ class Datacube:
             shm_prefix = os.path.join(shm_prefix, self.session_name)
         shm_path = os.path.join(shm_prefix, os.path.basename(path))
 
-        print('deleting \'{}\'...'.format(shm_path))
+        log.msg('deleting \'{}\'...'.format(shm_path), logLevel=logging.INFO)
         try:
             shutil.rmtree(shm_path)
         except OSError:
@@ -295,37 +303,12 @@ class Datacube:
         disk_store = zarr.storage.LMDBStore(path)
         shm_store = zarr.storage.LMDBStore(shm_path)
 
-        print('cloning \'{}\' store to \'{}\'...'.format(path, shm_path))
+        log.msg('cloning \'{}\' store to \'{}\'...'.format(path, shm_path), logLevel=logging.INFO)
         zarr.convenience.copy_all(zarr.hierarchy.open_group(disk_store), zarr.hierarchy.open_group(shm_store))
 
-        print('loading \'{}\' zarr LMDBstore as xarray dataset...'.format(shm_path))
+        log.msg('loading \'{}\' zarr LMDBstore as xarray dataset...'.format(shm_path), logLevel=logging.INFO)
         self.df = xr.open_zarr(store=shm_store, auto_chunk=True)
         self.df = self.df.chunk(chunks)
-
-
-    def lazy_calculate_stats(self, data_dir, force=False):
-
-        cache_dir = os.path.join(data_dir, self.session_name)
-        
-        try:
-            os.makedirs(cache_dir)
-        except OSError:
-            pass
-
-        stats_path = os.path.join(cache_dir, 'summary_statistics.json')
-
-        if os.path.exists(stats_path) and not force:
-            print('reading summary statistics from {}'.format(stats_path))
-            with open(stats_path, 'r') as stats_file:
-                stats = json.load(stats_path)
-
-        else:
-            print('Calculating summary statistics. Will write to {}'.format(stats_path))
-            stats = calculate_stats(self.df)
-            with open(stats_path, 'w') as stats_file:
-                json.dump(stats, stats_file, indent=2)
-
-        self.stats = stats
 
 
     def load(self, path, chunks=None, missing_data=False, calculate_stats=True, persist=[]):
@@ -363,7 +346,8 @@ class Datacube:
                 print('building index for field \'{}\'...'.format(field))
                 self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
 
-        self.lazy_calculate_stats(os.path.dirname(path), force=calculate_stats)
+        if calculate_stats:
+            self.stats = calculate_summary_stats(self.df)
 
         for field in persist:
             print('loading field \'{}\' into memory as ndarray...'.format(field))
@@ -538,8 +522,8 @@ class Datacube:
             raise RuntimeError('Non 2-d region selected when requesting image')
 
         #todo: probably ought to make normalization configurable in the request in some manner
-        if data.ndim == 2 and data.dtype != np.uint8 and hasattr(self, 'maxes') and field in self.maxes:
-            data = ((data / self.maxes[field]) * 255.0).astype(np.uint8)
+        if data.ndim == 2 and data.dtype != np.uint8 and 'max' in self.stats and self.stats['max'][field] is not None:
+            data = ((data / self.stats['max'][field]) * 255.0).astype(np.uint8)
 
         image = Image.fromarray(data)
         buf = BytesIO()

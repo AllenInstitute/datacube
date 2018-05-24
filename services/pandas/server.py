@@ -326,7 +326,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     txaio.use_twisted()
     log = txaio.make_logger()
-    txaio.start_logging()
+    txaio.start_logging(level='info')
 
     #todo: get logging from processes working
     #txpool.pool.WorkerProtocol.MAX_LENGTH = sys.maxsize

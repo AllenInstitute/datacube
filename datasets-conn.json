@@ -13,7 +13,8 @@
                 "max_cacheable_bytes": 104857600,
                 "missing_data": false,
                 "calculate_stats": true,
-                "persist": ["projection_flat", "is_projection_flat", "ccf_structure_flat", "ccf_structures_flat"]
+                "persist": ["projection_flat", "is_projection_flat", "ccf_structure_flat", "ccf_structures_flat"],
+                "reuse_shm_store": true
             }
         ],
         "arguments": ["--data-src", "$DATACUBE_DATA_SOURCE", "--internal", "--data-dir", "./conn_data/", "--data-name", "connectivity", "--resolution", "100"]
