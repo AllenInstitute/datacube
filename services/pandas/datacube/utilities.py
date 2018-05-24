@@ -29,3 +29,35 @@ def calculate_summary_stats(dataset, calculators=None):
             log.msg('{} of field {} is: {}'.format(stat_type, field, stats[stat_type][field]), logLevel=logging.INFO)
 
     return stats
+
+
+def write_stats_to_json(stats, path):
+    with open(path, 'w') as json_file:
+        json.dump(stats, json_file, indent=2)
+    
+
+def read_stats_from_json(path):
+    with open(path, 'r') as json_file:
+        return json.load(json_file)
+
+
+def cache_summary_statistics(dataset, reader=None, writer=None, calculators=None):
+
+    if calculators is None:
+        calculators = SUMMARY_STATS_CALCULATORS
+
+    try:
+        stats = reader()
+
+        for key in calculators.keys():
+            assert key in stats
+
+            for field in dataset.variables:
+                assert field in stats[key]
+
+    except (OSError, IOError, AssertionError):
+        stats = calculate_summary_stats(dataset, calculators=calculators)
+        writer(stats)
+    
+    return stats
+    
