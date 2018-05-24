@@ -31,7 +31,7 @@ import logging
 from six import iteritems
 from builtins import int, map
 
-from . import utilities
+from . import summary_statistics
 
 
 def get_num_samples(data, axis, masks, backend=np):
@@ -321,8 +321,13 @@ class Datacube:
                 print('building index for field \'{}\'...'.format(field))
                 self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
 
-        if calculate_stats:
-            self.stats = utilities.calculate_summary_stats(self.df)
+        stats_path = os.path.join(os.path.dirname(path), 'summary_statistics_{}.json'.format(self.name))
+        self.stats = summary_statistics.cache_summary_statistics(
+            self.df,
+            reader=functools.partial(summary_statistics.read_stats_from_json, stats_path),
+            writer=functools.partial(summary_statistics.write_stats_to_json, stats_path),
+            force=calculate_stats
+        )
 
         for field in persist:
             print('loading field \'{}\' into memory as ndarray...'.format(field))
