@@ -32,11 +32,11 @@ def process_dataset(dataset, dirname, base_path, recache):
         logging.info('force recaching dataset {}'.format(dataset['name']))
         recache_dataset(dataset, base_path, file_paths)
     
-    elif dataset['auto-generate'] and sum(existing_files.values()) == 0:
+    elif dataset['auto-generate'] and all(existing_files.values()) == 0:
         logging.info('files for dataset {} don\'t exist, regenerating'.format(dataset['name']))
         recache_dataset(dataset, base_path, file_paths)
 
-    elif dataset['auto-generate'] and sum(existing_files.values()) > 0:
+    elif dataset['auto-generate'] and not all(existing_files.values()):
         logging.warning('dataset {} missing files at: {}. Consider recaching '.format(dataset['name'], missing_files_str))
     
     else:
@@ -49,7 +49,7 @@ def recache_dataset(dataset, base_path, file_paths):
     logging.info(' '.join(command))
     subprocess.check_call(command, cwd=base_path)
 
-    existing_files, missing_files_str = (file_paths)
+    existing_files, missing_files_str = check_existing_files(file_paths)
     if not all(existing_files.values()):
         raise RuntimeError('files missing after generating dataset {}: {}'.format(dataset['name'], missing_files_str))
 
