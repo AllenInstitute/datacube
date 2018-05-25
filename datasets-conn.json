@@ -27,6 +27,7 @@
         "files": [
             {
                 "path": "mouse_ccf.nc",
+                "calculate_stats": false,
                 "use_chunks": false,
                 "chunks": {"left_right": 100, "anterior_posterior": 100, "superior_inferior": 100}
             }
