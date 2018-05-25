@@ -34,7 +34,7 @@ def test_summary_statistics_exclude(a_dataset):
 
     obt = summary_statistics.calculate_summary_stats(a_dataset, conditions={'mean': lambda *a, **k: False})
 
-    assert( not 'mean' in obt )
+    assert( not 'some_data' in obt['mean'] )
     assert( obt['max']['some_data'] == 29 )
 
 

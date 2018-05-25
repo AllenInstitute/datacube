@@ -502,7 +502,7 @@ class Datacube:
             raise RuntimeError('Non 2-d region selected when requesting image')
 
         #todo: probably ought to make normalization configurable in the request in some manner
-        if data.ndim == 2 and data.dtype != np.uint8 and 'max' in self.stats and self.stats['max'][field] is not None:
+        if data.ndim == 2 and data.dtype != np.uint8 and 'max' in self.stats and field in self.stats['max']:
             data = ((data / self.stats['max'][field]) * 255.0).astype(np.uint8)
 
         image = Image.fromarray(data)

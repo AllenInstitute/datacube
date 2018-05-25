@@ -1,5 +1,4 @@
 import json
-import collections
 
 from twisted.python import log
 import logging
@@ -55,7 +54,7 @@ def calculate_summary_stats(dataset, calculators=None, conditions=None):
     if conditions is None:
         conditions = SUMMARY_STATS_CONDITIONS
 
-    stats = collections.defaultdict(dict, {})
+    stats = {stat_type: {} for stat_type in calculators}
     for field in dataset.variables:
         log.msg('calculating stats for field \'{}\'...'.format(field), logLevel=logging.INFO)
 
