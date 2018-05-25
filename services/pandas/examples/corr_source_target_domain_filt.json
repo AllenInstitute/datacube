@@ -1,110 +1,112 @@
-
 {
-  "procedure": "org.brain-map.api.datacube.corr.connectivity",
-  "args": [
-    "projection_flat",
-    "experiment",
-    501786400
-  ],
-  "kwargs": {
-    "fields": [
-      "data_set_id",
+  "query": {
+    "procedure": "org.brain-map.api.datacube.corr.connectivity",
+    "args": [
+      "projection_flat",
       "experiment",
-      "transgenic_line",
-      "product_id",
-      "structure_id",
-      "structure_abbrev",
-      "structure_name",
-      "specimen_name",
-      "injection_volume",
-      "injection_structures",
-      "injection_x",
-      "injection_y",
-      "injection_z",
-      "gender",
-      "strain"
+      501786400
     ],
-    "filters": [
-      {
-        "field": "is_projection_flat",
-        "op": "=",
-        "value": true
-      },
-      {
-        "field": "ccf_structures_flat",
-        "op": "in",
-        "value": [
-          8
-        ]
-      },
-      {
-        "or": [
-          {
-            "dims": "structure",
-            "any": {
-              "and": [
-                {
-                  "field": "volume",
-                  "coords": {
-                    "injection": true,
-                    "hemisphere": "bilateral",
-                    "normalized": true
+    "kwargs": {
+      "fields": [
+        "data_set_id",
+        "experiment",
+        "transgenic_line",
+        "product_id",
+        "structure_id",
+        "structure_abbrev",
+        "structure_name",
+        "specimen_name",
+        "injection_volume",
+        "injection_structures",
+        "injection_x",
+        "injection_y",
+        "injection_z",
+        "gender",
+        "strain"
+      ],
+      "filters": [
+        {
+          "field": "is_projection_flat",
+          "op": "=",
+          "value": true
+        },
+        {
+          "field": "ccf_structures_flat",
+          "op": "in",
+          "value": [
+            8
+          ]
+        },
+        {
+          "or": [
+            {
+              "dims": "structure",
+              "any": {
+                "and": [
+                  {
+                    "field": "volume",
+                    "coords": {
+                      "injection": true,
+                      "hemisphere": "bilateral",
+                      "normalized": true
+                    },
+                    "op": ">=",
+                    "value": 0.005
                   },
-                  "op": ">=",
-                  "value": 0.005
-                },
-                {
-                  "field": "is_summary_structure",
-                  "op": "=",
-                  "value": true
-                },
-                {
-                  "dims": "depth",
-                  "any": {
-                    "field": "structures",
-                    "op": "in",
-                    "value": [
-                      8
-                    ]
+                  {
+                    "field": "is_summary_structure",
+                    "op": "=",
+                    "value": true
+                  },
+                  {
+                    "dims": "depth",
+                    "any": {
+                      "field": "structures",
+                      "op": "in",
+                      "value": [
+                        8
+                      ]
+                    }
+                  },
+                  {
+                    "field": "is_primary",
+                    "op": "=",
+                    "value": true
                   }
-                },
-                {
-                  "field": "is_primary",
-                  "op": "=",
-                  "value": true
-                }
-              ]
-            }
-          },
-          {
-            "dims": "structure",
-            "any": {
-              "and": [
-                {
-                  "field": "volume",
-                  "coords": {
-                    "injection": true,
-                    "normalized": true,
-                    "hemisphere": "bilateral"
+                ]
+              }
+            },
+            {
+              "dims": "structure",
+              "any": {
+                "and": [
+                  {
+                    "field": "volume",
+                    "coords": {
+                      "injection": true,
+                      "normalized": true,
+                      "hemisphere": "bilateral"
+                    },
+                    "op": ">=",
+                    "value": 0
                   },
-                  "op": ">=",
-                  "value": 0
-                },
-                {
-                  "field": "structure",
-                  "op": "=",
-                  "value": 304325711
-                },
-                {
-                  "field": "is_primary",
-                  "op": "=",
-                  "value": true
-                }
-              ]
+                  {
+                    "field": "structure",
+                    "op": "=",
+                    "value": 304325711
+                  },
+                  {
+                    "field": "is_primary",
+                    "op": "=",
+                    "value": true
+                  }
+                ]
+              }
             }
-          }
-        ]
-      }
-    ]
-  }
+          ]
+        }
+      ]
+    }
+  },
+  "description": "corr search with source, target, and ccf domain filters. ~1.1MB response payload w/ current conn data"
 }
