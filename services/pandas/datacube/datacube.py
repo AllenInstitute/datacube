@@ -175,10 +175,22 @@ def get_seed(ds, seed_label, dim):
 @parallelize('dim', 'num_chunks', 'max_workers')
 def do_correlation(ds, seed, mseed, dim, num_chunks, max_workers, chunk_idx, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
     data = ds['data']
-    masks = [align_mask(data, mask) for mask in get_masks(ds)]
+    all_masks = get_masks(ds)
+    row_masks = []
+    masks = []
+    for mask in all_masks:
+        if mask.dims==(dim,):
+            row_masks.append(mask)
+        else:
+            masks.append(align_mask(data, mask))
     axis = data.dims.index(dim)
     _memoize = lambda key, f, *args, **kwargs: memoize([chunk_idx]+key, f, *args, **kwargs)
-    return xr.Dataset({'corr': (data.dims, einsum_corr(data.data, seed, axis, masks, mseed, backend=np, memoize=_memoize))}).squeeze()
+    corr = xr.Dataset({'corr': (data.dims, einsum_corr(data.data, seed, axis, masks, mseed, backend=np, memoize=_memoize))}).squeeze()
+    corr.coords[dim] = data.coords[dim]
+    if row_masks:
+        mask = reduce(xr_ufuncs.logical_and, row_masks)
+        corr = corr.reindex_like(mask).where(mask, drop=True)
+    return corr
 
 
 def par_correlation(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
@@ -187,7 +199,6 @@ def par_correlation(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda
     mseed = mseed.compute()
     _memoize = lambda key, f, *args, **kwargs: memoize([dim]+key, f, *args, **kwargs)
     corr = do_correlation(ds, seed, mseed, dim, num_chunks, max_workers, memoize=_memoize)
-    corr.coords[dim] = ds.coords[dim]
     return corr
 
 
