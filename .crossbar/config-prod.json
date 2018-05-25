@@ -69,6 +69,11 @@
                                 "debug": true
                             }
                         },
+                        "mouseconn": {
+                            "type": "reverseproxy",
+                            "host": "localhost",
+                            "port": 12345
+                        },
                         "ws": {
                             "type": "websocket",
                             "options": {
