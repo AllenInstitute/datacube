@@ -23,3 +23,4 @@ services/pandas/.crossbar/key.pub
 **.nc
 **.h5
 **.npy
+*.un~
