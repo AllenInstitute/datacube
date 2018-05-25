@@ -72,7 +72,7 @@
                         "mouseconn": {
                             "type": "reverseproxy",
                             "host": "localhost",
-                            "port": 12345
+                            "port": 39608
                         },
                         "ws": {
                             "type": "websocket",
@@ -176,6 +176,15 @@
             "arguments": ["./redis.conf"],
             "options": {
                 "workdir": ".."
+            }
+        },
+        {
+            "id": "legacy_conn_routes",
+            "type": "guest",
+            "executable": "make",
+            "arguments": ["run"],
+            "options": {
+                "workdir": "../legacy_conn_routes"
             }
         }
     ]
