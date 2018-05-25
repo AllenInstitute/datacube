@@ -1,0 +1,24 @@
+[[source]]
+url = "https://pypi.python.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+twisted = ">=18.4.0"
+autobahn = ">=18.4.1"
+klein = ">=17.10.0"
+simplejson = ">=3.14.0"
+pyopenssl = ">=17.5.0"
+crossbar = ">=17.12.1"
+
+[dev-packages]
+pytest = ">=2.9.2"
+coverage = ">=3.7.1"
+pytest-cov = ">=2.2.1"
+numpy = ">=1.14.3"
+pandas = ">=0.22.0" # no allensdk for now due to conflict - it is only needed for caching
+requests = ">=2.18.4"
+pylint = ">=1.8.4"
+
+[requires]
+python_version = "3.6"
