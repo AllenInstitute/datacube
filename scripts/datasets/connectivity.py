@@ -673,6 +673,11 @@ if __name__ == '__main__':
     if args.internal:
         # NOTE: this connection is used by multiple concurrent threads
         warehouse_key = urllib.parse.urlparse(args.data_src).netloc
+        if not warehouse_key:
+            logging.warning(
+                'Unable to obtain a netloc for data_src {}. Missing \'http://\' prefix?'.format(data_src)
+            )
+
         warehouse = psycopg2.connect(**WAREHOUSE_DATABASES[warehouse_key])
 
     main()

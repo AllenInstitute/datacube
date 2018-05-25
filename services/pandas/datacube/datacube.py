@@ -24,10 +24,14 @@ import operator
 import inspect
 import types
 import concurrent.futures
-
+import collections
+from twisted.python import log
+import logging
 
 from six import iteritems
 from builtins import int, map
+
+from . import summary_statistics
 
 
 def get_num_samples(data, axis, masks, backend=np):
@@ -221,8 +225,7 @@ def par_correlation(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda
 #    return corr
 
 
-class Datacube:
-
+class Datacube:    
 
     def test(self):
         return 1
@@ -231,6 +234,7 @@ class Datacube:
     def __init__(self,
                  name,
                  path,
+                 session_name=None,
                  redis_client=None,
                  missing_data=False,
                  calculate_stats=True,
@@ -240,12 +244,16 @@ class Datacube:
                  num_chunks=multiprocessing.cpu_count(),
                  max_workers=multiprocessing.cpu_count(),
                  persist=[]):
+
         self.name = name
+        self.session_name = session_name
+
         self.max_response_size = max_response_size
         self.max_cacheable_bytes = max_cacheable_bytes
         self.num_chunks = num_chunks
         self.max_workers = max_workers
-        if path: self.load(path, chunks, missing_data, calculate_stats, persist)
+        if path: 
+            self.load(path, chunks, missing_data, calculate_stats, persist)
         #todo: would be nice to find a way to swap these out,
         # and also to be able to run without redis (numpy-only)
         #if reactor.running:
@@ -257,7 +265,40 @@ class Datacube:
             self.redis_client = redis.StrictRedis('localhost', 6379)
 
 
+    def load_zarr_lmdb(self, path, chunks):
+        ''' Load zarr data lazily from a lightning db store on the filesystem. Uses the in-memory 
+        filesystem at /dev/shm for performance.
+        '''
+
+        shm_prefix = '/dev/shm'
+        if self.session_name is not None:
+            shm_prefix = os.path.join(shm_prefix, self.session_name)
+        shm_path = os.path.join(shm_prefix, os.path.basename(path))
+
+        log.msg('deleting \'{}\'...'.format(shm_path), logLevel=logging.INFO)
+        try:
+            shutil.rmtree(shm_path)
+        except OSError:
+            pass
+
+        try:
+            os.makedirs(shm_prefix)
+        except OSError:
+            pass
+
+        disk_store = zarr.storage.LMDBStore(path)
+        shm_store = zarr.storage.LMDBStore(shm_path)
+
+        log.msg('cloning \'{}\' store to \'{}\'...'.format(path, shm_path), logLevel=logging.INFO)
+        zarr.convenience.copy_all(zarr.hierarchy.open_group(disk_store), zarr.hierarchy.open_group(shm_store))
+
+        log.msg('loading \'{}\' zarr LMDBstore as xarray dataset...'.format(shm_path), logLevel=logging.INFO)
+        self.df = xr.open_zarr(store=shm_store, auto_chunk=True)
+        self.df = self.df.chunk(chunks)
+
+
     def load(self, path, chunks=None, missing_data=False, calculate_stats=True, persist=[]):
+
         #todo: rename df
         #todo: argsorts need to be cached to a file (?)
         if path.endswith('.nc'):
@@ -267,25 +308,15 @@ class Datacube:
                 if self.df[field].dtype.name.startswith('bytes'):
                     self.df[field] = self.df[field].astype(self.df[field].values.dtype)
         elif path.endswith('.zarr.lmdb'):
-            shm_path = os.path.join('/dev/shm/', os.path.basename(path))
-            print('deleting \'{}\'...'.format(shm_path))
-            try:
-                shutil.rmtree(shm_path)
-            except OSError:
-                pass
-            disk_store = zarr.storage.LMDBStore(path)
-            shm_store = zarr.storage.LMDBStore(shm_path)
-            print('cloning \'{}\' store to \'{}\'...'.format(path, shm_path))
-            zarr.convenience.copy_all(zarr.hierarchy.open_group(disk_store), zarr.hierarchy.open_group(shm_store))
-            print('loading \'{}\' zarr LMDBstore as xarray dataset...'.format(shm_path))
-            self.df = xr.open_zarr(store=shm_store, auto_chunk=True)
-            self.df = self.df.chunk(chunks)
+            self.load_zarr_lmdb(path, chunks)
         else:
             raise ArgumentError('invalid file type; expected *.nc or *.zarr.lmdb')
+
         #todo: rework _query so this is not needed:
         for dim in self.df.dims:
             if dim not in self.df.dims:
                 self.df.coords[dim] = range(self.df.dims[dim])
+
         if missing_data:
             print('setting up missing data...')
             #todo: need to reintroduce this and test
@@ -293,26 +324,22 @@ class Datacube:
             #self.mdata = self.mdata.persist()
             #todo: can nan-only chunks be dropped?
             self.df = self.df.fillna(0.)
+
         print('building indexes...')
         self.argsorts = {}
         for field in self.df.variables:
             if self.df[field].size*np.dtype('int64').itemsize <= self.max_cacheable_bytes:
                 print('building index for field \'{}\'...'.format(field))
                 self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
-        #todo: would be nice to cache these instead of computing on every startup
-        if calculate_stats:
-            print('calculating stats...')
-            self.mins = {}
-            self.maxes = {}
-            self.means = {}
-            self.stds = {}
-            for field in self.df.variables:
-                print('calculating stats for field \'{}\'...'.format(field))
-                self.mins[field] = self.df[field].min().values
-                self.maxes[field] = self.df[field].max().values
-                if not self.df[field].dtype.kind in 'OSU':
-                    self.means[field] = self.df[field].mean().values
-                    self.stds[field] = self.df[field].std().values
+
+        stats_path = os.path.join(os.path.dirname(path), 'summary_statistics_{}.json'.format(self.name))
+        self.stats = summary_statistics.cache_summary_statistics(
+            self.df,
+            reader=functools.partial(summary_statistics.read_stats_from_json, stats_path),
+            writer=functools.partial(summary_statistics.write_stats_to_json, stats_path),
+            force=calculate_stats
+        )
+
         for field in persist:
             print('loading field \'{}\' into memory as ndarray...'.format(field))
             self.df[field] = self.df[field].load()
@@ -486,8 +513,8 @@ class Datacube:
             raise RuntimeError('Non 2-d region selected when requesting image')
 
         #todo: probably ought to make normalization configurable in the request in some manner
-        if data.ndim == 2 and data.dtype != np.uint8 and hasattr(self, 'maxes') and field in self.maxes:
-            data = ((data / self.maxes[field]) * 255.0).astype(np.uint8)
+        if data.ndim == 2 and data.dtype != np.uint8 and 'max' in self.stats and field in self.stats['max']:
+            data = ((data / self.stats['max'][field]) * 255.0).astype(np.uint8)
 
         image = Image.fromarray(data)
         buf = BytesIO()
