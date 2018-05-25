@@ -20,6 +20,13 @@ SUMMARY_STATS_CONDITIONS = {
 }
 
 
+def check_condition(dataset, field, key, conditions=None):
+    if conditions is None:
+        conditions = SUMMARY_STATS_CONDITIONS
+
+    return (not key in conditions) or conditions[key](dataset, field)
+
+
 def calculate_summary_stats(dataset, calculators=None, conditions=None):
     ''' Calculate summary_statistics for each field in a Dataset.
 
@@ -53,11 +60,9 @@ def calculate_summary_stats(dataset, calculators=None, conditions=None):
         log.msg('calculating stats for field \'{}\'...'.format(field), logLevel=logging.INFO)
 
         for stat_type, stat_calculator in calculators.items():
-            if not conditions[stat_type](dataset, field):
-                continue
-
-            stats[stat_type][field] = stat_calculator(dataset, field)
-            log.msg('{} of field {} is: {}'.format(stat_type, field, stats[stat_type][field]), logLevel=logging.INFO)
+            if check_condition(dataset, field, stat_type, conditions):
+                stats[stat_type][field] = stat_calculator(dataset, field)
+                log.msg('{} of field {} is: {}'.format(stat_type, field, stats[stat_type][field]), logLevel=logging.INFO)
 
     return stats
 
@@ -97,11 +102,14 @@ def cache_summary_statistics(dataset, reader, writer, force=False, calculators=N
     stats : dict
         Keys are string identifiers for summary statistic types. Values are dictionaries mapping fields to computed  
         values.
-        
+
     '''
 
     if calculators is None:
         calculators = SUMMARY_STATS_CALCULATORS
+
+    if conditions is None:
+        conditions = SUMMARY_STATS_CONDITIONS
 
     if not force:
         try:
@@ -111,8 +119,10 @@ def cache_summary_statistics(dataset, reader, writer, force=False, calculators=N
                 assert key in stats
 
                 for field in dataset.variables:
-                    assert field in stats[key]
+                    if check_condition(dataset, field, key, conditions):
+                        assert field in stats[key]
             
+            log.msg('Successfully loaded cached summary statistics', logLevel=logging.INFO)
             return stats
 
         except (OSError, IOError, json.JSONDecodeError, AssertionError) as err:
