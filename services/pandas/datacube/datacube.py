@@ -350,11 +350,16 @@ class Datacube:
             force=calculate_stats
         )
 
-        for field in persist:
-            print('loading field \'{}\' into memory as ndarray...'.format(field))
-            disk_store = zarr.storage.LMDBStore(path)
-            df = xr.open_zarr(store=disk_store, auto_chunk=True)
-            self.df[field] = df[field].load()
+        if persist:
+            if path.endswith('.nc'):
+                df = self.df
+            elif path.endswith('.zarr.lmdb'):
+                disk_store = zarr.storage.LMDBStore(path)
+                df = xr.open_zarr(store=disk_store, auto_chunk=True)
+
+            for field in persist:
+                print('loading field \'{}\' into memory as ndarray...'.format(field))
+                self.df[field] = df[field].load()
         print('done loading \'{}\'.'.format(self.name))
 
 
