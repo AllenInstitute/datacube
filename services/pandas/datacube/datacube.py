@@ -297,16 +297,22 @@ class Datacube:
         self.df = self.df.chunk(chunks)
 
 
+    def load_nc_file(self, path, chunks):
+        print('loading \'{}\' NETCDF4 file as xarray dataset...'.format(path))
+
+        self.df = xr.open_dataset(path, chunks=chunks, engine='h5netcdf')
+        for field in self.df.variables:
+
+            if self.df[field].dtype.name.startswith('bytes'):
+                self.df[field] = self.df[field].astype(str)
+
+
     def load(self, path, chunks=None, missing_data=False, calculate_stats=True, persist=[]):
 
         #todo: rename df
         #todo: argsorts need to be cached to a file (?)
         if path.endswith('.nc'):
-            print('loading \'{}\' NETCDF4 file as xarray dataset...'.format(path))
-            self.df = xr.open_dataset(path, chunks=chunks, engine='h5netcdf')
-            for field in self.df.variables:
-                if self.df[field].dtype.name.startswith('bytes'):
-                    self.df[field] = self.df[field].astype(self.df[field].values.dtype)
+            self.load_nc_file(path, chunks)
         elif path.endswith('.zarr.lmdb'):
             self.load_zarr_lmdb(path, chunks)
         else:
