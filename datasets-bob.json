@@ -8,6 +8,7 @@
         "files": [
             {
                 "path": "cell_specimens.nc",
+                "compute_summary_statistics": false,
                 "use_chunks": false,
                 "chunks": {"dim_0": 8000}
             }
