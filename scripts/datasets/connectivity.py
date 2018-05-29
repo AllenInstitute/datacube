@@ -597,6 +597,7 @@ def main():
     ds_flat.rename({var: '{}_flat'.format(var) for var in set(ds_flat.variables)-set(['experiment'])}, inplace=True)
     ds_flat = ds_flat.stack(ccf=ds_flat.ccf_structure_flat.dims)
     ds_flat.reset_index('ccf', inplace=True) # multi-index not netcdf compatible
+    ds_flat.reset_coords(inplace=True)
     ds_flat = ds_flat.where(ds_flat.ccf_structure_flat!=0, drop=True)
     # where seems to clobber some dtypes
     ds_flat['projection_flat'] = ds_flat.projection_flat.astype(ds.projection.dtype)
@@ -625,7 +626,7 @@ def main():
         }
     compressor = numcodecs.blosc.Blosc(cname='snappy', clevel=1, shuffle=numcodecs.blosc.Blosc.SHUFFLE)
     # monkey patch to make dask arrays writable with different chunks than zarr dest
-    # could without this but would have to contend with 'inconsistent chunks' on dataset
+    # could do without this but would have to contend with 'inconsistent chunks' on dataset
     def sync_using_zarr_copy(self, compute=True):
         if self.sources:
             import dask.array as da
