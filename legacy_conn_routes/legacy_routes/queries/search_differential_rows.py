@@ -67,10 +67,10 @@ def get_structure_search_kwargs(
 
     if target_domain is not None:
         hem, sids = decode_domain_str(target_domain)
-        filters.extend(build_target_domain_clause(sids, hem, target_threshold))
     else:
         hem = 'bilateral'
         sids = [997]
+    filters.extend(build_target_domain_clause(sids, hem, target_threshold))
 
     if transgenic_lines is not None:
         filters.extend(build_transgenic_lines_clause(transgenic_lines))

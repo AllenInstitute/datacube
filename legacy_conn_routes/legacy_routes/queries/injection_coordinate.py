@@ -66,7 +66,7 @@ def get_injection_coordinate_kwargs(
         'fields': INJECTION_COORDINATE_DETAILED_FIELDS if showDetail else INJECTION_COORDINATE_DEFAULT_FIELDS,
         'coords': {},
         'select': {},
-        'filters': {'and': filters}
+        'filters': filters
     }
 
 
