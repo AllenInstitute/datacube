@@ -265,7 +265,7 @@ class Datacube:
             self.redis_client = redis.StrictRedis('localhost', 6379)
 
 
-    def load_zarr_lmdb(self, path, chunks):
+    def load_zarr_lmdb(self, path, chunks, exclude=[]):
         ''' Load zarr data lazily from a lightning db store on the filesystem. Uses the in-memory 
         filesystem at /dev/shm for performance.
         '''
@@ -290,7 +290,11 @@ class Datacube:
         shm_store = zarr.storage.LMDBStore(shm_path)
 
         log.msg('cloning \'{}\' store to \'{}\'...'.format(path, shm_path), logLevel=logging.INFO)
-        zarr.convenience.copy_all(zarr.hierarchy.open_group(disk_store), zarr.hierarchy.open_group(shm_store))
+        disk_group = zarr.hierarchy.open_group(disk_store)
+        shm_group = zarr.hierarchy.open_group(shm_store)
+        for field in set(disk_group)-set(exclude):
+            zarr.convenience.copy(disk_group[field], shm_group, name=field)
+        disk_store.close()
 
         log.msg('loading \'{}\' zarr LMDBstore as xarray dataset...'.format(shm_path), logLevel=logging.INFO)
         self.df = xr.open_zarr(store=shm_store, auto_chunk=True)
@@ -314,7 +318,7 @@ class Datacube:
         if path.endswith('.nc'):
             self.load_nc_file(path, chunks)
         elif path.endswith('.zarr.lmdb'):
-            self.load_zarr_lmdb(path, chunks)
+            self.load_zarr_lmdb(path, chunks, exclude=persist)
         else:
             raise ArgumentError('invalid file type; expected *.nc or *.zarr.lmdb')
 
@@ -348,7 +352,9 @@ class Datacube:
 
         for field in persist:
             print('loading field \'{}\' into memory as ndarray...'.format(field))
-            self.df[field] = self.df[field].load()
+            disk_store = zarr.storage.LMDBStore(path)
+            df = xr.open_zarr(store=disk_store, auto_chunk=True)
+            self.df[field] = df[field].load()
         print('done loading \'{}\'.'.format(self.name))
 
 
