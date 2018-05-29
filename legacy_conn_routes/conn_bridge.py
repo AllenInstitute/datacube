@@ -143,8 +143,9 @@ def mouseconn_correlation(request):
 @app.route('/data/health', methods=('GET',))
 @inlineCallbacks
 def health(request):
-
-    
+    res = yield {}
+    res = package_json_response(res)
+    returnValue(simplejson.dumps(res))
 
 
 def main():
