@@ -140,6 +140,13 @@ def mouseconn_correlation(request):
     returnValue(simplejson.dumps(res))
 
 
+@app.route('/data/health', methods=('GET',))
+@inlineCallbacks
+def health(request):
+
+    
+
+
 def main():
 
     reactor.listenTCP(args.port, Site(app.resource()))
