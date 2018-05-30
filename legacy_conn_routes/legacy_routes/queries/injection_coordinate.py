@@ -11,7 +11,7 @@ INJECTION_COORDINATE_DETAILED_FIELDS = [
     'specimen_name',
     'structure_id',
     'structure_abbrev',
-    'structure_color',
+    'primary_structure_color',
     'strain',
     'transgenic_line',
     'gender',
@@ -66,7 +66,7 @@ def get_injection_coordinate_kwargs(
         'fields': INJECTION_COORDINATE_DETAILED_FIELDS if showDetail else INJECTION_COORDINATE_DEFAULT_FIELDS,
         'coords': {},
         'select': {},
-        'filters': {'and': filters}
+        'filters': filters
     }
 
 
@@ -92,8 +92,9 @@ def postprocess_injection_coordinates_search(df, seed, showDetail):
         'structure_id': 'structure-id',
         'specimen_name': 'name',
         'structure_abbrev': 'structure-abbrev',
-        'structure_color': 'structure-color',
+        'primary_structure_color': 'structure-color',
         'transgenic_line': 'transgenic-line',
+        'data_set_id': 'id'
     })
     
     df['id'] = df['id'].astype(int)
