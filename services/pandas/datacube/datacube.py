@@ -320,7 +320,7 @@ class Datacube:
         elif path.endswith('.zarr.lmdb'):
             self.load_zarr_lmdb(path, chunks, exclude=persist)
         else:
-            raise ArgumentError('invalid file type; expected *.nc or *.zarr.lmdb')
+            raise ValueError('invalid file type; expected *.nc or *.zarr.lmdb')
 
         #todo: rework _query so this is not needed:
         for dim in self.df.dims:
@@ -469,7 +469,7 @@ class Datacube:
         return res
 
 
-    def _get_field(self, field, select=None, coords=None, filters=None, df=None):
+    def _get_field(self, field, select=None, coords=None, filters=None, df=None, in_memory_only=False):
         if df is None:
             df = self.df
         data = self._get_data(select=select, coords=coords, df=df)
@@ -483,6 +483,10 @@ class Datacube:
             mask_ds = xr.Dataset({'__mask': xr.DataArray(np.array(True, dtype=np.bool), attrs={'is_mask': True})})
         ds = xr.Dataset({'data': data})
         ds = ds.merge(mask_ds, inplace=True)
+        if in_memory_only:
+            for field in ds.variables:
+                if ds[field].nbytes > self.max_cacheable_bytes and not isinstance(ds[field].data, np.ndarray):
+                    raise ValueError('cannot get large data field or mask that is not already loaded in-memory as an ndarray')
         return ds, f
 
 
@@ -609,10 +613,7 @@ class Datacube:
 
 
     def corr(self, field, dim, seed_idx, select=None, coords=None, filters=None):
-        ds, f = self._get_field(field, select, coords, filters)
-        for field in ds.variables:
-            if ds[field].nbytes > self.max_cacheable_bytes and not isinstance(ds[field].data, np.ndarray):
-                raise ValueError('cannot do numpy-based correlation search on large data or mask that is not loaded in-memory as an ndarray')
+        ds, f = self._get_field(field, select, coords, filters, in_memory_only=True)
         key_prefix = [self.name, 'mdata', field, select, filters]
         memoize = lambda key, f, *args, **kwargs: self._memoize(key_prefix+key, f, *args, **kwargs)
         res = par_correlation(ds, seed_idx, dim, self.num_chunks, self.max_workers, memoize=memoize)
