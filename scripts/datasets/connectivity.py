@@ -435,11 +435,9 @@ def get_structure_information(tree, summary_set_id=SUMMARY_SET_ID, exclude_from_
     Returns
     -------
     structure_meta : xarray.Dataset
-        Contains the name and acronym of each structure
+        Contains the name, color, and acronym of each structure
     structure_ids : list of int
         The id of each structure
-    structure_colors : list of str
-        The ontological color of each structure (as a hex string)
     structure_paths : dict | int -> list of int
         Maps structure ids to lists of int. Each such list describes the path from the root of the structure tree to
         structure in question.
