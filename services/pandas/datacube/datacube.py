@@ -683,17 +683,49 @@ class Datacube:
                 min_point = np.unravel_index(self.argsorts[field][min_point_ind], df[field].shape)
                 max_point = np.unravel_index(self.argsorts[field][max_point_ind], df[field].shape)
                 data = df[field][{dim: slice(min_point[i], max_point[i]) for i,dim in enumerate(df[field].dims)}]
-                
+
             operands.append(data-coord)
 
         mask = (reduce(operator.add, map(xr_ufuncs.square, operands)) ** 0.5) <= value
         return {'inds': {}, 'masks': [mask]}
 
 
+    def isnan_filter(self, field, select, coords, dataset):
+        ''' Masks values equivalent to nan
+
+        Parameters
+        ----------
+        field : str
+            Dimension along which to filter.
+        select : dict
+            Select clause
+        coords : list
+            Coords clause
+        dataset : xarray.DataSet
+            Dataset to filter
+
+        Returns
+        -------
+        response : dict 
+            Keys are inds and masks. 
+
+        '''
+
+        response = {'inds': {}, 'masks': []}
+
+        data = self._get_data(fields=field, select=select, coords=coords, df=dataset, drop=True)
+        response['masks'].append(data.isnull())
+
+        return response
+
+
     def _filter(self, f, df):
 
         if f['op'] == 'distance':
             return self.distance_filter(f['fields'], f['point'], f['value'], df)
+
+        if f['op'] == 'isnan':
+            return self.isnan_filter(f['field'], f.get('select', None), f.get('coords', None), df)
 
         op = f['op']
         field = f['field']
