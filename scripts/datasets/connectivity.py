@@ -459,11 +459,12 @@ def get_structure_information(tree, summary_set_id=SUMMARY_SET_ID, exclude_from_
         if s['id'] not in exclude_from_summary
     }
 
-    structure_meta = nodes[['name','acronym']]
+    nodes['structure_color'] = structure_colors
+    structure_meta = nodes[['name', 'acronym', 'structure_color']]
     structure_meta = xr.Dataset.from_dataframe(structure_meta)
     structure_meta = structure_meta.drop('index').rename({'index': 'structure'})
 
-    return structure_meta, structure_ids, structure_colors, structure_paths, summary_structures
+    return structure_meta, structure_ids, structure_paths, summary_structures
 
 
 def generate_injection_mask(ds, projection_mask, experiment_index):
@@ -533,7 +534,7 @@ def main():
     mcc = MouseConnectivityCache(manifest_file=manifest_path, resolution=args.resolution, base_uri=args.data_src)
 
     tree = mcc.get_structure_tree()
-    structure_meta, structure_ids, structure_colors, structure_paths, summary_structures = get_structure_information(tree)
+    structure_meta, structure_ids, structure_paths, summary_structures = get_structure_information(tree)
 
     r=requests.get(args.data_src + API_CONNECTIVITY_QUERY)
     experiments = pd.read_csv(StringIO(r.text), true_values=['t'], false_values=['f'])
@@ -571,7 +572,6 @@ def main():
             'ccf_structures': (ccf_dims+['depth'], ccf_anno_paths),
             'projection': (ccf_dims+['experiment'], da.from_array(volume, chunks=volume.chunks)),
             'is_summary_structure': (['structure'], [structure.item() in summary_structures for structure in projection_unionize.structure]),
-            'structure_color': structure_colors,
             'volume': projection_unionize,
             'structure_volumes': structure_volumes,
             'primary_structures': (['experiment', 'depth'], primary_structure_paths),
@@ -591,6 +591,12 @@ def main():
     ds.merge(structure_meta, inplace=True, join='left')
     ds['is_primary'] = (ds.structure_id==ds.structures).any(dim='depth') #todo: make it possible to do this masking on-the-fly (?)
     ds['is_projection'], projection_mask = build_projection_mask(ds, tmp_dir=args.data_dir)
+
+    # add experimentwise primary structure colors 
+    primary_color_ds = xr.merge([ds['structure_color'], ds['structure_id']])
+    primary_color_ds['primary_structure_color'] = ds['structure_color'].loc[ds['structure_id']]
+    primary_color_ds = primary_color_ds.drop(labels=['structure_color', 'structure_id'])
+    ds.merge(primary_color_ds, inplace=True, join='exact')
 
     # make flat versions of ccf-shaped fields and drop non-annotated voxels
     ds_flat = ds[['projection', 'is_projection', 'ccf_structure', 'ccf_structures']]
