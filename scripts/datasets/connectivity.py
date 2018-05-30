@@ -642,6 +642,7 @@ def main():
     # to_zarr will fail with object columns containing None
     for field in ds.variables:
         if ds[field].dtype.name == 'object':
+            ds[field][ds[field].isnull()] = ''
             ds[field] = ds[field].astype('str')
 
     # write to zarr with overridable default encoding settings
