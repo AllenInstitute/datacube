@@ -11,3 +11,4 @@ h5py
 h5netcdf
 toolz
 requests
+lmdb

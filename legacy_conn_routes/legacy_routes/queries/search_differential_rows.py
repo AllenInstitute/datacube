@@ -11,7 +11,7 @@ STRUCTURE_SEARCH_FIELDS_FULL = [
     "data_set_id", "experiment", "transgenic_line", "transgenic_line_id", "product_id", 
     "structure_id", "structure_abbrev", "structure_name", "specimen_name", "injection_volume", 
     "injection_structures", "injection_x", "injection_y", "injection_z", "gender", "strain", "volume",
-    "structure_color"
+    "primary_structure_color"
 ] 
 
 
@@ -67,10 +67,10 @@ def get_structure_search_kwargs(
 
     if target_domain is not None:
         hem, sids = decode_domain_str(target_domain)
-        filters.extend(build_target_domain_clause(sids, hem, target_threshold))
     else:
         hem = 'bilateral'
         sids = [997]
+    filters.extend(build_target_domain_clause(sids, hem, target_threshold))
 
     if transgenic_lines is not None:
         filters.extend(build_transgenic_lines_clause(transgenic_lines))
@@ -126,7 +126,7 @@ def postprocess_search_differential_rows(df, showDetail):
         'specimen_name': 'name',
         'structure_abbrev': 'structure-abbrev',
         'transgenic_line': 'transgenic-line',
-        'structure_color': 'structure-color'
+        'primary_structure_color': 'structure-color'
     })
     
     df['id'] = df['id'].astype(int)
