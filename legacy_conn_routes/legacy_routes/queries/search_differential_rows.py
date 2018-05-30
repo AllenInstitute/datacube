@@ -11,7 +11,7 @@ STRUCTURE_SEARCH_FIELDS_FULL = [
     "data_set_id", "experiment", "transgenic_line", "transgenic_line_id", "product_id", 
     "structure_id", "structure_abbrev", "structure_name", "specimen_name", "injection_volume", 
     "injection_structures", "injection_x", "injection_y", "injection_z", "gender", "strain", "volume",
-    "structure_color"
+    "primary_structure_color"
 ] 
 
 
@@ -126,7 +126,7 @@ def postprocess_search_differential_rows(df, showDetail):
         'specimen_name': 'name',
         'structure_abbrev': 'structure-abbrev',
         'transgenic_line': 'transgenic-line',
-        'structure_color': 'structure-color'
+        'primary_structure_color': 'structure-color'
     })
     
     df['id'] = df['id'].astype(int)
