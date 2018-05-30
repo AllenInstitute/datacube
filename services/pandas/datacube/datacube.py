@@ -610,6 +610,9 @@ class Datacube:
 
     def corr(self, field, dim, seed_idx, select=None, coords=None, filters=None):
         ds, f = self._get_field(field, select, coords, filters)
+        for field in ds.variables:
+            if ds[field].nbytes > self.max_cacheable_bytes and not isinstance(ds[field].data, np.ndarray):
+                raise ValueError('cannot do numpy-based correlation search on large data or mask that is not loaded in-memory as an ndarray')
         key_prefix = [self.name, 'mdata', field, select, filters]
         memoize = lambda key, f, *args, **kwargs: self._memoize(key_prefix+key, f, *args, **kwargs)
         res = par_correlation(ds, seed_idx, dim, self.num_chunks, self.max_workers, memoize=memoize)
