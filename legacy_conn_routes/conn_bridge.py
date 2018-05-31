@@ -110,7 +110,7 @@ class ConnBridgeApp(object):
         res = yield call_datacube(
             'org.brain-map.api.datacube.raw.connectivity',
             [], 
-            get_structure_search_kwargs(**args), 
+            get_structure_search_kwargs(acronym_id_map=self.ccf_store.acronym_id_map, **args), 
             echo
         )
 

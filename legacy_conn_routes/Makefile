@@ -7,7 +7,7 @@ export DATACUBE_WAMP_TRANSPORT
 DATACUBE_WAMP_REALM ?= "aibs"
 export DATACUBE_WAMP_REALM
 
-CCF_ONTOLOGY_FILE ?= "mouse_ccf_data/ccf_ontology.json"
+CCF_ONTOLOGY_FILE ?= "../mouse_ccf_data/ccf_ontology.json"
 export CCF_ONTOLOGY_FILE
 
 test: pytest_unit pytest_integration

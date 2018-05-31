@@ -5,12 +5,22 @@ INJECTION_STRUCTURES_NPV_THRESHOLD = 0.005
 
 def build_injection_structures_clause(injection_structures, 
                                       primary_structure_only=False, 
-                                      npv_threshold=INJECTION_STRUCTURES_NPV_THRESHOLD):
+                                      npv_threshold=INJECTION_STRUCTURES_NPV_THRESHOLD,
+                                      acronym_id_map=None):
     '''
     '''
 
-    if isinstance(injection_structures, six.integer_types):
+    if isinstance(injection_structures, (six.integer_types, str)):
         injection_structures = [injection_structures]
+
+    cast_structures = []
+    for item in injection_structures:
+        if isinstance(item, str):
+            if acronym_id_map is None:
+                raise TypeError('cannot convert string {} without an acronym_id_map'.format(item))
+            item = acronym_id_map[item]
+        cast_structures.append(item)
+    injection_structures = cast_structures
 
     filters = []
 
