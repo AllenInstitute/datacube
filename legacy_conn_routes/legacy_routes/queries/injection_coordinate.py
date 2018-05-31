@@ -40,7 +40,8 @@ def get_injection_coordinate_kwargs(
     product_ids=None,
     showDetail=False,
     startRow=0,
-    numRows='all'
+    numRows='all',
+    acronym_id_map=None
     ):
 
     filters = []
@@ -54,7 +55,7 @@ def get_injection_coordinate_kwargs(
         })
 
     if injection_structures is not None:
-        filters.extend(build_injection_structures_clause(injection_structures, primary_structure_only))
+        filters.extend(build_injection_structures_clause(injection_structures, primary_structure_only, acronym_id_map=acronym_id_map))
 
     if transgenic_lines is not None:
         filters.extend(build_transgenic_lines_clause(transgenic_lines))

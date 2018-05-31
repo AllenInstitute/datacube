@@ -56,7 +56,7 @@ class ConnBridgeApp(object):
         res = yield call_datacube(
             'org.brain-map.api.datacube.raw.connectivity',
             [],
-            get_injection_coordinate_kwargs(**args),
+            get_injection_coordinate_kwargs(acronym_id_map=self.ccf_store.acronym_id_map, **args),
             echo
         )
 
@@ -88,7 +88,7 @@ class ConnBridgeApp(object):
                 'superior_inferior': args['seedPoint'][1],
                 'left_right': args['seedPoint'][2]
             }], 
-            get_spatial_search_kwargs(**args), 
+            get_spatial_search_kwargs(acronym_id_map=self.ccf_store.acronym_id_map, **args), 
             echo
         )
 
@@ -137,7 +137,7 @@ class ConnBridgeApp(object):
         res = yield call_datacube(
             'org.brain-map.api.datacube.corr.connectivity', 
             ['projection_flat', 'experiment', args['seed']], 
-            get_correlation_search_kwargs(**args), 
+            get_correlation_search_kwargs(acronym_id_map=self.ccf_store.acronym_id_map, **args), 
             echo
         )
 

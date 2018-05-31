@@ -38,7 +38,8 @@ def get_correlation_search_kwargs(
     domain=None, 
     injection_structures=None, primary_structure_only=None, 
     showDetail=False, seed=None,
-    sortOrder=None, startRow=None, numRows='all'
+    sortOrder=None, startRow=None, numRows='all',
+    acronym_id_map=None
 ):
 
     filters = []
@@ -59,7 +60,7 @@ def get_correlation_search_kwargs(
         experiment_filters.extend(build_transgenic_lines_clause(transgenic_lines))
 
     if injection_structures is not None:
-        experiment_filters.extend(build_injection_structures_clause(injection_structures, primary_structure_only))
+        experiment_filters.extend(build_injection_structures_clause(injection_structures, primary_structure_only, acronym_id_map=acronym_id_map))
 
     if experiment_filters:
         filters.append({
