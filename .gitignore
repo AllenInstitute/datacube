@@ -24,3 +24,8 @@ services/pandas/.crossbar/key.pub
 **.h5
 **.npy
 *.un~
+conn_data
+bob_data
+.vscode
+.pytest_cache
+mouse_ccf_data/

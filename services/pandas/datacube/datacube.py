@@ -663,6 +663,168 @@ class Datacube:
             return pickle.loads(cached)
 
 
+    def distance_filter(self, fields, point, value, df):
+
+        operands = []
+        for operand, coord in zip(fields, point):
+
+            if not isinstance(operand, dict):
+                operand = {'field': operand}
+
+            field = operand['field']
+            select = operand.get('select', None)
+            coords = operand.get('coords', None)
+
+            data = self._get_data(fields=field, select=select, coords=coords, df=df, drop=True)
+
+            if df[field] is not self.df[field] or field not in self.argsorts or select or coords:
+                data = data.where(xr_ufuncs.logical_and(data>=(coord-value), data<=(coord+value)), drop=True)
+
+            else:
+                min_point_ind = np.searchsorted(df[field].values.flat, coord-value, side='left', sorter=self.argsorts[field])
+                max_point_ind = np.searchsorted(df[field].values.flat, coord+value, side='right', sorter=self.argsorts[field])
+                min_point = np.unravel_index(self.argsorts[field][min_point_ind], df[field].shape)
+                max_point = np.unravel_index(self.argsorts[field][max_point_ind], df[field].shape)
+                data = df[field][{dim: slice(min_point[i], max_point[i]) for i,dim in enumerate(df[field].dims)}]
+
+            operands.append(data-coord)
+
+        mask = (reduce(operator.add, map(xr_ufuncs.square, operands)) ** 0.5) <= value
+        return {'inds': {}, 'masks': [mask]}
+
+
+    def isnan_filter(self, filt, dataset):
+        ''' Masks values equivalent to nan
+
+        Parameters
+        ----------
+        filt : dict
+            filter clause
+        dataset : xarray.DataSet
+            Dataset to filter
+
+        Returns
+        -------
+        response : dict 
+            Keys are inds and masks. 
+
+        '''
+
+        field = filt['field']
+        select = filt.get('select', None)
+        coords = filt.get('coords', None)
+
+        response = {'inds': {}, 'masks': []}
+
+        if dataset is not self.df or field not in self.argsorts or select or coords:
+            data = self._get_data(fields=field, select=select, coords=coords, df=dataset, drop=True)
+            response['masks'].append(data.isnull())
+
+        else:
+
+            filter_key = json.dumps([self.name, 'filter', filt['op'], field, select, coords])
+            cached = self.redis_client.get(filter_key)
+
+            if not cached:
+                start = np.searchsorted(dataset[field].values.flat, np.nan, side='left', sorter=self.argsorts[field])
+                inds = np.sort(self.argsorts[field][start:])
+                self.redis_client.setnx(filter_key, pickle.dumps(inds))
+            else:
+                inds = pickle.loads(cached)
+
+            self.mask_from_filter_inds(dataset, field, inds, response=response)
+
+        return response
+
+
+    def mask_from_filter_inds(self, df, field, flat_inds, response=None):
+
+        if response is None:
+            response = {'inds': {}, 'masks': []}
+
+        if 1 == df[field].ndim:
+            key = df[field].dims[0]
+            response['inds'][key] = xr.DataArray(flat_inds, dims=df[field].dims)
+            return response
+
+        unravel_inds = np.unravel_index(flat_inds, df[field].shape)
+        for i, dim in enumerate(df[field].dims):
+            response['inds'][dim] = xr.DataArray(np.unique(unravel_inds[i]), dims=dim)
+
+        #todo: upgrade xarray and use this:
+        #mask = xr.zeros_like(df[field], dtype=np.bool)
+
+        mask = xr.DataArray(np.zeros_like(df[field].values, dtype=np.bool), dims=df[field].dims)
+        mask.values.flat[flat_inds] = True
+        response['masks'].append(mask)
+
+        return response
+
+
+    def _filter(self, f, df):
+
+        if f['op'] == 'distance':
+            return self.distance_filter(f['fields'], f['point'], f['value'], df)
+
+        if f['op'] == 'isnan':
+            return self.isnan_filter(f, df)
+
+        op = f['op']
+        field = f['field']
+        value = f['value']
+        select = f.get('select', None)
+        coords = f.get('coords', None)
+
+        def _filter_key(f, select, coords):
+            return json.dumps([self.name, 'filter', f['op'], f['field'], f['value'], select, coords])
+
+        res = {'inds': {}, 'masks': []}
+        if df[field].dtype == 'bool' and op in ['=', 'is'] and value == True:
+            res['masks'].append(df[field])
+        elif df is not self.df or field not in self.argsorts or select or coords:
+            lhs = self._get_data(fields=field, select=select, coords=coords, df=df, drop=True)
+            if op == '=' or op == 'is':
+                mask = (lhs == value)
+            elif op == '<':
+                mask = (lhs < value)
+            elif op == '>':
+                mask = (lhs > value)
+            elif op == '<=':
+                mask = (lhs <= value)
+            elif op == '>=':
+                mask = (lhs >= value)
+            elif op == '!=':
+                mask = (lhs != value)
+            #todo: if df is self.df, could cache depending on size of mask
+            #todo: convert 1-d masks to inds (?)
+            res['masks'].append(mask)
+        else:
+            filter_key = _filter_key(f, select, coords)
+            cached = self.redis_client.get(filter_key)
+            if not cached:
+                start = 0
+                stop = df[field].size
+                if op == '=' or op == 'is':
+                    start = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
+                    stop = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
+                elif op == '<':
+                    stop = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
+                elif op == '>':
+                    start = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
+                elif op == '<=':
+                    stop = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
+                elif op == '>=':
+                    start = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
+                inds = np.sort(self.argsorts[field][start:stop])
+                self.redis_client.setnx(filter_key, pickle.dumps(inds))
+            else:
+                inds = pickle.loads(cached)
+            
+            self.mask_from_filter_inds(df, field, inds, response=res)
+
+        return res
+
+
     def _query(self, filters, df=None):
         if df is None:
             df = self.df
@@ -673,97 +835,6 @@ class Datacube:
         else:
             #todo: add ability to filter on a boolean field without any op/value
             #todo: add not-equals
-            def _filter(f):
-                #todo: refactor out as a custom filter type
-                if f['op'] == 'distance':
-                    fields = f['fields']
-                    point = f['point']
-                    value = f['value']
-
-                    operands = []
-                    for operand, coord in zip(fields, point):
-                        if not isinstance(operand, dict):
-                            operand = {'field': operand}
-                        field = operand['field']
-                        select = operand.get('select', None)
-                        coords = operand.get('coords', None)
-                        data = self._get_data(fields=field, select=select, coords=coords, df=df, drop=True)
-                        if df[field] is not self.df[field] or field not in self.argsorts or select or coords:
-                            data = data.where(xr_ufuncs.logical_and(data>=(coord-value), data<=(coord+value)), drop=True)
-                        else:
-                            min_point_ind = np.searchsorted(df[field].values.flat, coord-value, side='left', sorter=self.argsorts[field])
-                            max_point_ind = np.searchsorted(df[field].values.flat, coord+value, side='right', sorter=self.argsorts[field])
-                            min_point = np.unravel_index(self.argsorts[field][min_point_ind], df[field].shape)
-                            max_point = np.unravel_index(self.argsorts[field][max_point_ind], df[field].shape)
-                            data = df[field][{dim: slice(min_point[i], max_point[i]) for i,dim in enumerate(df[field].dims)}]
-                        operands.append(data-coord)
-
-                    mask = (reduce(operator.add, map(xr_ufuncs.square, operands)) ** 0.5) <= value
-                    return {'inds': {}, 'masks': [mask]}
-
-                op = f['op']
-                field = f['field']
-                value = f['value']
-                select = f.get('select', None)
-                coords = f.get('coords', None)
-
-                def _filter_key(f):
-                    return json.dumps([self.name, 'filter', f['op'], f['field'], f['value'], select, coords])
-
-                res = {'inds': {}, 'masks': []}
-                if df[field].dtype == 'bool' and op in ['=', 'is'] and value == True:
-                    res['masks'].append(df[field])
-                elif df is not self.df or field not in self.argsorts or select or coords:
-                    lhs = self._get_data(fields=field, select=select, coords=coords, df=df, drop=True)
-                    if op == '=' or op == 'is':
-                        mask = (lhs == value)
-                    elif op == '<':
-                        mask = (lhs < value)
-                    elif op == '>':
-                        mask = (lhs > value)
-                    elif op == '<=':
-                        mask = (lhs <= value)
-                    elif op == '>=':
-                        mask = (lhs >= value)
-                    elif op == '!=':
-                        mask = (lhs != value)
-                    #todo: if df is self.df, could cache depending on size of mask
-                    #todo: convert 1-d masks to inds (?)
-                    res['masks'].append(mask)
-                else:
-                    filter_key = _filter_key(f)
-                    cached = self.redis_client.get(filter_key)
-                    if not cached:
-                        start = 0
-                        stop = df[field].size
-                        if op == '=' or op == 'is':
-                            start = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
-                            stop = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
-                        elif op == '<':
-                            stop = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
-                        elif op == '>':
-                            start = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
-                        elif op == '<=':
-                            stop = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
-                        elif op == '>=':
-                            start = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
-                        inds = np.sort(self.argsorts[field][start:stop])
-                        self.redis_client.setnx(filter_key, pickle.dumps(inds))
-                    else:
-                        inds = pickle.loads(cached)
-                    
-                    if 1==df[field].ndim:
-                        res['inds'][df[field].dims[0]] = xr.DataArray(inds, dims=df[field].dims)
-                    else:
-                        unravel_inds = np.unravel_index(inds, df[field].shape)
-                        for i, dim in enumerate(df[field].dims):
-                            res['inds'][dim] = xr.DataArray(np.unique(unravel_inds[i]), dims=dim)
-                        #todo: upgrade xarray and use this:
-                        #mask = xr.zeros_like(df[field], dtype=np.bool)
-                        mask = xr.DataArray(np.zeros_like(df[field].values, dtype=np.bool), dims=df[field].dims)
-                        mask.values.flat[inds] = True
-                        res['masks'].append(mask)
-                return res
 
             def _and(m1, m2):
                 res = {'inds': {}, 'masks': []}
@@ -903,7 +974,7 @@ class Datacube:
                             assert False
                         return agg_func(_reduce(filters))
                     else:
-                        return _filter(filters)
+                        return self._filter(filters, df)
                 elif isinstance(filters, list):
                     return list(map(_reduce, filters))
                 else:

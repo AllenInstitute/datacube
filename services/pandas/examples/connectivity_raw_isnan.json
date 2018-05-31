@@ -1,0 +1,18 @@
+{
+    "query": {
+        "procedure": "org.brain-map.api.datacube.raw.connectivity",
+        "args": [],
+        "kwargs": {
+            "filters": {
+                "field": "transgenic_line_id",
+                "op": "isnan"
+            },
+            "fields": [
+                "data_set_id",
+                "transgenic_line_id",
+                "transgenic_line"
+            ]
+        }
+    },
+    "description": "Uses a dataset id to select a connectivity dataset and its structure id"
+}
