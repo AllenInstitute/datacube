@@ -76,7 +76,7 @@ def get_correlation_search_kwargs(
     }
 
 
-def postprocess_correlation_search(df, showDetail=False):
+def postprocess_correlation_search(df, showDetail=False, ccf_store=None):
 
     df = df.rename(columns={
         'corr': 'r',
@@ -88,7 +88,7 @@ def postprocess_correlation_search(df, showDetail=False):
         return df
 
     df = postprocess_injection_coordinates(df)
-    df = postprocess_injection_structures(df)
+    df = postprocess_injection_structures(df, ccf_store)
 
     df = df.rename(columns={
         'transgenic_line': 'transgenic-line',

@@ -98,7 +98,7 @@ def get_structure_search_kwargs(
     }
 
 
-def postprocess_search_differential_rows(df, showDetail):
+def postprocess_search_differential_rows(df, showDetail, ccf_store=None):
 
     df['volume'] = df.apply(
         lambda row: np.nansum(row['volume']),
@@ -113,7 +113,7 @@ def postprocess_search_differential_rows(df, showDetail):
 
     df = df.drop(columns=['transgenic_line_id'])
     df = postprocess_injection_coordinates(df)
-    df = postprocess_injection_structures(df)
+    df = postprocess_injection_structures(df, ccf_store)
 
     df = df.sort_values('injection_volume', ascending=False)
 

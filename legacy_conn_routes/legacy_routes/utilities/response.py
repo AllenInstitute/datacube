@@ -1,3 +1,5 @@
+import functools
+
 import pandas as pd
 import numpy as np
 
@@ -69,9 +71,27 @@ def postprocess_injection_coordinates(df):
     return df
 
 
-def postprocess_injection_structures(df):
+def postprocess_injection_structure(row, ccf_store=None):
+
+    sids = []
+
+    for sid in row['injection_structures'].split('/'):
+        if sid == '':
+            continue
+
+        sid = int(sid)
+        if ccf_store is not None:
+            sid = ccf_store.id_summary_map[sid]
+
+        sids.append(sid)
+
+    return sids
+
+
+
+def postprocess_injection_structures(df, ccf_store=None):
     df['injection_structures'] = df.apply(
-        lambda row: [int(sid) for sid in row['injection_structures'].split('/') if sid != ''],
+        functools.partial(postprocess_injection_structure, ccf_store=ccf_store),
         axis=1
     )
 
