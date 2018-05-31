@@ -32,7 +32,6 @@ from six import iteritems
 from builtins import int, map
 
 from . import summary_statistics
-from . import query_utilities
 
 
 def get_num_samples(data, axis, masks, backend=np):

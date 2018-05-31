@@ -12,12 +12,21 @@ import json
 #todo: add tests with nan's
 @pytest.fixture(scope='session', params=[(10,20), (10,20,30)])
 def test_nd_netcdf(request, tmpdir_factory):
+
     np.random.seed(0)
     shape = request.param
     ndim = len(shape)
+
     dims = ['dim_{0}'.format(i) for i in range(ndim)]
     coords = {'dim_{0}'.format(i): range(shape[i]) for i in range(ndim)}
-    data_vars = {'foo_{0}'.format(i): (dims[:(i+1)], np.random.random(shape[:(i+1)])) for i in range(ndim)}
+
+    data_vars = {}
+    for ii in range(ndim):
+        data_array = np.random.random(shape[:ii+1])
+        data_dims = dims[:ii+1]
+
+        data_vars['foo_{0}'.format(ii)] = ( data_dims, data_array )
+
     ds = xr.Dataset(coords=coords, data_vars=data_vars)
     nc_file = str(tmpdir_factory.mktemp('data').join('foo.nc'))
     ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
@@ -32,6 +41,32 @@ def test_datacube(request, test_nd_netcdf, redisdb):
     if use_chunks:
         chunks = {dim: 3 for dim in ds.dims}
     d = Datacube('test', nc_file, redis_client=redisdb, chunks=chunks, max_cacheable_bytes=max_cacheable_bytes, num_chunks=1, max_workers=1)
+    return d, ds
+
+
+# TODO this is definitely not ideal, but when I attempted to insert nans into the test_nd_netcdf a bunch of other tests
+# broke. We should probably make those nan-safe.
+@pytest.fixture(scope='session')
+def test_nd_netcdf_nan(tmpdir_factory):
+
+    coords = {'nan_dim': np.arange(20)}
+    nan_array = np.arange(20, dtype=float)
+    nan_array[5:9] = np.nan
+    data_vars = {'foo_nan': ( ['nan_dim'], nan_array ) }
+
+    ds = xr.Dataset(coords=coords, data_vars=data_vars)
+    nc_file = str(tmpdir_factory.mktemp('data').join('foo_nan.nc'))
+    ds.to_netcdf(nc_file, format='NETCDF4', engine='h5netcdf')
+    return nc_file, ds
+
+
+@pytest.fixture()
+def test_datacube_nan(test_nd_netcdf_nan, redisdb):
+    nc_file, ds = test_nd_netcdf_nan
+
+    print(nc_file, ds)
+
+    d = Datacube('test', nc_file, redis_client=redisdb, max_workers=1)
     return d, ds
 
 
@@ -88,6 +123,14 @@ def test_raw_filters(test_datacube):
     assert r.foo_0.equals(ds.where(cond.any(dim='dim_1'), drop=True).foo_0)
     assert r.foo_1.equals(ds.where(cond, drop=True).foo_1)
     if 'foo_2' in ds: assert r.foo_2.equals(ds.where(cond, drop=True).foo_2)
+
+
+@pytest.mark.filterwarnings('ignore')
+def test_raw_filters_isnan(test_datacube_nan):
+    d, ds = test_datacube_nan
+
+    response = d.raw(filters=[{'field': 'foo_nan', 'op': 'isnan'}])
+    assert all(np.isnan(response['foo_nan'].values))
 
 
 @pytest.mark.filterwarnings('ignore')
