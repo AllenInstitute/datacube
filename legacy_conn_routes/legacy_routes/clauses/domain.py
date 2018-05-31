@@ -6,10 +6,10 @@ HEMISPHERE_MAP = {
     'b': 'bilateral'
 }
 
-DEFAULT_TARGET_THRESHOLD = ( 0.0, sys.float_info.max, )
+DEFAULT_DOMAIN_THRESHOLD = ( 0.0, sys.float_info.max, )
 
 
-def build_target_domain_clause(structure_ids, hemisphere='bilateral', threshold=DEFAULT_TARGET_THRESHOLD):
+def build_domain_clause(structure_ids, hemisphere='bilateral', injection=False, threshold=DEFAULT_DOMAIN_THRESHOLD):
     '''
     '''
 
@@ -18,7 +18,7 @@ def build_target_domain_clause(structure_ids, hemisphere='bilateral', threshold=
     filters.append({
         'field': 'volume',
         'coords': {
-            'injection': False, # TODO verify
+            'injection': injection,
             'hemisphere': hemisphere,
             'normalized': False
         },
@@ -29,7 +29,7 @@ def build_target_domain_clause(structure_ids, hemisphere='bilateral', threshold=
     filters.append({
         'field': 'volume',
         'coords': {
-            'injection': False, # TODO verify
+            'injection': injection,
             'hemisphere': hemisphere,
             'normalized': False
         },
