@@ -50,7 +50,8 @@ def get_structure_search_kwargs(
     injection_threshold=DEFAULT_TARGET_THRESHOLD,  # these are not actually used in the injection structures search
     showDetail=0, 
     startRow=0, 
-    numRows='all'
+    numRows='all',
+    acronym_id_map=None
     ):
     '''
 
@@ -63,7 +64,7 @@ def get_structure_search_kwargs(
     filters = []
 
     if injection_structures is not None:
-        filters.extend(build_injection_structures_clause(injection_structures, primary_structure_only))
+        filters.extend(build_injection_structures_clause(injection_structures, primary_structure_only, acronym_id_map=acronym_id_map))
 
     if target_domain is not None:
         hem, sids = decode_domain_str(target_domain)
@@ -98,7 +99,7 @@ def get_structure_search_kwargs(
     }
 
 
-def postprocess_search_differential_rows(df, showDetail):
+def postprocess_search_differential_rows(df, showDetail, ccf_store=None):
 
     df['volume'] = df.apply(
         lambda row: np.nansum(row['volume']),
@@ -113,7 +114,7 @@ def postprocess_search_differential_rows(df, showDetail):
 
     df = df.drop(columns=['transgenic_line_id'])
     df = postprocess_injection_coordinates(df)
-    df = postprocess_injection_structures(df)
+    df = postprocess_injection_structures(df, ccf_store)
 
     df = df.sort_values('injection_volume', ascending=False)
 

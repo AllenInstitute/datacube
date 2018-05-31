@@ -2,7 +2,7 @@
 from legacy_routes.clauses.injection_structures import build_injection_structures_clause
 from legacy_routes.clauses.products import build_product_clause
 from legacy_routes.clauses.transgenic_lines import build_transgenic_lines_clause
-from legacy_routes.utilities.response import postprocess_injection_coordinates
+from legacy_routes.utilities.response import postprocess_injection_coordinates, postprocess_injection_structures
 
 
 SPATIAL_SEARCH_DETAILED_FIELDS = [
@@ -36,7 +36,8 @@ def get_spatial_search_kwargs(
     showDetail=False, 
     sortOrder=None, 
     startRow=None, 
-    numRows='all'
+    numRows='all',
+    acronym_id_map=None
 ):
 
     filters = []
@@ -48,7 +49,7 @@ def get_spatial_search_kwargs(
         filters.extend(build_transgenic_lines_clause(transgenic_lines))
 
     if injection_structures is not None:
-        filters.extend(build_injection_structures_clause(injection_structures, primary_structure_only))
+        filters.extend(build_injection_structures_clause(injection_structures, primary_structure_only, acronym_id_map=acronym_id_map))
 
     return {
         'fields': SPATIAL_SEARCH_DETAILED_FIELDS,
@@ -62,7 +63,7 @@ def get_spatial_search_kwargs(
     }
 
 
-def postprocess_spatial_search(df):
+def postprocess_spatial_search(df, ccf_store=None):
 
     df['num-voxels'] = None
     df = postprocess_injection_coordinates(df)    
@@ -70,6 +71,8 @@ def postprocess_spatial_search(df):
     df['streamline'] = df.apply(lambda row: update_streamline(row['streamline'], row['injection-coordinates']), axis=1)
     df['density'] = df.apply(lambda row: row['streamline']['density'], axis=1)
     df['path'] = df.apply( lambda row: [ point for point in row['streamline']['coords'] ], axis=1)
+
+    df = postprocess_injection_structures(df, ccf_store)
 
     df = df.rename(columns={
         'data_set_id': 'id',

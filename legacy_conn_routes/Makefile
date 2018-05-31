@@ -7,6 +7,9 @@ export DATACUBE_WAMP_TRANSPORT
 DATACUBE_WAMP_REALM ?= "aibs"
 export DATACUBE_WAMP_REALM
 
+CCF_ONTOLOGY_FILE ?= "../mouse_ccf_data/ccf_ontology.json"
+export CCF_ONTOLOGY_FILE
+
 test: pytest_unit pytest_integration
 
 pytest_unit:
@@ -21,4 +24,4 @@ pytest_integration:
 
 run:
 	pipenv install
-	pipenv run python conn_bridge.py --port $(CONN_BRIDGE_PORT) --wamp_transport $(DATACUBE_WAMP_TRANSPORT) --wamp_realm $(DATACUBE_WAMP_REALM)
+	pipenv run python conn_bridge.py --port $(CONN_BRIDGE_PORT) --wamp_transport $(DATACUBE_WAMP_TRANSPORT) --wamp_realm $(DATACUBE_WAMP_REALM) --ontology_path $(CCF_ONTOLOGY_FILE)

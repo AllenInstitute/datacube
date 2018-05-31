@@ -3,7 +3,7 @@ import numpy as np
 from legacy_routes.clauses.injection_structures import build_injection_structures_clause
 from legacy_routes.clauses.transgenic_lines import build_transgenic_lines_clause
 from legacy_routes.clauses.products import build_product_clause
-from legacy_routes.utilities.response import dc_to_df, postprocess_injection_coordinates
+from legacy_routes.utilities.response import dc_to_df, postprocess_injection_coordinates, postprocess_injection_structures
 
 
 INJECTION_COORDINATE_DETAILED_FIELDS = [
@@ -40,7 +40,8 @@ def get_injection_coordinate_kwargs(
     product_ids=None,
     showDetail=False,
     startRow=0,
-    numRows='all'
+    numRows='all',
+    acronym_id_map=None
     ):
 
     filters = []
@@ -54,7 +55,7 @@ def get_injection_coordinate_kwargs(
         })
 
     if injection_structures is not None:
-        filters.extend(build_injection_structures_clause(injection_structures, primary_structure_only))
+        filters.extend(build_injection_structures_clause(injection_structures, primary_structure_only, acronym_id_map=acronym_id_map))
 
     if transgenic_lines is not None:
         filters.extend(build_transgenic_lines_clause(transgenic_lines))
@@ -70,7 +71,7 @@ def get_injection_coordinate_kwargs(
     }
 
 
-def postprocess_injection_coordinates_search(df, seed, showDetail):
+def postprocess_injection_coordinates_search(df, seed, showDetail, ccf_store=None):
 
     df = postprocess_injection_coordinates(df)
     seed = np.array(seed)
@@ -83,6 +84,8 @@ def postprocess_injection_coordinates_search(df, seed, showDetail):
         return df
 
     df['num-voxels'] = None
+
+    df = postprocess_injection_structures(df, ccf_store)
 
     df = df.rename(columns={
         'injection_structures': 'injection-structures',
