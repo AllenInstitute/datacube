@@ -690,17 +690,13 @@ class Datacube:
         return {'inds': {}, 'masks': [mask]}
 
 
-    def isnan_filter(self, field, select, coords, dataset):
+    def isnan_filter(self, filt, dataset):
         ''' Masks values equivalent to nan
 
         Parameters
         ----------
-        field : str
-            Dimension along which to filter.
-        select : dict
-            Select clause
-        coords : list
-            Coords clause
+        filt : dict
+            filter clause
         dataset : xarray.DataSet
             Dataset to filter
 
@@ -711,10 +707,53 @@ class Datacube:
 
         '''
 
+        field = filt['field']
+        select = filt.get('select', None)
+        coords = filt.get('coords', None)
+
         response = {'inds': {}, 'masks': []}
 
-        data = self._get_data(fields=field, select=select, coords=coords, df=dataset, drop=True)
-        response['masks'].append(data.isnull())
+        if dataset is not self.df or field not in self.argsorts or select or coords:
+            data = self._get_data(fields=field, select=select, coords=coords, df=dataset, drop=True)
+            response['masks'].append(data.isnull())
+
+        else:
+
+            filter_key = json.dumps([self.name, 'filter', filt['op'], field, select, coords])
+            cached = self.redis_client.get(filter_key)
+
+            if not cached:
+                inds = np.isnan(dataset[field].values.flat)
+                # inds = np.sort(self.argsorts[field][isnan])
+                self.redis_client.setnx(filter_key, pickle.dumps(inds))
+            else:
+                inds = pickle.loads(cached)
+
+            self.mask_from_filter_inds(dataset, field, inds, response=response)
+
+        return response
+
+
+    def mask_from_filter_inds(self, df, field, inds, response=None):
+
+        if response is None:
+            response = {'inds': {}, 'masks': []}
+
+        if 1 == df[field].ndim:
+            key = df[field].dims[0]
+            response['inds'][key] = xr.DataArray(inds, dims=df[field].dims)
+            return response
+
+        unravel_inds = np.unravel_index(inds, df[field].shape)
+        for i, dim in enumerate(df[field].dims):
+            response['inds'][dim] = xr.DataArray(np.unique(unravel_inds[i]), dims=dim)
+
+        #todo: upgrade xarray and use this:
+        #mask = xr.zeros_like(df[field], dtype=np.bool)
+
+        mask = xr.DataArray(np.zeros_like(df[field].values, dtype=np.bool), dims=df[field].dims)
+        mask.values.flat[inds] = True
+        response['masks'].append(mask)
 
         return response
 
@@ -725,7 +764,7 @@ class Datacube:
             return self.distance_filter(f['fields'], f['point'], f['value'], df)
 
         if f['op'] == 'isnan':
-            return self.isnan_filter(f['field'], f.get('select', None), f.get('coords', None), df)
+            return self.isnan_filter(f, df)
 
         op = f['op']
         field = f['field']
@@ -733,7 +772,7 @@ class Datacube:
         select = f.get('select', None)
         coords = f.get('coords', None)
 
-        def _filter_key(f):
+        def _filter_key(f, select, coords):
             return json.dumps([self.name, 'filter', f['op'], f['field'], f['value'], select, coords])
 
         res = {'inds': {}, 'masks': []}
@@ -757,7 +796,7 @@ class Datacube:
             #todo: convert 1-d masks to inds (?)
             res['masks'].append(mask)
         else:
-            filter_key = _filter_key(f)
+            filter_key = _filter_key(f, select, coords)
             cached = self.redis_client.get(filter_key)
             if not cached:
                 start = 0
@@ -778,17 +817,8 @@ class Datacube:
             else:
                 inds = pickle.loads(cached)
             
-            if 1==df[field].ndim:
-                res['inds'][df[field].dims[0]] = xr.DataArray(inds, dims=df[field].dims)
-            else:
-                unravel_inds = np.unravel_index(inds, df[field].shape)
-                for i, dim in enumerate(df[field].dims):
-                    res['inds'][dim] = xr.DataArray(np.unique(unravel_inds[i]), dims=dim)
-                #todo: upgrade xarray and use this:
-                #mask = xr.zeros_like(df[field], dtype=np.bool)
-                mask = xr.DataArray(np.zeros_like(df[field].values, dtype=np.bool), dims=df[field].dims)
-                mask.values.flat[inds] = True
-                res['masks'].append(mask)
+            self.mask_from_filter_inds(df, field, inds, response=res)
+
         return res
 
 

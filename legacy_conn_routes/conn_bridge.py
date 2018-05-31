@@ -89,7 +89,6 @@ def mouseconn_spatial(request):
     returnValue(simplejson.dumps(res))
 
 
-
 @app.route('/data/search/injection_rows', methods=('GET',))
 @inlineCallbacks
 def mouseconn_structure(request):
