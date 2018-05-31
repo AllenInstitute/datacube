@@ -726,8 +726,8 @@ class Datacube:
             cached = self.redis_client.get(filter_key)
 
             if not cached:
-                inds = np.isnan(dataset[field].values.flat)
-                # inds = np.sort(self.argsorts[field][isnan])
+                start = np.searchsorted(dataset[field].values.flat, np.nan, side='left', sorter=self.argsorts[field])
+                inds = np.sort(self.argsorts[field][start:])
                 self.redis_client.setnx(filter_key, pickle.dumps(inds))
             else:
                 inds = pickle.loads(cached)
