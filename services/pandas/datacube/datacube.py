@@ -737,17 +737,17 @@ class Datacube:
         return response
 
 
-    def mask_from_filter_inds(self, df, field, inds, response=None):
+    def mask_from_filter_inds(self, df, field, flat_inds, response=None):
 
         if response is None:
             response = {'inds': {}, 'masks': []}
 
         if 1 == df[field].ndim:
             key = df[field].dims[0]
-            response['inds'][key] = xr.DataArray(inds, dims=df[field].dims)
+            response['inds'][key] = xr.DataArray(flat_inds, dims=df[field].dims)
             return response
 
-        unravel_inds = np.unravel_index(inds, df[field].shape)
+        unravel_inds = np.unravel_index(flat_inds, df[field].shape)
         for i, dim in enumerate(df[field].dims):
             response['inds'][dim] = xr.DataArray(np.unique(unravel_inds[i]), dims=dim)
 
@@ -755,7 +755,7 @@ class Datacube:
         #mask = xr.zeros_like(df[field], dtype=np.bool)
 
         mask = xr.DataArray(np.zeros_like(df[field].values, dtype=np.bool), dims=df[field].dims)
-        mask.values.flat[inds] = True
+        mask.values.flat[flat_inds] = True
         response['masks'].append(mask)
 
         return response
