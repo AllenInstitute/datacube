@@ -39,6 +39,7 @@ def call_datacube(procedure, posargs, kwargs, echo=False):
     return wampapp.session.call(procedure, *posargs, **kwargs)
 
 
+@app.route('/data/P56/search/injection_coordinates', methods=('GET',))
 @app.route('/data/search/injection_coordinates', methods=('GET',))
 @inlineCallbacks
 def mouseconn_coordinate(request):
@@ -65,7 +66,7 @@ def mouseconn_coordinate(request):
     returnValue(simplejson.dumps(res))
 
 
-
+@app.route('/data/P56/projection_map/target', methods=('GET',))
 @app.route('/data/projection_map/target', methods=('GET',))
 @inlineCallbacks
 def mouseconn_spatial(request):
@@ -88,7 +89,7 @@ def mouseconn_spatial(request):
     res = package_json_response(res)
     returnValue(simplejson.dumps(res))
 
-
+@app.route('/data/P56/search/injection_rows', methods=('GET',))
 @app.route('/data/search/injection_rows', methods=('GET',))
 @inlineCallbacks
 def mouseconn_structure(request):
@@ -114,6 +115,7 @@ def mouseconn_structure(request):
     returnValue(simplejson.dumps(res))
 
 
+@app.route('/data/P56/search/correlated_rows', methods=('GET',))
 @app.route('/data/search/correlated_rows', methods=('GET',))
 @inlineCallbacks
 def mouseconn_correlation(request):
