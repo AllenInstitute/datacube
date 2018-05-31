@@ -130,7 +130,7 @@ def test_raw_filters_isnan(test_datacube_nan):
     d, ds = test_datacube_nan
 
     response = d.raw(filters=[{'field': 'foo_nan', 'op': 'isnan'}])
-    assert all(np.isnan(response['foo_nan'].values))
+    assert ds.where(ds.foo_nan.isnull(), drop=True)
 
 
 @pytest.mark.filterwarnings('ignore')
