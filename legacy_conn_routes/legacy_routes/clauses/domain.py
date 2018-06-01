@@ -1,3 +1,4 @@
+import ast
 import sys
 
 HEMISPHERE_MAP = {
@@ -6,10 +7,10 @@ HEMISPHERE_MAP = {
     'b': 'bilateral'
 }
 
-DEFAULT_TARGET_THRESHOLD = ( 0.0, sys.float_info.max, )
+DEFAULT_DOMAIN_THRESHOLD = ( 0.0, sys.float_info.max, )
 
 
-def build_target_domain_clause(structure_ids, hemisphere='bilateral', threshold=DEFAULT_TARGET_THRESHOLD):
+def build_domain_clause(structure_ids, hemisphere='bilateral', injection=False, threshold=DEFAULT_DOMAIN_THRESHOLD):
     '''
     '''
 
@@ -18,7 +19,7 @@ def build_target_domain_clause(structure_ids, hemisphere='bilateral', threshold=
     filters.append({
         'field': 'volume',
         'coords': {
-            'injection': False, # TODO verify
+            'injection': injection,
             'hemisphere': hemisphere,
             'normalized': False
         },
@@ -29,7 +30,7 @@ def build_target_domain_clause(structure_ids, hemisphere='bilateral', threshold=
     filters.append({
         'field': 'volume',
         'coords': {
-            'injection': False, # TODO verify
+            'injection': injection,
             'hemisphere': hemisphere,
             'normalized': False
         },
@@ -40,18 +41,50 @@ def build_target_domain_clause(structure_ids, hemisphere='bilateral', threshold=
     return [{'and': filters}]
 
 
-def decode_domain_str(domain_str, sep=None, root_structure=997):
+def decode_domain_str(
+    domain_str, 
+    sep=':', 
+    structure_sep=',', 
+    root_structure=997, 
+    bilateral='bilateral', 
+    acronym_id_map=None
+    ):
+    '''
 
-    if sep is None and domain_str[0] in HEMISPHERE_MAP:
-        hemisphere = HEMISPHERE_MAP[domain_str[0].lower()]
-        domain_str = domain_str[1:]
-    elif sep:
+    Notes
+    -----
+    supported formats are:
+    1. {hemisphere}:{structure_id},{structure_acronym},... in whatever order
+    2. {structure_id},{structure_acronym},... in whatever order
+    4. nothing at all
+
+    '''
+
+    if isinstance(domain_str, str) and domain_str == '':
+        return bilateral, [root_structure]
+
+    if isinstance(domain_str, str) and domain_str.lower() in HEMISPHERE_MAP and not sep in domain_str and not structure_sep in domain_str:
+        return HEMISPHERE_MAP[domain_str], [root_structure]
+
+    if isinstance(domain_str, int):
+        return bilateral, [domain_str]
+
+    if sep in domain_str:
         hemisphere, domain_str = domain_str.split(sep)
         hemisphere = HEMISPHERE_MAP[hemisphere.lower()]
     else:
-        hemisphere = 'bilateral'
+        hemisphere = bilateral
 
     if len(domain_str) == 0:
         domain_str = str(root_structure)
+    
+    structures = []
+    for st in domain_str.split(structure_sep):
+        try:
+            structures.append(int(ast.literal_eval(st)))
+        except(ValueError, TypeError):
+            if acronym_id_map is None:
+                raise TypeError('unable to parse structure {} without an acronym_id_map'.format(st))
+            structures.append(acronym_id_map[st])
 
-    return hemisphere, [int(ii) for ii in domain_str.split(',')]
+    return hemisphere, structures
