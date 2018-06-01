@@ -22,8 +22,7 @@ def build_domain_clause(structure_ids, hemisphere='bilateral', injection=False, 
         'coords': {
             'injection': injection,
             'hemisphere': hemisphere,
-            'normalized': False,
-            'structure': structure_ids
+            'normalized': False
         },
         'op': '>=',
         'value': threshold[0]
@@ -34,17 +33,13 @@ def build_domain_clause(structure_ids, hemisphere='bilateral', injection=False, 
         'coords': {
             'injection': injection,
             'hemisphere': hemisphere,
-            'normalized': False,
-            'structure': structure_ids
+            'normalized': False
         },
         'op': '<=',
         'value': threshold[1]
     })
 
-    return [{
-        'dims': 'structure',
-        'any': {'and': filters}
-    }]
+    return [{'and': filters}]
 
 
 def decode_domain_str(
