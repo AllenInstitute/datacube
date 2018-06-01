@@ -10,6 +10,7 @@ INJECTION_COORDINATE_DETAILED_FIELDS = [
     'data_set_id',
     'specimen_name',
     'structure_id',
+    'structure_name',
     'structure_abbrev',
     'primary_structure_color',
     'strain',
@@ -96,6 +97,7 @@ def postprocess_injection_coordinates_search(df, seed, showDetail, ccf_store=Non
         'specimen_name': 'name',
         'structure_abbrev': 'structure-abbrev',
         'primary_structure_color': 'structure-color',
+        'structure_name': 'structure-name',
         'transgenic_line': 'transgenic-line',
         'data_set_id': 'id'
     })

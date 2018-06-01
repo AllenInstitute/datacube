@@ -46,7 +46,7 @@ def get_correlation_search_kwargs(
     experiment_filters = []
     
     if domain is not None:
-        hem, sids = decode_domain_str(domain, sep=':')
+        hem, sids = decode_domain_str(domain, sep=':', acronym_id_map=acronym_id_map)
         filters.append({
             'field': 'ccf_structures_flat',
             'op': 'in',

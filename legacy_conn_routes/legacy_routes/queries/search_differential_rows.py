@@ -39,15 +39,30 @@ def nonoverlapping_structures_clause(structure_ids):
     }
 
 
+def handle_domain_threshold_args(args, key):
+
+    deprecated = '{}_threshold'.format(key)
+    preferred = '{}_domain_threshold'.format(key)
+
+    if deprecated in args and not preferred in args:
+        args[preferred] = args.pop(deprecated)
+
+    if deprecated in args and preferred in args:
+        if np.allclose(args[deprecated], args[preferred]):
+            pass
+        raise ValueError('Cannot specify both {} and {}'.format(deprecated, preferred))
+
+
+
 def get_structure_search_kwargs(
     injection_structures=None, 
     primary_structure_only=True, 
     target_domain=None, 
-    target_threshold=DEFAULT_DOMAIN_THRESHOLD, 
+    target_domain_threshold=DEFAULT_DOMAIN_THRESHOLD, 
     transgenic_lines=None, 
     product_ids=None, 
     injection_domain=None, 
-    injection_threshold=DEFAULT_DOMAIN_THRESHOLD,
+    injection_domain_threshold=DEFAULT_DOMAIN_THRESHOLD,
     showDetail=0, 
     startRow=0, 
     numRows='all',
@@ -71,7 +86,7 @@ def get_structure_search_kwargs(
     else:
         hem = 'bilateral'
         sids = [997]
-    filters.extend(build_domain_clause(sids, hem, False, target_threshold))
+    filters.extend(build_domain_clause(sids, hem, False, target_domain_threshold))
 
     if transgenic_lines is not None:
         filters.extend(build_transgenic_lines_clause(transgenic_lines))
