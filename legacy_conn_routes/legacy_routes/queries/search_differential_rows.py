@@ -47,7 +47,7 @@ def get_structure_search_kwargs(
     transgenic_lines=None, 
     product_ids=None, 
     injection_domain=None, 
-    injection_threshold=DEFAULT_DOMAIN_THRESHOLD,  # these are not actually used in the injection structures search
+    injection_threshold=DEFAULT_DOMAIN_THRESHOLD,
     showDetail=0, 
     startRow=0, 
     numRows='all',
@@ -67,7 +67,7 @@ def get_structure_search_kwargs(
         filters.extend(build_injection_structures_clause(injection_structures, primary_structure_only, acronym_id_map=acronym_id_map))
 
     if target_domain is not None:
-        hem, sids = decode_domain_str(target_domain)
+        hem, sids = decode_domain_str(target_domain, acronym_id_map=acronym_id_map)
     else:
         hem = 'bilateral'
         sids = [997]
@@ -108,15 +108,15 @@ def postprocess_search_differential_rows(df, showDetail, ccf_store=None):
     df = df.rename(columns={'volume': 'sum', 'data_set_id': 'id'})
     df['num-voxels'] = None
 
+    df = df.loc[df['sum'] > 0, :]
+    df = df.sort_values('sum', ascending=False)
+
     if not showDetail:
-        df = df.sort_values('sum', ascending=False)
         return df
 
     df = df.drop(columns=['transgenic_line_id'])
     df = postprocess_injection_coordinates(df)
     df = postprocess_injection_structures(df, ccf_store)
-
-    df = df.sort_values('injection_volume', ascending=False)
 
     df = df.rename(columns={
         'injection_structures': 'injection-structures',
