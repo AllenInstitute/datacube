@@ -86,13 +86,15 @@ def get_structure_search_kwargs(
     else:
         hem = 'bilateral'
         sids = [997]
-    filters.extend(build_domain_clause(sids, hem, False, target_domain_threshold))
+    filters.extend(build_domain_clause(sids, hem, False))
 
     if transgenic_lines is not None:
         filters.extend(build_transgenic_lines_clause(transgenic_lines))
 
     if product_ids is not None:
         filters.extend(build_product_clause(product_ids))
+
+    filters.append(nonoverlapping_structures_clause(sids))
 
     return {
         'fields': STRUCTURE_SEARCH_FIELDS_FULL if showDetail else STRUCTURE_SEARCH_FIELDS_DEFAULT, 
@@ -102,19 +104,11 @@ def get_structure_search_kwargs(
             'injection': False,
         }, 
         'select': {},
-        'filters': {
-            'and': [
-                {
-                'dims': 'structure',
-                'any': {'and': filters}
-                },
-                nonoverlapping_structures_clause(sids)
-            ]
-        }
+        'filters': {'and': filters}
     }
 
 
-def postprocess_search_differential_rows(df, showDetail, ccf_store=None):
+def postprocess_search_differential_rows(df, showDetail, sum_threshold=DEFAULT_DOMAIN_THRESHOLD, ccf_store=None):
 
     df['volume'] = df.apply(
         lambda row: np.nansum(row['volume']),
@@ -122,6 +116,10 @@ def postprocess_search_differential_rows(df, showDetail, ccf_store=None):
     )
     df = df.rename(columns={'volume': 'sum', 'data_set_id': 'id'})
     df['num-voxels'] = None
+
+    df = df.loc[df['sum'] >= sum_threshold[0], :]
+    df = df.loc[df['sum'] <= sum_threshold[1], :]
+
 
     df = df.loc[df['sum'] > 0, :]
     df = df.sort_values('sum', ascending=False)
