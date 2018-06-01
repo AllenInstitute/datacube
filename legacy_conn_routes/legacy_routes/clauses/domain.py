@@ -88,8 +88,6 @@ def decode_domain_str(
     if len(domain_str) == 0:
         domain_str = str(root_structure)
 
-    print(hemisphere, domain_str)
-
     structures = []
     for st in domain_str.split(structure_sep):
         try:
@@ -98,8 +96,5 @@ def decode_domain_str(
             if acronym_id_map is None:
                 raise TypeError('unable to parse structure {} without an acronym_id_map'.format(st))
             structures.append(acronym_id_map[st])
-
-    print('============================================================')
-    print(hemisphere, structures)
 
     return hemisphere, structures
