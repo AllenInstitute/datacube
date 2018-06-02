@@ -10,7 +10,9 @@ from twisted.web.server import Site
 from twisted.internet import reactor
 from twisted.python import log
 
-from legacy_routes.queries.search_differential_rows import get_structure_search_kwargs, postprocess_search_differential_rows
+from legacy_routes.clauses.domain import DEFAULT_DOMAIN_THRESHOLD   
+
+from legacy_routes.queries.search_differential_rows import get_structure_search_kwargs, postprocess_search_differential_rows, handle_domain_threshold_args
 from legacy_routes.queries.correlation_search import get_correlation_search_kwargs, postprocess_correlation_search
 from legacy_routes.queries.spatial_search import get_spatial_search_kwargs, postprocess_spatial_search
 from legacy_routes.queries.injection_coordinate import get_injection_coordinate_kwargs, postprocess_injection_coordinates_search
@@ -106,6 +108,8 @@ class ConnBridgeApp(object):
     def mouseconn_structure(self, request):
         
         args, echo = process_request(request)
+        handle_domain_threshold_args(args, 'injection')
+        handle_domain_threshold_args(args, 'target')
 
         res = yield call_datacube(
             'org.brain-map.api.datacube.raw.connectivity',
@@ -119,6 +123,7 @@ class ConnBridgeApp(object):
             process_df=functools.partial(
                 postprocess_search_differential_rows, 
                 showDetail=args.get('showDetail', False),
+                sum_threshold=args.get('target_domain_threshold', DEFAULT_DOMAIN_THRESHOLD),
                 ccf_store=self.ccf_store
             )
         )
