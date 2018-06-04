@@ -69,6 +69,7 @@ def einsum_corr(data, seed, axis, masks, mseed, backend=np, memoize=lambda k,f,*
     seed_num_samples = get_num_samples(seed, axis, [mseed], backend=backend)
     num_samples = memoize(['num_samples'], get_num_samples, data, axis, masks, backend=backend)
     both_samples = get_num_samples(data, axis, masks+[mseed], backend=backend)
+    mseed = mseed.astype(data.dtype)
     for i, mask in enumerate(masks):
         if mask.size<=mseed.size:
             masks[i] = mask.astype(data.dtype)
@@ -89,7 +90,6 @@ def einsum_corr(data, seed, axis, masks, mseed, backend=np, memoize=lambda k,f,*
     data_denominator = data_denominator+data_mean**2*num_samples
     data_denominator = data_denominator-2.0*data_mean*data_sum
 
-    denominator = np.sqrt(seed_denominator*data_denominator)
     denominator = np.sqrt(seed_denominator*data_denominator)
 
     corr = backend.clip(numerator / denominator, -1.0, 1.0)
