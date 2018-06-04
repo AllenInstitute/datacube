@@ -10,6 +10,9 @@ export DATACUBE_WAMP_REALM
 CCF_ONTOLOGY_FILE ?= "../mouse_ccf_data/ccf_ontology.json"
 export CCF_ONTOLOGY_FILE
 
+PIPENV_VENV_IN_PROJECT ?= 1
+export PIPENV_VENV_IN_PROJECT
+
 test: pytest_unit pytest_integration
 
 pytest_unit:
