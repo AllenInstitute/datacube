@@ -23,5 +23,8 @@ pytest_integration:
 	kill $$(ps aux | grep "[c]onn_bridge.py --port $(CONN_BRIDGE_PORT)" | awk '{print $$2}')
 
 run:
+	python conn_bridge.py --port $(CONN_BRIDGE_PORT) --wamp_transport $(DATACUBE_WAMP_TRANSPORT) --wamp_realm $(DATACUBE_WAMP_REALM) --ontology_path $(CCF_ONTOLOGY_FILE)
+
+run_pipenv:
 	pipenv install
 	pipenv run python conn_bridge.py --port $(CONN_BRIDGE_PORT) --wamp_transport $(DATACUBE_WAMP_TRANSPORT) --wamp_realm $(DATACUBE_WAMP_REALM) --ontology_path $(CCF_ONTOLOGY_FILE)
