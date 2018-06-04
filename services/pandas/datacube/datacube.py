@@ -286,7 +286,7 @@ class Datacube:
         except OSError:
             pass
 
-        disk_store = zarr.storage.LMDBStore(path)
+        disk_store = zarr.storage.LMDBStore(path, readonly=True)
         shm_store = zarr.storage.LMDBStore(shm_path)
 
         log.msg('cloning \'{}\' store to \'{}\'...'.format(path, shm_path), logLevel=logging.INFO)
@@ -354,7 +354,7 @@ class Datacube:
             if path.endswith('.nc'):
                 df = self.df
             elif path.endswith('.zarr.lmdb'):
-                disk_store = zarr.storage.LMDBStore(path)
+                disk_store = zarr.storage.LMDBStore(path, readonly=True)
                 df = xr.open_zarr(store=disk_store, auto_chunk=True)
 
             for field in persist:
