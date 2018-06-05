@@ -1,6 +1,9 @@
 # legacy_conn_routes
 Exposes a mouseconn-like http interface to the datacube.
 
+To start the bridge, use `make run` from this directory or `crossbar start` from the parent directory. Before starting the service,
+you must call `pipenv install` in this directory (using a consistent setting for `PIPENV_VENV_IN_PROJECT`).
+
 Please note that the Makefile specifies `PIPENV_VENV_IN_PROJECT=1`, causing pipenv to produce a virtualenv local to this 
 project folder. This might fail when running the bridge from a conda environement. In order to get around this issue you can 
 disable the local virtualenv by exporting `PIPENV_VENV_IN_PROJECT=0` or by installing virtualenv using conda.
