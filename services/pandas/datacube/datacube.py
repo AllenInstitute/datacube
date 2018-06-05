@@ -420,6 +420,21 @@ class Datacube:
 
 
     def check_fields_in_variables(self, fields, res=None):
+        ''' Asks if a field or fields are in a dataset's variables.
+
+        Parameters
+        ----------
+        fields : list or str
+            Check these fields.
+        res : xarray.Dataset, optional
+            Check against the variables of this dataset. Defaults to self.df
+
+        Raises
+        ------
+        ValueError : 
+            If any fields are missing they will be reported here.
+
+        '''
 
         if not fields:
             return
