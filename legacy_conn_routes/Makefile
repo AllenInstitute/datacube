@@ -29,4 +29,4 @@ install:
 	pipenv install
 
 run:
-	pipenv run python conn_bridge.py --port $(CONN_BRIDGE_PORT) --wamp_transport $(DATACUBE_WAMP_TRANSPORT) --wamp_realm $(DATACUBE_WAMP_REALM) --ontology_path $(CCF_ONTOLOGY_FILE)
+	bash loop.sh --port $(CONN_BRIDGE_PORT) --wamp_transport $(DATACUBE_WAMP_TRANSPORT) --wamp_realm $(DATACUBE_WAMP_REALM) --ontology_path $(CCF_ONTOLOGY_FILE)
