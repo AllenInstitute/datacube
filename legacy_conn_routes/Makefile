@@ -25,6 +25,8 @@ pytest_integration:
 	pipenv run python -m pytest test/integration --tb=short  --ignore test/integration/cache_integration_test_data.py || exit 0
 	kill $$(ps aux | grep "[c]onn_bridge.py --port $(CONN_BRIDGE_PORT)" | awk '{print $$2}')
 
-run:
+install:
 	pipenv install
+
+run:
 	pipenv run python conn_bridge.py --port $(CONN_BRIDGE_PORT) --wamp_transport $(DATACUBE_WAMP_TRANSPORT) --wamp_realm $(DATACUBE_WAMP_REALM) --ontology_path $(CCF_ONTOLOGY_FILE)
