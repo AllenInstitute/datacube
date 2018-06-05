@@ -328,3 +328,14 @@ def test_corr_filters(test_datacube):
 
         with pytest.raises(KeyError):
             r = d.corr('foo_2', 'dim_1', -1, filters={'or': [{'field': 'foo_1', 'op': '<=', 'value': 0.1}]})
+
+@pytest.mark.filterwarnings('ignore')
+def test_check_fields_in_variables(test_datacube):
+    d, ds = test_datacube
+
+    with pytest.raises(ValueError) as p:
+        r = d.raw(
+            filters=[{'field': 'foo_0', 'op': '<=', 'value': 0.25}],
+            fields='tiger'
+        )
+        assert('tiger' in repr(p))
