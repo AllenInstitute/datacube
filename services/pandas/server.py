@@ -34,14 +34,13 @@ from datacube import Datacube
 
 class PandasServiceComponent(ApplicationSession):
 
-
     def onConnect(self):
-        self.join(str(args.realm), [u'wampcra'], str(args.username))
+        self.join(str(self.realm), [u'wampcra'], str(self.username))
 
 
     def onChallenge(self, challenge):
         if challenge.method == u'wampcra':
-            signature = compute_wcs(str(args.password).encode('utf8'), challenge.extra['challenge'].encode('utf8'))
+            signature = compute_wcs(str(self.password).encode('utf8'), challenge.extra['challenge'].encode('utf8'))
             return signature.decode('ascii')
         else:
             raise Exception("don't know how to handle authmethod {}".format(challenge.method))
@@ -120,7 +119,7 @@ class PandasServiceComponent(ApplicationSession):
                 voxel['superior_inferior'] = int(conn.superior_inferior.sel(superior_inferior=voxel['superior_inferior'], method='nearest'))
                 voxel['left_right'] = int(conn.left_right.sel(left_right=voxel['left_right'], method='nearest'))
                 voxel_xyz = [voxel['anterior_posterior'], voxel['superior_inferior'], voxel['left_right']]
-                projection_map_dir = args.projection_map_dir
+                projection_map_dir = self.projection_map_dir
 
                 # timeout should be possible with options=CallOptions(timeout=XYZ), but this won't work until
                 #   https://github.com/crossbario/crossbar/issues/299 is implemented.
@@ -208,17 +207,8 @@ class PandasServiceComponent(ApplicationSession):
                                                           stop,
                                                           indexes,
                                                           fields,
-                                                          options={'max_records': args.max_records})
+                                                          options={'max_records': self.max_records})
 
-                    #res = yield pool.apply_async('datacube.select',
-                    #                             (filters,
-                    #                             sort,
-                    #                             ascending,
-                    #                             start,
-                    #                             stop,
-                    #                             indexes,
-                    #                             fields),
-                    #                             {'options': {'max_records': args.max_records}})
                     yield redis.setnx(request_cache_key, pickle.dumps(res))
                 else:
                     res = pickle.loads(cached)
@@ -313,55 +303,80 @@ class PandasServiceComponent(ApplicationSession):
         print('Server ready. ({})'.format(','.join(datacubes.keys())))
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Datacube Service')
-    parser.add_argument('router', help='url of WAMP router to connect to e.g. ws://localhost:9000/ws')
-    parser.add_argument('realm', help='WAMP realm name to join')
-    parser.add_argument('username', help='WAMP-CRA username')
-    parser.add_argument('password', help='WAMP-CRA secret')
-    parser.add_argument('dataset_manifest', help='JSON dataset manifest')
-    parser.add_argument('--session_name', type=str, default=None, help='Human-readable unique identifier for this session.')
-    parser.add_argument('--max-records', default=1000, help='maximum records to serve in a single request (default: %(default)s)')
-    parser.add_argument('--projection-map-dir', help='path to root of projection map directory structure e.g. /allen/aibs/informatics/heatmap/mouseconn_projection_maps_2017_09_11/P56/')
-    args = parser.parse_args()
+    @classmethod
+    def factory(cls, realm, username, password, max_records, projection_map_dir, *args, **kwargs):
+        ''' Builds an instance of this class and endows it with argued data
+        '''
+
+        service_component = cls()
+        service_component.realm  = realm
+        service_component.username = username
+        service_component.password = password
+        service_component.max_records = max_records
+        service_component.projection_map_dir = projection_map_dir
+
+        return service_component
+
+
+def main(router, realm, username, password, dataset_manifest, session_name, max_records, projection_map_dir):
+
     txaio.use_twisted()
     log = txaio.make_logger()
     txaio.start_logging(level='info')
 
-    #todo: get logging from processes working
-    #txpool.pool.WorkerProtocol.MAX_LENGTH = sys.maxsize
-    #process_pool = txpool.Pool(size=4, log=logging, init_call='datacube.worker.instance.load', init_args=(args.data_dir + 'cell_specimens.npy',))
-
     npy_file = ''
 
     datacubes={}
-    basepath = os.path.dirname(args.dataset_manifest)
-    with open(args.dataset_manifest, 'r') as datasets_json:
+    basepath = os.path.dirname(dataset_manifest)
+
+    with open(dataset_manifest, 'r') as datasets_json:
         datasets = json.load(datasets_json)
+
         for dataset in datasets:
             if dataset['enabled']:
-                data_dir = os.path.join(os.path.dirname(args.dataset_manifest), dataset['data-dir'])
+                data_dir = os.path.join(os.path.dirname(dataset_manifest), dataset['data-dir'])
 
                 if dataset['name'] == 'cell_specimens':
                     npy_file = os.path.join(data_dir, 'cell_specimens.npy')
 
                 if not os.path.exists(data_dir):
                     os.makedirs(data_dir)
+
                 existing = [os.path.exists(os.path.join(data_dir, f['path'])) for f in dataset['files']]
                 if sum(existing) < len(dataset['files']):
                     raise RuntimeError('Refusing to run with ' + str(sum(existing)) + ' files when expecting ' + str(len(dataset['files'])) + ', for dataset "' + dataset['name'] + '". Specify --recache option to generate files (will overwrite existing files).')
                     exit(1)
+
                 data_file = next(f for f in dataset['files'] if re.search('(\.nc|\.zarr\.lmdb)$', f['path']))
                 option_keys = ['chunks', 'max_response_size', 'max_cacheable_bytes', 'missing_data', 'calculate_stats', 'persist']
                 options = {k:v for k,v in iteritems(data_file) if k in option_keys}
+                
                 if not data_file['use_chunks']:
                     del options['chunks']
 
                 datacubes[dataset['name']] = Datacube(
                     dataset['name'],
                     os.path.join(data_dir, data_file['path']),
-                    session_name=args.session_name,
+                    session_name=session_name,
                     **options)
 
-    runner = ApplicationRunner(str(args.router), str(args.realm))
-    runner.run(PandasServiceComponent, auto_reconnect=True)
+    component_factory = functools.partial(PandasServiceComponent.factory, realm, username, password, max_records, projection_map_dir)
+
+    runner = ApplicationRunner(router, realm)
+    runner.run(component_factory, auto_reconnect=True)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Datacube Service')
+    parser.add_argument('router', type=str, help='url of WAMP router to connect to e.g. ws://localhost:9000/ws')
+    parser.add_argument('realm', type=str, help='WAMP realm name to join')
+    parser.add_argument('username', type=str, help='WAMP-CRA username')
+    parser.add_argument('password', type=str, help='WAMP-CRA secret')
+    parser.add_argument('dataset_manifest', type=str, help='JSON dataset manifest')
+    parser.add_argument('--session_name', type=str, default=None, help='Human-readable unique identifier for this session.')
+    parser.add_argument('--max-records', type=int, default=1000, help='maximum records to serve in a single request (default: %(default)s)')
+    parser.add_argument('--projection-map-dir', type=str, help='path to root of projection map directory structure e.g. /allen/aibs/informatics/heatmap/mouseconn_projection_maps_2017_09_11/P56/')
+    args = parser.parse_args()
+
+
+    main(args.router, args.realm, args.username, args.password, args.dataset_manifest, args.session_name, args.max_records, args.projection_map_dir)
