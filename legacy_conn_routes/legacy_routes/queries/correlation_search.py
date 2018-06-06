@@ -90,7 +90,7 @@ def postprocess_correlation_search(df, showDetail=False, ccf_store=None):
         'corr': 'r',
         'data_set_id': 'id',
     })
-    df['num-voxels'] = None # TODO: this can be dropped entirely, maybe?
+    df['num-voxels'] = None
 
     if not showDetail: 
         return df
