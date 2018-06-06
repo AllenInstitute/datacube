@@ -1,0 +1,89 @@
+{
+    "procedure": "org.brain-map.api.datacube.raw.connectivity",
+        "args": [],
+        "kwargs": {
+            "fields": [
+                "data_set_id",
+                "volume"
+            ],
+            "coords": {
+                "hemisphere": "bilateral",
+                "normalized": false,
+                "injection": false
+            },
+            "select": {
+                "experiment": {
+                    "start": 400,
+                    "stop": 500
+                }
+            },
+            "filters": {
+                "and": [
+                {
+                    "dims": "structure",
+                    "any": {
+                        "and": [
+                        {
+                            "and": [
+                            {
+                                "field": "volume",
+                                "coords": {
+                                    "injection": false,
+                                    "hemisphere": "bilateral",
+                                    "normalized": false
+                                },
+                                "op": ">=",
+                                "value": 0.0
+                            },
+                            {
+                                "field": "volume",
+                                "coords": {
+                                    "injection": false,
+                                    "hemisphere": "bilateral",
+                                    "normalized": false
+                                },
+                                "op": "<=",
+                                "value": 1.7976931348623157e+308
+                            }
+                            ]
+                        },
+                        {
+                            "or": [
+                            {
+                                "field": "transgenic_line_id",
+                                "op": "isnan"
+                            }
+                            ]
+                        }
+                        ]
+                    }
+                },
+                {
+                    "and": [
+                    {
+                        "field": "structure",
+                        "op": "in",
+                        "value": [
+                            997
+                        ]
+                    },
+                    {
+                        "count": {
+                            "field": "structures",
+                            "op": "in",
+                            "value": [
+                                997
+                            ]
+                        },
+                        "dims": [
+                            "depth"
+                        ],
+                        "op": "=",
+                        "value": 1
+                    }
+                    ]
+                }
+                ]
+            }
+        }
+}

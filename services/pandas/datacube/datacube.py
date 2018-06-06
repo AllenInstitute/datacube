@@ -430,23 +430,8 @@ class Datacube:
             assert(fields in list(res.variables))
         if filters:
             res, f = self._query(filters, df=res)
-        subscripts=None
         if fields:
             res = res[fields]
-        if select:
-            self._validate_select(select)
-            subscripts = self._get_subscripts_from_select(select)
-        if subscripts:
-            res = res.isel(**subscripts, drop=drop)
-        if coords:
-            # cast coords to correct type
-            coords = {dim: np.array(v, dtype=res.coords[dim].dtype).tolist() for dim,v in iteritems(coords)}
-            # apply all coords, rounding to nearest when possible
-            for dim, coord in iteritems(coords):
-                try:
-                    res = res.sel(**{dim: coord}, drop=drop, method='nearest')
-                except ValueError:
-                    res = res.sel(**{dim: coord}, drop=drop)
         if filters and f['masks']:
             #ds = res.load()
             ds = res
@@ -464,6 +449,21 @@ class Datacube:
                         res.coords[field] = reduced.coords[field]
                 for coord in res[field].coords:
                     res.coords[coord] = res[field].coords[coord]
+        subscripts=None
+        if select:
+            self._validate_select(select)
+            subscripts = self._get_subscripts_from_select(select)
+        if subscripts:
+            res = res.isel(**{dim: subscripts[dim] for dim in subscripts if dim in res}, drop=drop)
+        if coords:
+            # cast coords to correct type
+            coords = {dim: np.array(v, dtype=res.coords[dim].dtype).tolist() for dim,v in iteritems(coords)}
+            # apply all coords, rounding to nearest when possible
+            for dim, coord in iteritems(coords):
+                try:
+                    res = res.sel(**{dim: coord}, drop=drop, method='nearest')
+                except ValueError:
+                    res = res.sel(**{dim: coord}, drop=drop)
         if dim_order:
             res = res.transpose(*dim_order)
         return res
