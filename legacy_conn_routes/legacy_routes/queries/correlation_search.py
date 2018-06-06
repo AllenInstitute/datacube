@@ -44,6 +44,7 @@ def get_correlation_search_kwargs(
 
     filters = []
     experiment_filters = []
+    seed_filter = {"field": 'experiment', "op": "=", "value": seed}
     
     if domain is not None:
         hem, sids = decode_domain_str(domain, sep=':', acronym_id_map=acronym_id_map)
@@ -63,17 +64,23 @@ def get_correlation_search_kwargs(
         experiment_filters.extend(build_injection_structures_clause(injection_structures, primary_structure_only, acronym_id_map=acronym_id_map))
 
     if experiment_filters:
-        filters.append({
-            'field': 'experiment',
-            'op': '>',
-            'value': -1
-        })
 
-        filters = {"or": [{"field": 'experiment', "op": "=", "value": seed}, {'and': filters + experiment_filters}]}
+        experiment_filters.append({'field': 'experiment', 'op': '>', 'value': -1})
+        
+
+        experiment_filters = {
+            'or': [
+                seed_filter,
+                {
+                    'and': experiment_filters
+                }
+            ]
+        }
+        filters.append(experiment_filters)
 
     return {
         'fields': CORR_SEARCH_DETAILED_FIELDS if showDetail else CORR_SEARCH_BASE_FIELDS,
-        'filters': filters
+        'filters': {'and': filters}
     }
 
 
