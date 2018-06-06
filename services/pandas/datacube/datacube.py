@@ -419,15 +419,51 @@ class Datacube:
         return subscripts
 
 
+    def check_fields_in_variables(self, fields, res=None):
+        ''' Asks if a field or fields are in a dataset's variables.
+
+        Parameters
+        ----------
+        fields : list or str
+            Check these fields.
+        res : xarray.Dataset, optional
+            Check against the variables of this dataset. Defaults to self.df
+
+        Raises
+        ------
+        ValueError : 
+            If any fields are missing they will be reported here.
+
+        '''
+
+        if not fields:
+            return
+
+        if res is None:
+            res = self.df
+
+        if not isinstance(fields, list):
+            fields = [fields]
+
+        missing = []
+        variables = list(res.variables)
+
+        for field in fields:
+            if not field in variables:
+                missing.append(field)
+
+        if len(missing) > 0:
+            raise ValueError('requested fields: {}, which are unavailable.'.format(', '.join(missing)))
+
+
     def _get_data(self, select=None, coords=None, fields=None, filters=None, dim_order=None, df=None, drop=False):
         if df is not None:
             res = df
         else:
             res = self.df
-        if isinstance(fields, list):
-            assert(all(f in list(res.variables) for f in fields))
-        elif fields:
-            assert(fields in list(res.variables))
+        
+        self.check_fields_in_variables(fields, res)
+
         if filters:
             res, f = self._query(filters, df=res)
         if fields:
