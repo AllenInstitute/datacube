@@ -449,7 +449,7 @@ class Datacube:
         variables = list(res.variables)
 
         for field in fields:
-            if not field in res:
+            if not field in variables:
                 missing.append(field)
 
         if len(missing) > 0:
