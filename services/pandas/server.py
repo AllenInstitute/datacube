@@ -32,6 +32,9 @@ from builtins import bytes
 from datacube import Datacube
 
 
+VALID_OPTIONS = ('path', 'use_chunks', 'chunks', 'max_response_size', 'max_cacheable_bytes', 'missing_data', 'calculate_stats', 'persist')
+
+
 class PandasServiceComponent(ApplicationSession):
 
     def onConnect(self):
@@ -342,6 +345,48 @@ def setup_data_dir(basepath, dataset):
     return data_dir, cell_specimens_npy_file
 
 
+def build_datacubes_from_dataset(dataset, data_dir, file_regex='(\.nc|\.zarr\.lmdb)$', valid_options=VALID_OPTIONS, overrides=None):
+
+    datacubes = {}
+
+    if overrides is None:
+        overrides = {}
+
+    data_file = next(fil for fil in dataset['files'] if re.search(file_regex, fil['path']))
+
+    options = {}
+    bad_options = []
+
+    for key, value in data_file.items():
+        if key in valid_options:
+            options[key] = value
+        else:
+            bad_options.append(key)
+
+    if len(bad_options) > 0:
+        bad_options_str = ', '.join(bad_options)
+        raise RuntimeError('Invalid options provided for file {}. Did not recognize: {}'.format(
+            data_file['path'], bad_options_str
+        ))
+        exit(1)
+
+    if not data_file['use_chunks']:
+        del options['chunks']
+
+    if 'path' in options:
+        del options['path']
+    if 'use_chunks' in options:
+        del options['use_chunks']
+
+    options.update(overrides)
+    datacubes[dataset['name']] = Datacube(
+        dataset['name'],
+        os.path.join(data_dir, data_file['path']),
+        **options)
+
+    return datacubes
+
+
 def setup_datacubes(datasets, basepath, **kwargs):
 
     datacubes = {}
@@ -352,19 +397,7 @@ def setup_datacubes(datasets, basepath, **kwargs):
             continue
 
         data_dir, cell_specimens_npy_file = setup_data_dir(basepath, dataset)
-
-        data_file = next(f for f in dataset['files'] if re.search('(\.nc|\.zarr\.lmdb)$', f['path']))
-        option_keys = ['chunks', 'max_response_size', 'max_cacheable_bytes', 'missing_data', 'calculate_stats', 'persist']
-        options = {k:v for k,v in iteritems(data_file) if k in option_keys}
-        
-        if not data_file['use_chunks']:
-            del options['chunks']
-
-        options.update(kwargs)
-        datacubes[dataset['name']] = Datacube(
-            dataset['name'],
-            os.path.join(data_dir, data_file['path']),
-            **options)
+        datacubes.update(build_datacubes_from_dataset(dataset, data_dir, overrides=kwargs))
 
     return datacubes, cell_specimens_npy_file
 
@@ -374,8 +407,6 @@ def main(router, realm, username, password, dataset_manifest, session_name, max_
     txaio.use_twisted()
     log = txaio.make_logger()
     txaio.start_logging(level='info')
-
-    npy_file = ''
 
     basepath = os.path.dirname(dataset_manifest)
     with open(dataset_manifest, 'r') as datasets_json:
