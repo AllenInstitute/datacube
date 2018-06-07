@@ -437,7 +437,7 @@ class Datacube:
             self._validate_select(select)
             subscripts = self._get_subscripts_from_select(select)
         if subscripts:
-            res = res.isel(**subscripts, drop=drop)
+            res = res.isel(**{dim: subscripts[dim] for dim in subscripts if dim in res}, drop=drop)
         if coords:
             # cast coords to correct type
             coords = {dim: np.array(v, dtype=res.coords[dim].dtype).tolist() for dim,v in iteritems(coords)}
