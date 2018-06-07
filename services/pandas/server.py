@@ -305,6 +305,27 @@ class PandasServiceComponent(ApplicationSession):
         return service_component
 
 
+def check_data_files(data_dir, dataset):
+
+    missing_files = []
+    for file_record in dataset['files']:
+        file_path = os.path.join(data_dir, file_record['path'])
+        
+        if not os.path.exists(file_path):
+            missing_files.append(file_path)
+
+    if len(missing_files) > 0:
+        missing_file_str = ', '.join(missing_files)
+        raise RuntimeError(
+            'Refusing to run with {} files missing (out of {}) '
+            'for dataset {}. Missing files at: {}. '
+            'Specify --recache option to generate files (will overwrite existing files).'.format(
+                len(missing_files), len(dataset['files']), dataset['name'], missing_file_str
+            )
+        )
+        exit(1)
+
+
 def setup_data_dir(basepath, dataset):
 
     data_dir = os.path.join(basepath, dataset['data-dir'])
@@ -317,11 +338,7 @@ def setup_data_dir(basepath, dataset):
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
 
-    existing = [os.path.exists(os.path.join(data_dir, f['path'])) for f in dataset['files']]
-    if sum(existing) < len(dataset['files']):
-        raise RuntimeError('Refusing to run with ' + str(sum(existing)) + ' files when expecting ' + str(len(dataset['files'])) + ', for dataset "' + dataset['name'] + '". Specify --recache option to generate files (will overwrite existing files).')
-        exit(1)
-
+    check_data_files(data_dir, dataset)
     return data_dir, cell_specimens_npy_file
 
 
