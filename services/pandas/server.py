@@ -155,7 +155,7 @@ class PandasServiceComponent(ApplicationSession):
                                   fields=None):
             #todo: optimize xarray single-row access, and remove this
             if filters is None and sort is None and (start is None or start==0) and stop is None and isinstance(indexes, list):
-                sa=np.load(npy_file, mmap_mode='r')
+                sa=np.load(self.cell_specimens_npy_file, mmap_mode='r')
 
                 def _format_structured_array_response(sa):
                     data = []
@@ -194,6 +194,7 @@ class PandasServiceComponent(ApplicationSession):
                 request_cache_key = json.dumps(['request', name, filters, sort, ascending, start, stop, indexes, fields])
                 cached = yield redis.get(request_cache_key)
 
+                if not cached:
                     res = yield threads.deferToThread(
                         _ensure_computed, datacube.select, 'dim_0', 
                         filters, sort, ascending, start, stop, indexes, fields,
@@ -286,7 +287,9 @@ class PandasServiceComponent(ApplicationSession):
 
 
     @classmethod
-    def factory(cls, datacubes, realm, username, password, max_records, projection_map_dir, *args, **kwargs):
+    def factory(cls, 
+        datacubes, realm, username, password, max_records, projection_map_dir, cell_specimens_npy_file, 
+        *args, **kwargs):
         ''' Builds an instance of this class and endows it with argued data
         '''
 
@@ -297,8 +300,56 @@ class PandasServiceComponent(ApplicationSession):
         service_component.password = password
         service_component.max_records = max_records
         service_component.projection_map_dir = projection_map_dir
+        service_component.cell_specimens_npy_file = cell_specimens_npy_file
 
         return service_component
+
+
+def setup_data_dir(basepath, dataset):
+
+    data_dir = os.path.join(basepath, dataset['data-dir'])
+
+    if dataset['name'] == 'cell_specimens':
+        cell_specimens_npy_file = os.path.join(data_dir, 'cell_specimens.npy')
+    else:
+        cell_specimens_npy_file = ''
+
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+
+    existing = [os.path.exists(os.path.join(data_dir, f['path'])) for f in dataset['files']]
+    if sum(existing) < len(dataset['files']):
+        raise RuntimeError('Refusing to run with ' + str(sum(existing)) + ' files when expecting ' + str(len(dataset['files'])) + ', for dataset "' + dataset['name'] + '". Specify --recache option to generate files (will overwrite existing files).')
+        exit(1)
+
+    return data_dir, cell_specimens_npy_file
+
+
+def setup_datacubes(datasets, basepath, **kwargs):
+
+    datacubes = {}
+
+    for dataset in datasets:
+
+        if not dataset['enabled']:
+            continue
+
+        data_dir, cell_specimens_npy_file = setup_data_dir(basepath, dataset)
+
+        data_file = next(f for f in dataset['files'] if re.search('(\.nc|\.zarr\.lmdb)$', f['path']))
+        option_keys = ['chunks', 'max_response_size', 'max_cacheable_bytes', 'missing_data', 'calculate_stats', 'persist']
+        options = {k:v for k,v in iteritems(data_file) if k in option_keys}
+        
+        if not data_file['use_chunks']:
+            del options['chunks']
+
+        options.update(kwargs)
+        datacubes[dataset['name']] = Datacube(
+            dataset['name'],
+            os.path.join(data_dir, data_file['path']),
+            **options)
+
+    return datacubes, cell_specimens_npy_file
 
 
 def main(router, realm, username, password, dataset_manifest, session_name, max_records, projection_map_dir):
@@ -309,42 +360,13 @@ def main(router, realm, username, password, dataset_manifest, session_name, max_
 
     npy_file = ''
 
-    datacubes={}
     basepath = os.path.dirname(dataset_manifest)
-
     with open(dataset_manifest, 'r') as datasets_json:
         datasets = json.load(datasets_json)
-
-        for dataset in datasets:
-            if dataset['enabled']:
-                data_dir = os.path.join(os.path.dirname(dataset_manifest), dataset['data-dir'])
-
-                if dataset['name'] == 'cell_specimens':
-                    npy_file = os.path.join(data_dir, 'cell_specimens.npy')
-
-                if not os.path.exists(data_dir):
-                    os.makedirs(data_dir)
-
-                existing = [os.path.exists(os.path.join(data_dir, f['path'])) for f in dataset['files']]
-                if sum(existing) < len(dataset['files']):
-                    raise RuntimeError('Refusing to run with ' + str(sum(existing)) + ' files when expecting ' + str(len(dataset['files'])) + ', for dataset "' + dataset['name'] + '". Specify --recache option to generate files (will overwrite existing files).')
-                    exit(1)
-
-                data_file = next(f for f in dataset['files'] if re.search('(\.nc|\.zarr\.lmdb)$', f['path']))
-                option_keys = ['chunks', 'max_response_size', 'max_cacheable_bytes', 'missing_data', 'calculate_stats', 'persist']
-                options = {k:v for k,v in iteritems(data_file) if k in option_keys}
-                
-                if not data_file['use_chunks']:
-                    del options['chunks']
-
-                datacubes[dataset['name']] = Datacube(
-                    dataset['name'],
-                    os.path.join(data_dir, data_file['path']),
-                    session_name=session_name,
-                    **options)
-
+        
+    datacubes, cell_specimens_npy_file = setup_datacubes(datasets, basepath, session_name=session_name)
     component_factory = functools.partial(PandasServiceComponent.factory, 
-        datacubes, realm, username, password, max_records, projection_map_dir
+        datacubes, realm, username, password, max_records, projection_map_dir, cell_specimens_npy_file
     )
 
     runner = ApplicationRunner(router, realm)
