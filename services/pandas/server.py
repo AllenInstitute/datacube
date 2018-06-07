@@ -62,7 +62,7 @@ class PandasServiceComponent(ApplicationSession):
         @inlineCallbacks
         def info(name=None):
             try:
-                datacube = datacubes[name]
+                datacube = self.datacubes[name]
                 res = yield threads.deferToThread(_ensure_computed, datacube.info)
                 returnValue(res)
             except Exception as e:
@@ -73,7 +73,7 @@ class PandasServiceComponent(ApplicationSession):
         @inlineCallbacks
         def raw(fields=None, select=None, coords=None, filters=None, name=None):
             try:
-                datacube = datacubes[name]
+                datacube = self.datacubes[name]
                 res = yield threads.deferToThread(_ensure_computed, datacube.raw, select, coords, fields, filters)
                 returnValue(res.to_dict())
             except Exception as e:
@@ -84,7 +84,7 @@ class PandasServiceComponent(ApplicationSession):
         @inlineCallbacks
         def image(field, select=None, coords=None, image_format='jpeg', dim_order=None, name=None):
             try:
-                datacube = datacubes[name]
+                datacube = self.datacubes[name]
                 res = yield threads.deferToThread(_ensure_computed, datacube.image, select, coords, field, dim_order, image_format)
                 returnValue(res)
             except Exception as e:
@@ -95,7 +95,7 @@ class PandasServiceComponent(ApplicationSession):
         @inlineCallbacks
         def corr(field, dim, seed_idx, fields=None, select=None, coords=None, filters=None, name=None):
             try:
-                datacube = datacubes[name]
+                datacube = self.datacubes[name]
                 res = yield threads.deferToThread(_ensure_computed, datacube.corr, field, dim, seed_idx, select=select, coords=coords, filters=filters)
                 res = res.where(res.corr.notnull(), drop=True)
                 res = res.sortby('corr', ascending=False)
@@ -112,7 +112,7 @@ class PandasServiceComponent(ApplicationSession):
         def conn_spatial_search(voxel, fields=None, select=None, coords=None, filters=None):
             try:
                 name = 'connectivity'
-                conn_datacube = datacubes[name]
+                conn_datacube = self.datacubes[name]
                 conn = conn_datacube.df
                 # round input voxel to nearest coordinate (conn datacube and streamlines are both at 100 micron resolution)
                 voxel['anterior_posterior'] = int(conn.anterior_posterior.sel(anterior_posterior=voxel['anterior_posterior'], method='nearest'))
@@ -190,7 +190,7 @@ class PandasServiceComponent(ApplicationSession):
                    indexes=None,
                    fields=None):
             try:
-                datacube = datacubes[name]
+                datacube = self.datacubes[name]
                 request_cache_key = json.dumps(['request', name, filters, sort, ascending, start, stop, indexes, fields])
                 cached = yield redis.get(request_cache_key)
                 if not cached:
@@ -260,11 +260,11 @@ class PandasServiceComponent(ApplicationSession):
             #        else:
             #            raise RuntimeError('Must specify datacube name when server has more than one datacube loaded (' + ', '.join(datacubes.keys()) + ').')
             #    return datacubes[name]
-            if 'connectivity' in datacubes:
+            if 'connectivity' in self.datacubes:
                 yield self.register(conn_spatial_search,
                                     u'org.brain-map.api.datacube.conn_spatial_search',
                                     options=RegisterOptions(invoke=u'roundrobin'))
-            for name in datacubes.keys():
+            for name in self.datacubes.keys():
                 yield self.register(lambda: True,
                                     u'org.brain-map.api.datacube.status.' + name + '.' + str(details.session),
                                     options=RegisterOptions())
@@ -285,7 +285,7 @@ class PandasServiceComponent(ApplicationSession):
                                     options=RegisterOptions(invoke=u'roundrobin'))
 
             # legacy
-            if 'cell_specimens' in datacubes:
+            if 'cell_specimens' in self.datacubes:
                 yield self.register(filter_cell_specimens,
                                     u'org.alleninstitute.pandas_service.filter_cell_specimens',
                                     options=RegisterOptions(invoke=u'roundrobin'))
@@ -300,15 +300,16 @@ class PandasServiceComponent(ApplicationSession):
         except Exception as e:
             print("could not register procedure: {0}".format(e))
 
-        print('Server ready. ({})'.format(','.join(datacubes.keys())))
+        print('Server ready. ({})'.format(','.join(self.datacubes.keys())))
 
 
     @classmethod
-    def factory(cls, realm, username, password, max_records, projection_map_dir, *args, **kwargs):
+    def factory(cls, datacubes, realm, username, password, max_records, projection_map_dir, *args, **kwargs):
         ''' Builds an instance of this class and endows it with argued data
         '''
 
-        service_component = cls()
+        service_component = cls(*args, **kwargs)
+        service_component.datacubes = datacubes
         service_component.realm  = realm
         service_component.username = username
         service_component.password = password
@@ -360,7 +361,9 @@ def main(router, realm, username, password, dataset_manifest, session_name, max_
                     session_name=session_name,
                     **options)
 
-    component_factory = functools.partial(PandasServiceComponent.factory, realm, username, password, max_records, projection_map_dir)
+    component_factory = functools.partial(PandasServiceComponent.factory, 
+        datacubes, realm, username, password, max_records, projection_map_dir
+    )
 
     runner = ApplicationRunner(router, realm)
     runner.run(component_factory, auto_reconnect=True)
