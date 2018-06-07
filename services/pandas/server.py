@@ -193,21 +193,12 @@ class PandasServiceComponent(ApplicationSession):
                 datacube = self.datacubes[name]
                 request_cache_key = json.dumps(['request', name, filters, sort, ascending, start, stop, indexes, fields])
                 cached = yield redis.get(request_cache_key)
-                if not cached:
-                    #res = yield threads.deferToThreadPool(reactor,
-                    #                                      thread_pool,
+
                     res = yield threads.deferToThread(
-                                                          _ensure_computed,
-                                                          datacube.select,
-                                                          'dim_0',
-                                                          filters,
-                                                          sort,
-                                                          ascending,
-                                                          start,
-                                                          stop,
-                                                          indexes,
-                                                          fields,
-                                                          options={'max_records': self.max_records})
+                        _ensure_computed, datacube.select, 'dim_0', 
+                        filters, sort, ascending, start, stop, indexes, fields,
+                        options={'max_records': self.max_records}
+                    )
 
                     yield redis.setnx(request_cache_key, pickle.dumps(res))
                 else:
@@ -251,15 +242,6 @@ class PandasServiceComponent(ApplicationSession):
             #txredis_client = yield clientCreator.connectTCP('localhost', 6379)
             redis = yield txredisapi.ConnectionPool()
 
-            #yield pool.on_ready(timeout=30)
-
-            #def _get_datacube(name=None):
-            #    if name is None:
-            #        if 1==len(datacubes):
-            #            name = list(datacubes.keys())[0]
-            #        else:
-            #            raise RuntimeError('Must specify datacube name when server has more than one datacube loaded (' + ', '.join(datacubes.keys()) + ').')
-            #    return datacubes[name]
             if 'connectivity' in self.datacubes:
                 yield self.register(conn_spatial_search,
                                     u'org.brain-map.api.datacube.conn_spatial_search',
