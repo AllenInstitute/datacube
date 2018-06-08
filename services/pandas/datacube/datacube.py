@@ -614,6 +614,10 @@ class Datacube:
 
     def corr(self, field, dim, seed_idx, select=None, coords=None, filters=None):
         ds, f = self._get_field(field, select, coords, filters, in_memory_only=True)
+        for i, mask in enumerate(f['masks']):
+            if mask.dims == (dim,):
+                mask.loc[{dim: seed_idx}] = True
+                f['masks'][i] = mask
         key_prefix = [self.name, 'mdata', field, select, filters]
         memoize = lambda key, f, *args, **kwargs: self._memoize(key_prefix+key, f, *args, **kwargs)
         res = par_correlation(ds, seed_idx, dim, self.num_chunks, self.max_workers, memoize=memoize)
