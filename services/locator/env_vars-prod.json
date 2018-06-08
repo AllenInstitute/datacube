@@ -1,6 +1,6 @@
 {
-    "streamline_lookup":        "http://api.brain-map.org/api/v2/data/SectionDataSet/{0}.json",
-    "reconstruction_lookup":    "http://api.brain-map.org/api/v2/data/Specimen/{0}.json?include=neuron_reconstructions(well_known_files)",
+    "streamline_lookup":        "http://warehouseapp/api/v2/data/SectionDataSet/{0}.json",
+    "reconstruction_lookup":    "http://warehouseapp/api/v2/data/Specimen/{0}.json?include=neuron_reconstructions(well_known_files)",
     "p56_file_path":            "../../conn_data/surface_coords_10.h5",
     "ccf_ontology":             "../../mouse_ccf_data/ccf_ontology.json",
     "ccf_model_path":           "../../structure_meshes/{0}.obj",
