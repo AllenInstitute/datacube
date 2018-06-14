@@ -4,7 +4,7 @@ import functools
 
 import simplejson
 from klein import Klein
-from autobahn.twisted.wamp import Application, ApplicationRunner, ApplicationSession
+from autobahn.twisted.wamp import ApplicationRunner, ApplicationSession
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.web.server import Site
 from twisted.internet import reactor
