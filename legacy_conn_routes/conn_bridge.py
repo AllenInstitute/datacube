@@ -4,7 +4,7 @@ import functools
 
 import simplejson
 from klein import Klein
-from autobahn.twisted.wamp import Application
+from autobahn.twisted.wamp import Application, ApplicationRunner, ApplicationSession
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.web.server import Site
 from twisted.internet import reactor
@@ -23,7 +23,12 @@ from legacy_routes.utilities.response import add_json_headers, add_csv_headers, 
 from legacy_routes.utilities.ccf_data_store import CcfDataStore
 
 
-wampapp = Application()
+session = [None]
+
+
+class GlobalSessionComponent(ApplicationSession):
+    def onJoin(self, details):
+        session[0] = self
 
 
 def process_request(request):
@@ -38,7 +43,7 @@ def process_request(request):
 def call_datacube(procedure, posargs, kwargs, echo=False):
     if echo:
         returnValue(simplejson.dumps({'procedure': procedure, 'args': posargs, 'kwargs': kwargs}))
-    return wampapp.session.call(procedure, *posargs, **kwargs)
+    return session[0].call(procedure, *posargs, **kwargs)
 
 
 class ConnBridgeApp(object):
@@ -174,9 +179,10 @@ def main():
         ccf_store = CcfDataStore(args.ontology_path)
 
     cba = ConnBridgeApp(ccf_store)
-
     reactor.listenTCP(args.port, Site(cba.app.resource()))
-    wampapp.run(args.wamp_transport, args.wamp_realm)
+
+    runner = ApplicationRunner(str(args.wamp_transport), str(args.wamp_realm))
+    runner.run(GlobalSessionComponent, auto_reconnect=True)
 
 
 if __name__ == '__main__':
