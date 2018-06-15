@@ -165,11 +165,9 @@ class ConnBridgeApp(object):
 
 
     @app.route('/data/health', methods=('GET',))
-    @inlineCallbacks
     def health(self, request):
-        res = yield {}
-        res = package_json_response(res)
-        returnValue(simplejson.dumps(res))
+        res = package_json_response({})
+        return simplejson.dumps(res)
 
 
 def main():
@@ -186,8 +184,6 @@ def main():
 
 
 if __name__ == '__main__':
-    log.startLogging(sys.stdout)
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--wamp_transport', type=str, default='ws://tdatacube:8080/ws')
     parser.add_argument('--wamp_realm', type=str, default='aibs')
