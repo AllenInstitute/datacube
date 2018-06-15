@@ -134,7 +134,7 @@
                         "cgi": {
                             "type": "cgi",
                             "directory": "../cgi",
-                            "processor": "python"
+                            "processor": "../python-cgi.sh"
                         }
                     }
                 }
