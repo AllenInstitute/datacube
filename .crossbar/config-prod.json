@@ -70,9 +70,13 @@
                             }
                         },
                         "mouseconn": {
-                            "type": "reverseproxy",
-                            "host": "localhost",
-                            "port": 39608
+                            "type": "resource",
+                            "classname": "conn_bridge.resource",
+                            "extra": [
+                                "--wamp_transport", "ws://localhost:8080/ws",
+                                "--wamp_realm", "aibs",
+                                "--ontology_path", "../mouse_ccf_data/ccf_ontology.json"
+                            ]
                         },
                         "ws": {
                             "type": "websocket",
@@ -140,6 +144,9 @@
                 }
             ],
             "options":{
+                "pythonpath": [
+                    "../legacy_conn_routes/"
+                ]
             }
         },
         {
@@ -176,15 +183,6 @@
             "arguments": ["./redis.conf"],
             "options": {
                 "workdir": ".."
-            }
-        },
-        {
-            "id": "legacy_conn_routes",
-            "type": "guest",
-            "executable": "make",
-            "arguments": ["run"],
-            "options": {
-                "workdir": "../legacy_conn_routes"
             }
         }
     ]

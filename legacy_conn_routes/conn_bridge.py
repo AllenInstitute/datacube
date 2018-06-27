@@ -53,6 +53,11 @@ class ConnBridgeApp(object):
         self.ccf_store = ccf_store
 
 
+    @app.handle_errors(Exception)
+    def log_request_and_failure(self, request, failure):
+        log.err('Request {} failed with {}.'.format(str(request), str(failure)))
+
+
     @app.route('/data/P56/search/injection_coordinates', methods=('GET',))
     @app.route('/data/search/injection_coordinates', methods=('GET',))
     @inlineCallbacks
@@ -172,27 +177,40 @@ class ConnBridgeApp(object):
         returnValue(simplejson.dumps(res))
 
 
-def main():
 
-    ccf_store = None
-    if args.ontology_path is not None:
-        ccf_store = CcfDataStore(args.ontology_path)
-
-    cba = ConnBridgeApp(ccf_store)
-    reactor.listenTCP(args.port, Site(cba.app.resource()))
-
-    runner = ApplicationRunner(str(args.wamp_transport), str(args.wamp_realm))
-    runner.run(GlobalSessionComponent, auto_reconnect=True)
-
-
-if __name__ == '__main__':
-    log.startLogging(sys.stdout)
-
+class ConnBridgeResourceFactory:
     parser = argparse.ArgumentParser()
     parser.add_argument('--wamp_transport', type=str, default='ws://tdatacube:8080/ws')
     parser.add_argument('--wamp_realm', type=str, default='aibs')
     parser.add_argument('--port', type=int, default=get_open_tcp_port())
     parser.add_argument('--ontology_path', type=str, default=None)
 
-    args = parser.parse_args()
+    def resource(args, start=False):
+        args = ConnBridgeResourceFactory.parser.parse_args(args)
+
+        ccf_store = None
+        if args.ontology_path is not None:
+            ccf_store = CcfDataStore(args.ontology_path)
+
+        cba = ConnBridgeApp(ccf_store)
+
+        runner = ApplicationRunner(str(args.wamp_transport), str(args.wamp_realm))
+        runner.run(GlobalSessionComponent, auto_reconnect=True, start_reactor=False)
+
+        if start:
+            reactor.listenTCP(args.port, Site(cba.app.resource()))
+            print('conn_bridge running on localhost:{}'.format(args.port))
+            reactor.run()
+        else:
+            return cba.app.resource()
+
+resource = ConnBridgeResourceFactory.resource
+
+
+def main():
+    log.startLogging(sys.stdout)
+    cbr = ConnBridgeResourceFactory.resource(sys.argv[1:], start=True)
+
+
+if __name__ == '__main__':
     main()
