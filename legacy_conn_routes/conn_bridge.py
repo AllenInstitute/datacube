@@ -170,11 +170,9 @@ class ConnBridgeApp(object):
 
 
     @app.route('/data/health', methods=('GET',))
-    @inlineCallbacks
     def health(self, request):
-        res = yield {}
-        res = package_json_response(res)
-        returnValue(simplejson.dumps(res))
+        res = package_json_response({})
+        return simplejson.dumps(res)
 
 
 
@@ -210,7 +208,6 @@ resource = ConnBridgeResourceFactory.resource
 def main():
     log.startLogging(sys.stdout)
     cbr = ConnBridgeResourceFactory.resource(sys.argv[1:], start=True)
-
 
 if __name__ == '__main__':
     main()
