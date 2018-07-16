@@ -82,7 +82,7 @@
                             "type": "websocket",
                             "options": {
                                 "auto_ping_interval": 60000,
-                                "auto_ping_timeout": 0,
+                                "auto_ping_timeout": 30000,
                                 "compression": {
                                    "deflate": {
                                       "request_no_context_takeover": false,
