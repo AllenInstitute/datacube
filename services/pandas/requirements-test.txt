@@ -1,5 +1,0 @@
--r ../../requirements-global-test.txt
--r requirements-prod.txt
-mock
-pytest
-pytest-redis

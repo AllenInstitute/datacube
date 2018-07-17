@@ -29,3 +29,4 @@ bob_data
 .vscode
 .pytest_cache
 mouse_ccf_data/
+**/*.egg-info

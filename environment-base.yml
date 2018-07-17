@@ -1,0 +1,19 @@
+name: datacube
+channels:
+  - defaults
+  - simpleitk
+dependencies:
+  - Cython
+  - numpy
+  - xarray
+  - dask
+  - statsmodels
+  - numba
+  - simpleitk
+  - scikit-image
+  - pip:
+    - -c constraints.txt
+    - -e .
+    - -e ./legacy_conn_routes
+    - -e ./services/pandas
+    - -e ./services/locator

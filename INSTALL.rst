@@ -27,7 +27,7 @@ On CentOS 6::
     popd
     export PATH=$PATH:$PWD/redis-3.2.9/src/
 
-Run :code:`redis-server` and heed these warnings if they are present::
+Run ``redis-server`` and heed these warnings if they are present::
 
     # WARNING overcommit_memory is set to 0! Background save may fail under low memory condition. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
     # WARNING you have Transparent Huge Pages (THP) support enabled in your kernel. This will create latency and memory usage issues with Redis. To fix this issue run the command 'echo never > /sys/kernel/mm/transparent_hugepage/enabled' as root, and add it to your /etc/rc.local in order to retain the setting after a reboot. Redis must be restarted after THP is disabled.
@@ -70,22 +70,28 @@ Download and install::
 Install Datacube
 ----------------
 
-Create a conda environment and install required python packages.
+::
 
-The :code:`--ignore-installed` option is a workaround for https://github.com/ContinuumIO/anaconda-issues/issues/542::
+    conda env create -f environment.yml
+    conda activate datacube
 
-    conda create --name datacube python=3
-    source activate datacube
-    pip install --ignore-installed -r requirements.txt
+or
+
+::
+
+    conda env create -n ENV_NAME -f environment.yml
+    conda activate ENV_NAME
+
+to use a custom environment name.
 
 Running the Server
 ------------------
 
 Run all services::
 
-    crossbar start
+    crossbar start --config config-prod.json
 
-Wait for the various ready-messages in the log output.
+Wait for the various "ready" messages in the log output.
 
 Running the Demo
 ----------------
@@ -107,6 +113,7 @@ Wait for the "Server Ready." message, and then point your browser to http://loca
 Run tests
 ---------
 
-::
+Follow normal install steps, then do::
 
+    pip install -r requirements.txt
     make test
