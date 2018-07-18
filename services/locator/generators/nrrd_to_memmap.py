@@ -35,15 +35,15 @@ class NrrdToMemMapped ():
         jas.close()
 
     def verify(self):
-        print "verifying write.."
+        print("verifying write..")
         m = np.load(self.file_name + '.npy')
-        print "File is valid: "  + str(m[131, 167, 259] == 1125)
+        print("File is valid: "  + str(m[131, 167, 259] == 1125))
 
     def cleanup(self):
-        print "cleaning up..."
+        print("cleaning up...")
         os.remove(self.temp_file)
 
-        print "done."
+        print("done.")
 
 
 if __name__ == "__main__":
@@ -54,7 +54,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     
-    print args
+    print(args)
 
     nrrd_in_path = args.input
     mapped_out_path = args.output
@@ -64,3 +64,4 @@ if __name__ == "__main__":
     mapper.map()
     mapper.verify()
     mapper.cleanup()
+

@@ -1,3 +1,0 @@
-# include requirements-dev.txt for all services
--r services/pandas/requirements-dev.txt
--r services/locator/requirements-dev.txt
