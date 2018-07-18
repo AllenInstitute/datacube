@@ -24,7 +24,9 @@ Pinned requirements for running any/all services and base crossbar application i
 
     conda env create -f environment-base.yml
     conda activate datacube
-    conda env export > environment.yml
+    conda env export | grep -v -f <(pip list --editable --format=freeze) > environment.yml
+
+.. note:: Stripping of editable packages is necessary due to https://github.com/pypa/pip/issues/5031. This has to be done manually since ``conda env export`` lacks an ``--exclude-editable`` option like ``pip freeze``.
 
 And used in production like:
 
@@ -38,8 +40,6 @@ pip/setuptools
 ^^^^^^^^^^^^^^
 
 Individual sets of requirements can be managed by *requirements.txt* or *setup.py* as long as they can be added to ``environment-base.yml`` as included requirements (``-r``) or editable package installs (``-e``).
-
-.. note:: ``conda env export`` lacks a ``--exclude-editable`` option like ``pip freeze``. To keep unpublished packages from appearing in the pinned requirements, a workaround is to supply the ``--multi-version`` option to *setup.py develop*. This is done by way of *setup.cfg* files, since pip does not honor ``--install-option`` options on editable (``-e``) requirements in *requirements.txt* files, nor by extension does conda do so within the ``pip`` section of *environment.yml* files.
 
 
 test dependencies
