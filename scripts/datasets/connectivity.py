@@ -293,7 +293,7 @@ def paste_grid_data_into_volume(volume, mcc, experiment_ids, eid, warehouse=None
 
     Parameters
     ----------
-    volume : zarr.corr.Array
+    volume : zarr.core.Array
         Pre-initialized zarr array having grid data dimensions and a 4th dim of len(experiment_ids)
     mcc : allensdk.core.mouse_connectivity_cache.MouseConnectivityCache
         Used to manage data access
@@ -334,7 +334,7 @@ def make_projection_volume(experiment_ids, mcc, warehouse=None, tmp_dir=None, ma
 
     Returns
     -------
-    volume : zarr.corr.Array
+    volume : zarr.core.Array
         Zarr array shaped like grid data of the resolution passed to mcc followed by a
         fourth dimension of size len(experiment_ids), fully populated.
 
@@ -613,46 +613,50 @@ def main():
     store_file = os.path.join(args.data_dir, args.data_name + '.zarr.lmdb')
     store = zarr.storage.LMDBStore(store_file)
     logging.info('writing dataset to {}'.format(store_file))
-    # monkey patch to get zarr to ignore dask chunks and use its own heuristics
-    def copy_func(f):
-        g = types.FunctionType(f.__code__, f.__globals__, name=f.__name__,
-                               argdefs=f.__defaults__,
-                               closure=f.__closure__)
-        g = functools.update_wrapper(g, f)
-        g.__kwdefaults__ = f.__kwdefaults__
-        return g
-    orig_determine_zarr_chunks = copy_func(xr.backends.zarr._determine_zarr_chunks)
-    xr.backends.zarr._determine_zarr_chunks = lambda enc_chunks, var_chunks, ndim: orig_determine_zarr_chunks(enc_chunks, None, ndim)
+    # to_zarr will fail with object columns containing None
+    for field in ds.variables:
+        if ds[field].dtype.name == 'object':
+            ds[field][ds[field].isnull()] = ''
+            ds[field] = ds[field].astype('str')
     # encoding settings; these could be tweaked
     encoding = {
         'is_projection': {'filters': [numcodecs.packbits.PackBits()]},
         'projection': {'filters': [numcodecs.quantize.Quantize(3, np.float32)]}
         }
     compressor = numcodecs.blosc.Blosc(cname='snappy', clevel=1, shuffle=numcodecs.blosc.Blosc.SHUFFLE)
-    # monkey patch to make dask arrays writable with different chunks than zarr dest
-    # could do without this but would have to contend with 'inconsistent chunks' on dataset
-    def sync_using_zarr_copy(self, compute=True):
-        if self.sources:
-            import dask.array as da
-            rechunked_sources = [source.rechunk(target.chunks)
-                for source, target in zip(self.sources, self.targets)]
-            delayed_store = da.store(rechunked_sources, self.targets,
-                                     lock=self.lock, compute=compute,
-                                     flush=True)
-            self.sources = []
-            self.targets = []
-            return delayed_store
-    xr.backends.common.ArrayWriter.sync = sync_using_zarr_copy
-    # to_zarr will fail with object columns containing None
-    for field in ds.variables:
-        if ds[field].dtype.name == 'object':
-            ds[field][ds[field].isnull()] = ''
-            ds[field] = ds[field].astype('str')
-
+    #ds['anterior_posterior_flat'] = ds['anterior_posterior_flat'].chunk({'ccf': 63170})
+    #ds['ccf_structure'] = ds['ccf_structure'].chunk({'anterior_posterior': 66, 'superior_inferior': 40, 'left_right': 57})
+    #ds['ccf_structure_flat'] = ds['ccf_structure_flat'].chunk({'ccf': 63170})
+    #ds['ccf_structures'] = ds['ccf_structures'].chunk({'anterior_posterior': 33, 'superior_inferior': 20, 'left_right': 57, 'depth': 6})
+    #ds['ccf_structures_flat'] = ds['ccf_structures_flat'].chunk({'depth': 2, 'ccf': 63170})
+    #ds['injection_structure_paths'] = ds['injection_structure_paths'].chunk({'experiment': 749, 'secondary': 9, 'depth': 6})
+    #ds['injection_structures'] = ds['injection_structures'].chunk({'experiment': 749})
+    #ds['injection_structures_array'] = ds['injection_structures_array'].chunk({'experiment': 1498})
+    #ds['is_primary'] = ds['is_primary'].chunk({'experiment': 749, 'structure': 664})
+    #ds['is_projection'] = ds['is_projection'].chunk({'anterior_posterior': 17, 'superior_inferior': 10, 'left_right': 29, 'experiment': 749})
+    #ds['is_projection_flat'] = ds['is_projection_flat'].chunk({'experiment': 94, 'ccf': 31585})
+    #ds['left_right_flat'] = ds['left_right_flat'].chunk({'ccf': 63170})
+    #ds['name'] = ds['name'].chunk({'structure': 664})
+    #ds['primary_structures'] = ds['primary_structures'].chunk({'experiment': 1498})
+    #ds['projection'] = ds['projection'].chunk({'anterior_posterior': 17, 'superior_inferior': 10, 'left_right': 15, 'experiment': 375})
+    #ds['projection_flat'] = ds['projection_flat'].chunk({'experiment': 47, 'ccf': 15793})
+    #ds['specimen_name'] = ds['specimen_name'].chunk({'experiment': 1498})
+    #ds['storage_directory'] = ds['storage_directory'].chunk({'experiment': 749})
+    #ds['structure_name'] = ds['structure_name'].chunk({'experiment': 749})
+    #ds['structure_volumes'] = ds['structure_volumes'].chunk({'experiment': 375, 'structure': 332, 'hemisphere': 1, 'injection': 1})
+    #ds['superior_inferior_flat'] = ds['superior_inferior_flat'].chunk({'ccf': 63170})
+    #ds['transgenic_line'] = ds['transgenic_line'].chunk({'experiment': 1498})
+    #ds['volume'] = ds['volume'].chunk({'normalized': 1, 'experiment': 749, 'structure': 332, 'hemisphere': 1, 'injection': 1})
+    import pdb
+    pdb.set_trace()
+    # apply dask auto-chunking
+    ds = ds.chunk()
+    for field in ds.data_vars:
+        ds[field].data = ds[field].data.rechunk('auto')
     # write to zarr with overridable default encoding settings
     ds.to_zarr(
         store=store,
-        encoding={var: {**{'chunks': None, 'compressor': compressor}, **encoding.get(var, {})} for var in ds.variables}
+        encoding={var: {**{'compressor': compressor}, **encoding.get(var, {})} for var in ds.variables}
         )
     logging.info('wrote dataset to {}'.format(store_file))
 
