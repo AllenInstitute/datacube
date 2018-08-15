@@ -13,3 +13,4 @@ toolz
 requests
 lmdb
 future
+wget
