@@ -55,7 +55,7 @@ def main():
     ds['intron_expression'] = intron_expression
 
     store_file = os.path.join(args.data_dir, args.data_name + '.zarr.lmdb')
-    store = zarr.storage.NestedDirectoryStore(store_file)
+    store = zarr.storage.LMDBStore(store_file)
     logging.info('writing dataset to {}'.format(store_file))
     ds.to_zarr(store=store)
     logging.info('wrote dataset to {}'.format(store_file))
