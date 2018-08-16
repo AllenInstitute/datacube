@@ -12,6 +12,17 @@ import numpy as np
 import xarray as xr
 import pandas as pd
 import zarr
+import dask
+import dask.array as da
+
+
+def read_csv(filename, tmp_dir, dims, nrows, ncols, dtype=None, chunksize=1000):
+    store = zarr.storage.TempStore(prefix='read_csv_', dir=tmp_dir)
+    data = zarr.creation.create(shape=(nrows, ncols), dtype=dtype, chunks=(chunksize, ncols), store=store)
+    for chunk in pd.read_csv(args.data_dir + filename, dtype=dtype, chunksize=chunksize):
+        data[chunk.index[0]:(chunk.index[-1]+1),:] = chunk.values[:,1:]
+    result = xr.DataArray(da.from_array(data, chunks=data.chunks), dims=dims)
+    return result
 
 
 def main():
@@ -29,15 +40,10 @@ def main():
     logging.info('reading cols csv')
     df_cols = pd.read_csv(args.data_dir + 'human_MTG_2018-06-14_samples-columns.csv')
 
-    chunksize = 1000
     logging.info('reading exon-matrix csv')
-    exon_expression = np.empty((len(df_rows), len(df_cols)), dtype=np.int32)
-    for chunk in pd.read_csv(args.data_dir + 'human_MTG_2018-06-14_exon-matrix.csv', dtype=np.int32, chunksize=chunksize):
-        exon_expression[chunk.index[0]:(chunk.index[-1]+1),:] = chunk.values[:,1:]
+    exon_expression = read_csv('human_MTG_2018-06-14_exon-matrix.csv', args.data_dir, ('gene', 'nucleus'), len(df_rows), len(df_cols), dtype=np.int32)
     logging.info('reading intron-matrix csv')
-    intron_expression = np.empty((len(df_rows), len(df_cols)), dtype=np.int32)
-    for chunk in pd.read_csv(args.data_dir + 'human_MTG_2018-06-14_intron-matrix.csv', dtype=np.int32, chunksize=chunksize):
-        intron_expression[chunk.index[0]:(chunk.index[-1]+1),:] = chunk.values[:,1:]
+    intron_expression = read_csv( 'human_MTG_2018-06-14_intron-matrix.csv', args.data_dir, ('gene', 'nucleus'), len(df_rows), len(df_cols), dtype=np.int32)
 
     logging.info('merging into dataset')
     ds_rows = xr.Dataset.from_dataframe(df_rows).rename({'gene': 'gene_symbol', 'index': 'gene'})
@@ -45,8 +51,8 @@ def main():
     ds_cols = xr.Dataset.from_dataframe(df_cols).rename({'index': 'nucleus'})
     ds_cols.set_index(nucleus='sample_id', inplace=True)
     ds = xr.merge([ds_rows, ds_cols])
-    ds['exon_expression'] = xr.DataArray(exon_expression, dims=('gene', 'nucleus'))
-    ds['intron_expression'] = xr.DataArray(intron_expression, dims=('gene', 'nucleus'))
+    ds['exon_expression'] = exon_expression
+    ds['intron_expression'] = intron_expression
 
     store_file = os.path.join(args.data_dir, args.data_name + '.zarr.lmdb')
     store = zarr.storage.LMDBStore(store_file)
