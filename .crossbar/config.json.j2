@@ -130,6 +130,19 @@
                             "type": "cgi",
                             "directory": "../cgi",
                             "processor": "python"
+{% if DATACUBE_ENV == 'demo' %}
+                        },
+                        "demo": {
+                            "type": "static",
+                            "directory": "..",
+                            "options": {
+                                "enable_directory_listing": true,
+                                "mime_types": {
+                                    ".md": "text/plain",
+                                    ".py": "text/plain"
+                                }
+                            }
+{% endif %}
                         }
                     }
                 }
@@ -137,6 +150,16 @@
             "options":{
             }
         },
+{% if DATACUBE_ENV == 'demo' %}
+        {
+            "id": "datacube",
+            "type": "guest",
+            "executable": "run.sh",
+            "arguments": ["ws://localhost:8080/auth_ws", "aibs", "services", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "../../datasets-demo.json", "--projection-map-dir", "/allen/aibs/informatics/heatmap/mouseconn_projection_maps/P56/"],
+            "options": {
+                "workdir": "../services/pandas/"
+            }
+{% else %}
         {
             "id": "bob_datacube",
             "type": "guest",
@@ -163,7 +186,7 @@
             "options": {
                 "workdir": "../services/locator/"
             }
-{% if DATACUBE_ENV != 'production' %}
+    {% if DATACUBE_ENV != 'production' %}
         },
         {
             "id": "human_mtg_datacube",
@@ -173,6 +196,7 @@
             "options": {
                 "workdir": "../services/pandas/"
             }
+    {% endif %}
 {% endif %}
         },
         {
