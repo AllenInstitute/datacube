@@ -18,6 +18,7 @@ setup(
         'dev': [
             'autobahn-python-repl',
             'restview',
+            'yasha',
         ],
         'test': [
             'pytest',
