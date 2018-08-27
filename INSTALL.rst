@@ -87,16 +87,23 @@ to use a custom environment name.
 Running the Server
 ------------------
 
+A crossbar `config.json` must be created, as only a template (`.crossbar/config.json.j2`) is checked in. Rendering this template with `DATACUBE_ENV=production` (or `development`, `test`, `demo`) will produce a `.crossbar/config.json` that can be used or modified as needed.
+
 Run all services::
 
-    crossbar start --config config-prod.json
+    crossbar start
 
 Wait for the various "ready" messages in the log output.
 
 Running the Demo
 ----------------
 
-The demo config contains its own router. A Node.js installation is needed in order to install npm packages and to build the client javascript for the demos::
+The demo config contains its own router. Generate the config using::
+
+    pip install -e.[dev]
+    yasha --DATACUBE_ENV=demo .crossbar/config.json.j2
+
+A Node.js installation is needed in order to install npm packages and to build the client javascript for the demos::
 
     yum install nodejs
 
@@ -106,7 +113,7 @@ First, an npm install for each of the services is needed::
 
 Then run the demo::
 
-    ./run.sh --config config-demo.json
+    ./run.sh
 
 Wait for the "Server Ready." message, and then point your browser to http://localhost:8080/demo and click on the links.
 
