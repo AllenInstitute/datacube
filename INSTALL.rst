@@ -27,7 +27,7 @@ On CentOS 6::
     popd
     export PATH=$PATH:$PWD/redis-3.2.9/src/
 
-Run :code:`redis-server` and heed these warnings if they are present::
+Run ``redis-server`` and heed these warnings if they are present::
 
     # WARNING overcommit_memory is set to 0! Background save may fail under low memory condition. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
     # WARNING you have Transparent Huge Pages (THP) support enabled in your kernel. This will create latency and memory usage issues with Redis. To fix this issue run the command 'echo never > /sys/kernel/mm/transparent_hugepage/enabled' as root, and add it to your /etc/rc.local in order to retain the setting after a reboot. Redis must be restarted after THP is disabled.
@@ -70,27 +70,40 @@ Download and install::
 Install Datacube
 ----------------
 
-Create a conda environment and install required python packages.
+::
 
-The :code:`--ignore-installed` option is a workaround for https://github.com/ContinuumIO/anaconda-issues/issues/542::
+    conda env create -f environment.yml
+    conda activate datacube
 
-    conda create --name datacube python=3
-    source activate datacube
-    pip install --ignore-installed -r requirements.txt
+or
+
+::
+
+    conda env create -n ENV_NAME -f environment.yml
+    conda activate ENV_NAME
+
+to use a custom environment name.
 
 Running the Server
 ------------------
+
+A crossbar `config.json` must be created, as only a template (`.crossbar/config.json.j2`) is checked in. Rendering this template with `DATACUBE_ENV=production` (or `development`, `test`, `demo`) will produce a `.crossbar/config.json` that can be used or modified as needed.
 
 Run all services::
 
     crossbar start
 
-Wait for the various ready-messages in the log output.
+Wait for the various "ready" messages in the log output.
 
 Running the Demo
 ----------------
 
-The demo config contains its own router. A Node.js installation is needed in order to install npm packages and to build the client javascript for the demos::
+The demo config contains its own router. Generate the config using::
+
+    pip install -e.[dev]
+    yasha --DATACUBE_ENV=demo .crossbar/config.json.j2
+
+A Node.js installation is needed in order to install npm packages and to build the client javascript for the demos::
 
     yum install nodejs
 
@@ -100,13 +113,14 @@ First, an npm install for each of the services is needed::
 
 Then run the demo::
 
-    ./run.sh --config config-demo.json
+    ./run.sh
 
 Wait for the "Server Ready." message, and then point your browser to http://localhost:8080/demo and click on the links.
 
 Run tests
 ---------
 
-::
+Follow normal install steps, then do::
 
+    pip install -r requirements.txt
     make test

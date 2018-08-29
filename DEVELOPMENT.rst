@@ -4,50 +4,53 @@ Development
 Dependencies
 ------------
 
-The requirements files are set up in an inheritance/include heirarchy to support per-service dependency specification along with common global dependencies, across prod, test, and dev environments. The inheritance structure looks like this:
+Top-level requirements are tracked individually per-service and for the base application. Packages are pinned into a single production environment installable via conda.
 
-::
-
-    global-prod ------> svc{n}-prod
-        |                   |
-        v                   v
-    global-test ------> svc{n}-test   ...
-        |                   |
-        v                   v
-    global-dev -------> svc{n}-dev
-
-
-Note that it is possible to introduce version conflicts either explicitly or implicitly given this structure. It may be advisable to build an environment across all services periodically in order to ensure conflicts don't arise (see requirements-txt_).
-
-
-Service dependencies
+environment-base.yml
 ^^^^^^^^^^^^^^^^^^^^
 
-When adding python dependencies to a service, the package should be added (with or without version) to ``services/{servicename}/requirements-{env}.txt`` where ``{env}`` is the appropriate ``prod``, ``test``, or ``dev``. Note that ``test`` includes ``prod`` and ``dev`` includes ``prod`` and ``test``.
-
-Global dependencies
-^^^^^^^^^^^^^^^^^^^
-
-In some cases a package may be needed as part of the base install across all services. In such cases the package can be added to the root-level ``requirements-{env}.txt``.
-
-.. _requirements-txt:
-
-requirements.txt
-^^^^^^^^^^^^^^^^
-
-``requirements.txt`` of locked package versions are maintained for purposes of deploying to production (not dev or test). These files can be materialized at different levels of the project. For example, if a single unified deploy environment is desired, ``requirements.txt`` can be maintained at the root-level, based off the union of the requirements of all the services. Alternatively, or in addition, individual ``requirements.txt`` files can be maintained within each service for leaner environments when deploying separately.
-
-If any production dependencies are modified which would affect it, the corresponding ``requirements.txt`` should be updated by way of a ``pip install`` and ``pip freeze`` within a fresh conda env, and checked in. For example, this is how to update a root-level ``requirements.txt`` file from a root-level ``requirements-prod.txt`` file containing includes for each of the services' ``services/{servicename}/requirements-prod.txt`` files:
+Top-level requirements (not pinned). This is a hand-created conda *environment.yml* which installs some common packages via conda, followed by pip requirements. The semantics of the ``pip`` section in conda *environment.yml* files closely resemble that of a pip *requirements.txt* file, including the ability to use ``-r`` and ``-e``. Install the latest packages into a fresh conda environment using:
 
 ::
 
-    source deactivate datacube
-    conda env remove -n datacube
-    conda create -n datacube python=3
-    source activate datacube
-    pip install --ignore-installed -r requirements-prod.txt
-    pip freeze > requirements.txt
+    conda env create -f environment-base.yml
 
+environment.yml
+^^^^^^^^^^^^^^^
+
+Pinned requirements for running any/all services and base crossbar application in production. Initially created via:
+
+::
+
+    conda env create -f environment-base.yml
+    conda activate datacube
+    conda env export | grep -v -f <(pip list --editable --format=freeze) > environment.yml
+
+.. note:: Stripping of editable packages is necessary due to https://github.com/pypa/pip/issues/5031. This has to be done manually since ``conda env export`` lacks an ``--exclude-editable`` option like ``pip freeze``.
+
+And used in production like:
+
+::
+
+    conda env create -f environment.yml
+
+Finer-grained package management (adding, updating, removing) should be done through ``conda`` (see https://conda.io/docs/commands.html#conda-vs-pip-vs-virtualenv-commands), then re-exporting to ``environment.yml`` and checking in to source-control. ``environment-base.yml`` should be manually edited to reflect top-level dependency changes.
+
+pip/setuptools
+^^^^^^^^^^^^^^
+
+Individual sets of requirements can be managed by *requirements.txt* or *setup.py* as long as they can be added to ``environment-base.yml`` as included requirements (``-r``) or editable package installs (``-e``).
+
+
+test dependencies
+^^^^^^^^^^^^^^^^^
+
+The root ``./requirements.txt`` should install test dependencies on top of the base environment (e.g. by referencing separate pip *requirements-test.txt* files with ``-r``, or via setuptools *extras* e.g. ``-e ./service/service-name[test]``); these dependencies aren't pinned, but could be.
+
+constraints.txt
+^^^^^^^^^^^^^^^
+
+A pip *constraints.txt* file applying any common constraints needed to customize the pinned production environment (``./environment.yml``).
 
 Subtree
 -------

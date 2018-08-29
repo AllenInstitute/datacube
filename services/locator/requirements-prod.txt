@@ -3,7 +3,7 @@ autobahn
 crossbar
 Twisted
 pynrrd
-numpy==1.13.0
+numpy
 h5py
 scipy
 Pillow
