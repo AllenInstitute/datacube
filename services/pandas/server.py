@@ -110,6 +110,17 @@ class PandasServiceComponent(ApplicationSession):
 
 
         @inlineCallbacks
+        def count(field, groupby=None, select=None, coords=None, filters=None, sort=None, ascending=None, name=None):
+            try:
+                datacube = datacubes[name]
+                res = yield threads.deferToThread(_ensure_computed, datacube.count, field, groupby=groupby, select=select, coords=coords, filters=filters, sort=sort, ascending=ascending)
+                returnValue(res.to_dict())
+            except Exception as e:
+                print({'field': field, 'groupby': groupby, 'fields': fields, 'select': select, 'filters': filters, 'sort': sort, 'ascending': ascending, 'name': name})
+                _application_error(e)
+
+
+        @inlineCallbacks
         def conn_spatial_search(voxel, fields=None, select=None, coords=None, filters=None):
             try:
                 name = 'connectivity'
@@ -289,6 +300,9 @@ class PandasServiceComponent(ApplicationSession):
                                     options=RegisterOptions(invoke=u'roundrobin'))
                 yield self.register(functools.partial(corr, name=name),
                                     u'org.brain-map.api.datacube.corr.' + name,
+                                    options=RegisterOptions(invoke=u'roundrobin'))
+                yield self.register(functools.partial(count, name=name),
+                                    u'org.brain-map.api.datacube.count.' + name,
                                     options=RegisterOptions(invoke=u'roundrobin'))
                 yield self.register(functools.partial(select, name=name),
                                     u'org.brain-map.api.datacube.select.' + name,

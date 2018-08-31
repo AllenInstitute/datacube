@@ -660,6 +660,25 @@ class Datacube:
         return res
 
 
+    def count(self, field, groupby=None, select=None, coords=None, filters=None, sort=None, ascending=None):
+        res = self._get_data(select=select, coords=coords, filters=filters)
+        if any(sz==0 for sz in res.dims.values()):
+            res = xr.Dataset({'count': ((dim,), 0)})
+        else:
+            if groupby is not None:
+                if field in res.dims:
+                    func = lambda x: xr.DataArray(x[field].size)
+                else:
+                    func = lambda x: xr.DataArray(x[field].count())
+                res = self._groupby(fields=groupby, func=func, df=res)
+                res = xr.Dataset({'count': res})
+                if sort is not None:
+                    res = self._sort(sort=sort, ascending=ascending, df=res)
+            else:
+                res = xr.Dataset({'count': ((dim,), xr.DataArray(res[dim].size))})
+        return res
+
+
     def _memoize(self, key, f, *args, **kwargs):
         cached = self.redis_client.get(key)
         if not cached:
@@ -717,6 +736,16 @@ class Datacube:
             inds = self._sort_1d(dim, [s['field'] for s in sorts], [s['asc'] for s in sorts], df=res)
             res = res[{dim: inds}]
         return res
+
+
+    # see https://github.com/pydata/xarray/issues/324
+    def _groupby(self, fields, func, df=None):
+        if df is None:
+            df = self.df
+        if len(fields) == 1:
+            return df.groupby(fields[0]).apply(func)
+        else:
+            return df.groupby(fields[0]).apply(lambda x: self._groupby(fields[1:], func, df=x.drop(fields[0])))
 
 
     def distance_filter(self, fields, point, value, df):
