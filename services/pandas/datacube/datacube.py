@@ -688,7 +688,7 @@ class Datacube:
                 if s[field].dtype.name.startswith('string') or s[field].dtype.name.startswith('unicode') or s[field].dtype.name.startswith('bytes'):
                     blank_count = np.count_nonzero(s[field] == '')
                 else:
-                    blank_count = np.count_nonzero(np.isnan(s[field]))
+                    blank_count = np.count_nonzero(s[field].isnull())
                 ranks[:,idx] = rankdata(s[field], method='dense')
                 maxrank = np.max(ranks[:,idx])
                 if not asc:
