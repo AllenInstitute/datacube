@@ -962,6 +962,11 @@ class Datacube:
                         for v in filters['value']:
                             or_clause['or'].append({'op': '=', 'field': filters['field'], 'value': v})
                         return or_clause
+                    elif op == 'not in':
+                        and_clause = {'and': []}
+                        for v in filters['value']:
+                            and_clause['and'].append({'op': '!=', 'field': filters['field'], 'value': v})
+                        return and_clause
                     else:
                         return filters
                     return res
