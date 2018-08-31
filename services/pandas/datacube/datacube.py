@@ -469,7 +469,6 @@ class Datacube:
         if fields:
             res = res[fields]
         if filters and f['masks']:
-            #ds = res.load()
             ds = res
             res = xr.Dataset()
             mask = reduce(xr_ufuncs.logical_and, f['masks'])
