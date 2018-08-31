@@ -742,6 +742,8 @@ class Datacube:
     def _groupby(self, fields, func, df=None):
         if df is None:
             df = self.df
+        if any(df[field].ndim != 1 for field in fields):
+            raise ValueError('Cannot perform groupby on non 1-dimensional fields {}'.format([field for field in fields if df[field].ndim != 1]))
         if len(fields) == 1:
             return df.groupby(fields[0]).apply(func)
         else:
