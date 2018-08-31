@@ -851,6 +851,8 @@ class Datacube:
                 mask = (lhs >= value)
             elif op == '!=':
                 mask = (lhs != value)
+            else:
+                raise ValueError('Unsupported filter operand {}'.format(op))
             #todo: if df is self.df, could cache depending on size of mask
             #todo: convert 1-d masks to inds (?)
             res['masks'].append(mask)
@@ -860,6 +862,7 @@ class Datacube:
             if not cached:
                 start = 0
                 stop = df[field].size
+                inds = None
                 if op == '=' or op == 'is':
                     start = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
                     stop = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
@@ -871,7 +874,15 @@ class Datacube:
                     stop = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
                 elif op == '>=':
                     start = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
-                inds = np.sort(self.argsorts[field][start:stop])
+                elif op == '!=':
+                    start = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
+                    stop = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
+                    inds = np.concatenate([self.argsorts[field][:stop], self.argsorts[field][start:]])
+                else:
+                    raise ValueError('Unsupported filter operand {}'.format(op))
+                if inds is None:
+                    inds = self.argsorts[field][start:stop]
+                inds = np.sort(inds)
                 self.redis_client.setnx(filter_key, pickle.dumps(inds))
             else:
                 inds = pickle.loads(cached)
