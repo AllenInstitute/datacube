@@ -625,7 +625,7 @@ class Datacube:
             else:
                 inds = np.array(indexes, dtype=np.int)
         if sort and r[dim].size > 0:
-            sorted_inds = self._sort(dim, sort, ascending)
+            sorted_inds = self._sort_1d(dim, sort, ascending)
             if inds is not None:
                 inds = sorted_inds[np.in1d(sorted_inds, inds)]
             else:
@@ -671,8 +671,9 @@ class Datacube:
 
 
     #todo: use _cache()
-    def _sort(self, dim, sort, ascending):
-        df = self.df
+    def _sort_1d(self, dim, sort, ascending, df=None):
+        if df is None:
+            df = self.df
         sort_cache_key = json.dumps([self.name, 'sort', dim, sort, ascending])
         cached = self.redis_client.get(sort_cache_key)
         if not cached:
@@ -700,6 +701,22 @@ class Datacube:
             return res
         else:
             return pickle.loads(cached)
+
+
+    def _sort(self, sort, ascending, df=None):
+        if df is None:
+            df = self.df
+        res = df
+        sorts_by_dim = {}
+        for field, asc in zip(sort, ascending):
+            if res[field].ndim != 1:
+                raise ValueError("Requested sort field {} must have ndim=1 (has ndim={}).".format(field, res[field].ndim))
+            dim = res[field].dims[0]
+            sorts_by_dim[dim] = sorts_by_dim.get(dim, []) + [{'field': field, 'asc': asc}]
+        for dim, sorts in sorts_by_dim.items():
+            inds = self._sort_1d(dim, [s['field'] for s in sorts], [s['asc'] for s in sorts], df=res)
+            res = res[{dim: inds}]
+        return res
 
 
     def distance_filter(self, fields, point, value, df):
