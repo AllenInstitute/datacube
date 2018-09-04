@@ -6,7 +6,7 @@ pynrrd
 numba
 allensdk
 pandas
-psycopg2
+psycopg2-binary
 h5py
 h5netcdf
 toolz

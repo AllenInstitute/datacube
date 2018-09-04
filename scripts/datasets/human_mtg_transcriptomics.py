@@ -15,6 +15,8 @@ import zarr
 import dask
 import dask.array as da
 
+from allensdk.api.queries.rma_api import RmaApi
+
 
 def read_csv(filename, tmp_dir, dims, nrows, ncols, dtype=None, chunksize=1000):
     store = zarr.storage.TempStore(prefix='read_csv_', dir=tmp_dir)
@@ -53,6 +55,24 @@ def main():
     ds = xr.merge([ds_rows, ds_cols])
     ds['exon_expression'] = exon_expression
     ds['intron_expression'] = intron_expression
+
+    rma = RmaApi(base_uri='http://testwarehouse:9000/')
+    organism = rma.model_query(model='Organism', criteria="[name$il'homo sapiens']", num_rows='all')[0]
+    ds['organism_id'] = xr.full_like(ds.organism, organism['id'], dtype=np.int)
+    ds.organism[:] = organism['name']
+    chromosomes = rma.model_query(model='Chromosome', criteria='[organism_id$eq{}]'.format(organism['id']), num_rows='all')
+    chromosomes = pd.DataFrame(chromosomes).set_index('name').T.to_dict()
+    ds['chromosome_id'] = xr.DataArray([chromosomes[chromosome_name]['id'] for chromosome_name in ds.chromosome], dims=ds.chromosome.dims)
+    ages = rma.model_query(model='Age', criteria='[organism_id$eq{}]'.format(organism['id']), num_rows='all')
+    ages = pd.DataFrame(ages).set_index('days').T.to_dict()
+    ds['age_id'] = xr.DataArray([ages[float(age_days) if age_days != 'unknown' else 0.]['id'] for age_days in ds.age_days.values], dims=ds.age_days.dims)
+    hemispheres = rma.model_query(model='Hemisphere', num_rows='all')
+    hemispheres = pd.DataFrame(hemispheres).set_index('symbol').T.to_dict()
+    ds['hemisphere_id'] = xr.DataArray([hemispheres[hemisphere_symbol]['id'] for hemisphere_symbol in ds.brain_hemisphere.values], dims=ds.brain_hemisphere.dims)
+    ontology_id = rma.model_query(model='Ontology', criteria="[name$eq'Human Brain Atlas']", num_rows='all')[0]['id']
+    structures = rma.model_query(model='Structure', criteria="[ontology_id$eq{}][hemisphere_id$eq{}]".format(ontology_id, hemispheres[None]['id']), num_rows='all')
+    structures = pd.DataFrame(structures).set_index('acronym').T.to_dict()
+    ds['structure_id'] = xr.DataArray([structures[structure_acronym]['id'] for structure_acronym in ds.brain_region.values], dims=ds.brain_region.dims)
 
     store_file = os.path.join(args.data_dir, args.data_name + '.zarr.lmdb')
     store = zarr.storage.LMDBStore(store_file)
