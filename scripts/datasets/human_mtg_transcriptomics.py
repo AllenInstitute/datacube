@@ -62,7 +62,7 @@ def main():
     ds.organism[:] = organism['name']
     chromosomes = rma.model_query(model='Chromosome', criteria='[organism_id$eq{}]'.format(organism['id']), num_rows='all')
     chromosomes = pd.DataFrame(chromosomes).set_index('name').T.to_dict()
-    ds['chromosome_id'] = xr.DataArray([chromosomes[chromosome_name]['id'] for chromosome_name in ds.chromosome], dims=ds.chromosome.dims)
+    ds['chromosome_id'] = xr.DataArray([chromosomes[chromosome_name]['id'] for chromosome_name in ds.chromosome.values], dims=ds.chromosome.dims)
     ages = rma.model_query(model='Age', criteria='[organism_id$eq{}]'.format(organism['id']), num_rows='all')
     ages = pd.DataFrame(ages).set_index('days').T.to_dict()
     ds['age_id'] = xr.DataArray([ages[float(age_days) if age_days != 'unknown' else 0.]['id'] for age_days in ds.age_days.values], dims=ds.age_days.dims)
