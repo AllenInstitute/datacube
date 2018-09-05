@@ -457,10 +457,9 @@ class Datacube:
 
 
     def _get_data(self, select=None, coords=None, fields=None, filters=None, dim_order=None, df=None, drop=False):
-        if df is not None:
-            res = df
-        else:
-            res = self.df
+        if df is None:
+            df = self.df
+        res = df
         
         self.check_fields_in_variables(fields, res)
 
@@ -476,29 +475,36 @@ class Datacube:
                 mask = mask.compute()
             for field in ds.variables:
                 reduce_dims = [dim for dim in mask.dims if dim not in ds[field].dims]
-                reduced = ds[field].where(mask.any(dim=reduce_dims), drop=True)
+                filtered = ds[field].where(mask.any(dim=reduce_dims), drop=True)
                 if field in ds.data_vars:
-                    res[field] = reduced
+                    res[field] = filtered
                 else:
                     if field not in res.coords:
-                        res.coords[field] = reduced.coords[field]
+                        res.coords[field] = filtered.coords[field]
                 for coord in res[field].coords:
                     res.coords[coord] = res[field].coords[coord]
-        subscripts=None
-        if select:
-            self._validate_select(select)
-            subscripts = self._get_subscripts_from_select(select)
-        if subscripts:
-            res = res.isel(**{dim: subscripts[dim] for dim in subscripts if dim in res}, drop=drop)
         if coords:
             # cast coords to correct type
             coords = {dim: np.array(v, dtype=res.coords[dim].dtype).tolist() for dim,v in iteritems(coords)}
+            # exclude filtered coords
+            for dim in coords:
+                filtered_coords = set((df[fields] if fields else df).coords[dim].values)-set(res.coords[dim].values)
+                if isinstance(coords[dim], list):
+                    coords[dim] = list(set(coords[dim])-filtered_coords)
+                else:
+                    coords[dim] = coords[dim] if coords[dim] not in filtered_coords else []
             # apply all coords, rounding to nearest when possible
             for dim, coord in iteritems(coords):
                 try:
                     res = res.sel(**{dim: coord}, drop=drop, method='nearest')
                 except ValueError:
                     res = res.sel(**{dim: coord}, drop=drop)
+        subscripts=None
+        if select:
+            self._validate_select(select)
+            subscripts = self._get_subscripts_from_select(select)
+        if subscripts:
+            res = res.isel(**{dim: subscripts[dim] for dim in subscripts if dim in res}, drop=drop)
         if dim_order:
             res = res.transpose(*dim_order)
         return res
