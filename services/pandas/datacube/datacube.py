@@ -457,10 +457,9 @@ class Datacube:
 
 
     def _get_data(self, select=None, coords=None, fields=None, filters=None, dim_order=None, df=None, drop=False):
-        if df is not None:
-            res = df
-        else:
-            res = self.df
+        if df is None:
+            df = self.df
+        res = df
         
         self.check_fields_in_variables(fields, res)
 
@@ -469,7 +468,6 @@ class Datacube:
         if fields:
             res = res[fields]
         if filters and f['masks']:
-            #ds = res.load()
             ds = res
             res = xr.Dataset()
             mask = reduce(xr_ufuncs.logical_and, f['masks'])
@@ -477,29 +475,36 @@ class Datacube:
                 mask = mask.compute()
             for field in ds.variables:
                 reduce_dims = [dim for dim in mask.dims if dim not in ds[field].dims]
-                reduced = ds[field].where(mask.any(dim=reduce_dims), drop=True)
+                filtered = ds[field].where(mask.any(dim=reduce_dims), drop=True)
                 if field in ds.data_vars:
-                    res[field] = reduced
+                    res[field] = filtered
                 else:
                     if field not in res.coords:
-                        res.coords[field] = reduced.coords[field]
+                        res.coords[field] = filtered.coords[field]
                 for coord in res[field].coords:
                     res.coords[coord] = res[field].coords[coord]
-        subscripts=None
-        if select:
-            self._validate_select(select)
-            subscripts = self._get_subscripts_from_select(select)
-        if subscripts:
-            res = res.isel(**{dim: subscripts[dim] for dim in subscripts if dim in res}, drop=drop)
         if coords:
             # cast coords to correct type
             coords = {dim: np.array(v, dtype=res.coords[dim].dtype).tolist() for dim,v in iteritems(coords)}
+            # exclude filtered coords
+            for dim in coords:
+                filtered_coords = set((df[fields] if fields else df).coords[dim].values)-set(res.coords[dim].values)
+                if isinstance(coords[dim], list):
+                    coords[dim] = list(set(coords[dim])-filtered_coords)
+                else:
+                    coords[dim] = coords[dim] if coords[dim] not in filtered_coords else []
             # apply all coords, rounding to nearest when possible
             for dim, coord in iteritems(coords):
                 try:
                     res = res.sel(**{dim: coord}, drop=drop, method='nearest')
                 except ValueError:
                     res = res.sel(**{dim: coord}, drop=drop)
+        subscripts=None
+        if select:
+            self._validate_select(select)
+            subscripts = self._get_subscripts_from_select(select)
+        if subscripts:
+            res = res.isel(**{dim: subscripts[dim] for dim in subscripts if dim in res}, drop=drop)
         if dim_order:
             res = res.transpose(*dim_order)
         return res
@@ -626,7 +631,7 @@ class Datacube:
             else:
                 inds = np.array(indexes, dtype=np.int)
         if sort and r[dim].size > 0:
-            sorted_inds = self._sort(dim, sort, ascending)
+            sorted_inds = self._sort_1d(dim, sort, ascending)
             if inds is not None:
                 inds = sorted_inds[np.in1d(sorted_inds, inds)]
             else:
@@ -661,6 +666,25 @@ class Datacube:
         return res
 
 
+    def count(self, field, groupby=None, select=None, coords=None, filters=None, sort=None, ascending=None):
+        res = self._get_data(select=select, coords=coords, filters=filters)
+        if any(sz==0 for sz in res.dims.values()):
+            res = xr.Dataset({'count': ((dim,), 0)})
+        else:
+            if groupby is not None:
+                if field in res.dims:
+                    func = lambda x: xr.DataArray(x[field].size)
+                else:
+                    func = lambda x: xr.DataArray(x[field].count())
+                res = self._groupby(fields=groupby, func=func, df=res)
+                res = xr.Dataset({'count': res})
+                if sort is not None:
+                    res = self._sort(sort=sort, ascending=ascending, df=res)
+            else:
+                res = xr.Dataset({'count': ((dim,), xr.DataArray(res[dim].size))})
+        return res
+
+
     def _memoize(self, key, f, *args, **kwargs):
         cached = self.redis_client.get(key)
         if not cached:
@@ -672,8 +696,9 @@ class Datacube:
 
 
     #todo: use _cache()
-    def _sort(self, dim, sort, ascending):
-        df = self.df
+    def _sort_1d(self, dim, sort, ascending, df=None):
+        if df is None:
+            df = self.df
         sort_cache_key = json.dumps([self.name, 'sort', dim, sort, ascending])
         cached = self.redis_client.get(sort_cache_key)
         if not cached:
@@ -688,7 +713,7 @@ class Datacube:
                 if s[field].dtype.name.startswith('string') or s[field].dtype.name.startswith('unicode') or s[field].dtype.name.startswith('bytes'):
                     blank_count = np.count_nonzero(s[field] == '')
                 else:
-                    blank_count = np.count_nonzero(np.isnan(s[field]))
+                    blank_count = np.count_nonzero(s[field].isnull())
                 ranks[:,idx] = rankdata(s[field], method='dense')
                 maxrank = np.max(ranks[:,idx])
                 if not asc:
@@ -701,6 +726,34 @@ class Datacube:
             return res
         else:
             return pickle.loads(cached)
+
+
+    def _sort(self, sort, ascending, df=None):
+        if df is None:
+            df = self.df
+        res = df
+        sorts_by_dim = {}
+        for field, asc in zip(sort, ascending):
+            if res[field].ndim != 1:
+                raise ValueError("Requested sort field {} must have ndim=1 (has ndim={}).".format(field, res[field].ndim))
+            dim = res[field].dims[0]
+            sorts_by_dim[dim] = sorts_by_dim.get(dim, []) + [{'field': field, 'asc': asc}]
+        for dim, sorts in sorts_by_dim.items():
+            inds = self._sort_1d(dim, [s['field'] for s in sorts], [s['asc'] for s in sorts], df=res)
+            res = res[{dim: inds}]
+        return res
+
+
+    # see https://github.com/pydata/xarray/issues/324
+    def _groupby(self, fields, func, df=None):
+        if df is None:
+            df = self.df
+        if any(df[field].ndim != 1 for field in fields):
+            raise ValueError('Cannot perform groupby on non 1-dimensional fields {}'.format([field for field in fields if df[field].ndim != 1]))
+        if len(fields) == 1:
+            return df.groupby(fields[0]).apply(func)
+        else:
+            return df.groupby(fields[0]).apply(lambda x: self._groupby(fields[1:], func, df=x.drop(fields[0])))
 
 
     def distance_filter(self, fields, point, value, df):
@@ -835,6 +888,8 @@ class Datacube:
                 mask = (lhs >= value)
             elif op == '!=':
                 mask = (lhs != value)
+            else:
+                raise ValueError('Unsupported filter operand {}'.format(op))
             #todo: if df is self.df, could cache depending on size of mask
             #todo: convert 1-d masks to inds (?)
             res['masks'].append(mask)
@@ -844,6 +899,7 @@ class Datacube:
             if not cached:
                 start = 0
                 stop = df[field].size
+                inds = None
                 if op == '=' or op == 'is':
                     start = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
                     stop = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
@@ -855,7 +911,15 @@ class Datacube:
                     stop = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
                 elif op == '>=':
                     start = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
-                inds = np.sort(self.argsorts[field][start:stop])
+                elif op == '!=':
+                    start = np.searchsorted(df[field].values.flat, value, side='right', sorter=self.argsorts[field])
+                    stop = np.searchsorted(df[field].values.flat, value, side='left', sorter=self.argsorts[field])
+                    inds = np.concatenate([self.argsorts[field][:stop], self.argsorts[field][start:]])
+                else:
+                    raise ValueError('Unsupported filter operand {}'.format(op))
+                if inds is None:
+                    inds = self.argsorts[field][start:stop]
+                inds = np.sort(inds)
                 self.redis_client.setnx(filter_key, pickle.dumps(inds))
             else:
                 inds = pickle.loads(cached)
@@ -935,6 +999,11 @@ class Datacube:
                         for v in filters['value']:
                             or_clause['or'].append({'op': '=', 'field': filters['field'], 'value': v})
                         return or_clause
+                    elif op == 'not in':
+                        and_clause = {'and': []}
+                        for v in filters['value']:
+                            and_clause['and'].append({'op': '!=', 'field': filters['field'], 'value': v})
+                        return and_clause
                     else:
                         return filters
                     return res
