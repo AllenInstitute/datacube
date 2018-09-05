@@ -168,6 +168,7 @@
             "options": {
                 "workdir": "../services/pandas/"
             }
+    {% if DATACUBE_ENV != 'development' %}
         },
         {
             "id": "conn_datacube",
@@ -177,6 +178,7 @@
             "options": {
                 "workdir": "../services/pandas/"
             }
+    {% endif %}
         },
         {
             "id": "locator",
@@ -186,7 +188,7 @@
             "options": {
                 "workdir": "../services/locator/"
             }
-    {% if DATACUBE_ENV != 'production' %}
+    {% if DATACUBE_ENV == 'development' %}
         },
         {
             "id": "human_mtg_datacube",
