@@ -69,11 +69,20 @@
                                 "debug": true
                             }
                         },
+                        "mouseconn": {
+                            "type": "resource",
+                            "classname": "conn_bridge.resource",
+                            "extra": [
+                                "--wamp_transport", "ws://localhost:8080/ws",
+                                "--wamp_realm", "aibs",
+                                "--ontology_path", "../mouse_ccf_data/ccf_ontology.json"
+                            ]
+                        },
                         "ws": {
                             "type": "websocket",
                             "options": {
-                                "auto_ping_interval": 0,
-                                "auto_ping_timeout": 0,
+                                "auto_ping_interval": 60000,
+                                "auto_ping_timeout": 30000,
                                 "compression": {
                                    "deflate": {
                                       "request_no_context_takeover": false,
@@ -129,7 +138,7 @@
                         "cgi": {
                             "type": "cgi",
                             "directory": "../cgi",
-                            "processor": "python"
+                            "processor": "../python-cgi.sh"
 {% if DATACUBE_ENV == 'demo' %}
                         },
                         "demo": {
