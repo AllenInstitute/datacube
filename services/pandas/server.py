@@ -110,13 +110,13 @@ class PandasServiceComponent(ApplicationSession):
 
 
         @inlineCallbacks
-        def count(field, groupby=None, select=None, coords=None, filters=None, sort=None, ascending=None, name=None):
+        def groupby(field, groupby=None, agg_func='size', select=None, coords=None, filters=None, sort=None, ascending=None, name=None):
             try:
                 datacube = datacubes[name]
-                res = yield threads.deferToThread(_ensure_computed, datacube.count, field, groupby=groupby, select=select, coords=coords, filters=filters, sort=sort, ascending=ascending)
+                res = yield threads.deferToThread(_ensure_computed, datacube.groupby, field, groupby=groupby, agg_func=agg_func, select=select, coords=coords, filters=filters, sort=sort, ascending=ascending)
                 returnValue(res.to_dict())
             except Exception as e:
-                print({'field': field, 'groupby': groupby, 'fields': fields, 'select': select, 'filters': filters, 'sort': sort, 'ascending': ascending, 'name': name})
+                print({'field': field, 'groupby': groupby, 'agg_func': agg_func, 'select': select, 'filters': filters, 'sort': sort, 'ascending': ascending, 'name': name})
                 _application_error(e)
 
 
@@ -301,8 +301,8 @@ class PandasServiceComponent(ApplicationSession):
                 yield self.register(functools.partial(corr, name=name),
                                     u'org.brain-map.api.datacube.corr.' + name,
                                     options=RegisterOptions(invoke=u'roundrobin'))
-                yield self.register(functools.partial(count, name=name),
-                                    u'org.brain-map.api.datacube.count.' + name,
+                yield self.register(functools.partial(groupby, name=name),
+                                    u'org.brain-map.api.datacube.groupby.' + name,
                                     options=RegisterOptions(invoke=u'roundrobin'))
                 yield self.register(functools.partial(select, name=name),
                                     u'org.brain-map.api.datacube.select.' + name,

@@ -653,35 +653,80 @@ class Datacube:
             return res
 
 
-    def corr(self, field, dim, seed_idx, select=None, coords=None, filters=None):
-        ds, f = self._get_field(field, select, coords, filters, in_memory_only=True)
+    def corr(self, field, dim, seed_idx, select=None, coords=None, filters=None, groupby=None, agg_func=None):
+        ds, f = self._get_field(field, select, coords, filters, in_memory_only=(groupby is None))
         for i, mask in enumerate(f['masks']):
             if mask.dims == (dim,):
                 mask.loc[{dim: seed_idx}] = True
                 f['masks'][i] = mask
         key_prefix = [self.name, 'mdata', field, select, filters]
         memoize = lambda key, f, *args, **kwargs: self._memoize(key_prefix+key, f, *args, **kwargs)
-        res = par_correlation(ds, seed_idx, dim, self.num_chunks, self.max_workers, memoize=memoize)
+        if groupby is not None:
+            ds.merge(self.df, inplace=True)
+            res = self.groupby('data', groupby=groupby, agg_func=agg_func, df=ds)
+            res.rename({agg_func: 'data'}, inplace=True)
+            res['__mask'] = res.data.notnull()
+            res['__mask'].attrs['is_mask'] = True
+            res['data'] = res.data.fillna(0)
+        else:
+            res = ds
+        res = par_correlation(res, seed_idx, dim, self.num_chunks, self.max_workers, memoize=memoize)
         res = res.dropna(dim, how='all', subset=['corr'])
         return res
 
 
-    def count(self, field, groupby=None, select=None, coords=None, filters=None, sort=None, ascending=None):
-        res = self._get_data(select=select, coords=coords, filters=filters)
+    def groupby(self, field, groupby=None, agg_func='size', select=None, coords=None, filters=None, sort=None, ascending=None, df=None):
+        if df is None:
+            df = self.df
+
+        # see https://github.com/pydata/xarray/issues/324
+        def _multi_groupby(fields, func, df=None):
+            if df is None:
+                df = self.df
+            if len(fields) == 1:
+                return df.groupby(fields[0]).apply(func)
+            else:
+                return df.groupby(fields[0]).apply(lambda x: _multi_groupby(fields[1:], func, df=x.drop(fields[0])))
+
+        if agg_func == 'count':
+            empty_val = 0
+            func1 = lambda x: xr.DataArray(x[field].size)
+            func2 = lambda x: xr.DataArray(x[field].count())
+        elif agg_func == 'size':
+            empty_val = 0
+            func1 = lambda x: xr.DataArray(x[field].size)
+            func2 = func1
+        elif agg_func == 'mean':
+            empty_val = np.nan
+            func1 = lambda x: xr.DataArray(x[field].mean(skipna=True))
+            func2 = func1
+        elif agg_func == 'any':
+            empty_val = True
+            func1 = lambda x: xr.DataArray(True)
+            func2 = lambda x: xr.DataArray(x[field].any())
+        else:
+            raise ValueError("Unsupported `agg_func` supplied to groupby: '{}'".format(agg_func))
+
+        res = self._get_data(select=select, coords=coords, filters=filters, df=df)
         if any(sz==0 for sz in res.dims.values()):
-            res = xr.Dataset({'count': ((dim,), 0)})
+            res = xr.Dataset({agg_func: ((field,), empty_val)})
         else:
             if groupby is not None:
+                if any(df[field].ndim != 1 for field in groupby):
+                    raise ValueError('Cannot perform groupby on non 1-dimensional fields {}'.format([field for field in fields if df[field].ndim != 1]))
+                res_dims = {field: np.unique(df[field]).size for field in groupby}
+                if np.prod(list(res_dims.values()))*res[field].dtype.itemsize > self.max_cacheable_bytes:
+                    raise ValueError('groupby result is too large ({}); try choosing different groupby fields.'.format(res_dims))
                 if field in res.dims:
-                    func = lambda x: xr.DataArray(x[field].size)
+                    func = func1
                 else:
-                    func = lambda x: xr.DataArray(x[field].count())
-                res = self._groupby(fields=groupby, func=func, df=res)
-                res = xr.Dataset({'count': res})
+                    func = func2
+                res = _multi_groupby(fields=groupby, func=func, df=res)
+                res = xr.Dataset({agg_func: res})
                 if sort is not None:
                     res = self._sort(sort=sort, ascending=ascending, df=res)
             else:
-                res = xr.Dataset({'count': ((dim,), xr.DataArray(res[dim].size))})
+                res = xr.Dataset({agg_func: ((field,), func(res))})
         return res
 
 
@@ -742,18 +787,6 @@ class Datacube:
             inds = self._sort_1d(dim, [s['field'] for s in sorts], [s['asc'] for s in sorts], df=res)
             res = res[{dim: inds}]
         return res
-
-
-    # see https://github.com/pydata/xarray/issues/324
-    def _groupby(self, fields, func, df=None):
-        if df is None:
-            df = self.df
-        if any(df[field].ndim != 1 for field in fields):
-            raise ValueError('Cannot perform groupby on non 1-dimensional fields {}'.format([field for field in fields if df[field].ndim != 1]))
-        if len(fields) == 1:
-            return df.groupby(fields[0]).apply(func)
-        else:
-            return df.groupby(fields[0]).apply(lambda x: self._groupby(fields[1:], func, df=x.drop(fields[0])))
 
 
     def distance_filter(self, fields, point, value, df):
