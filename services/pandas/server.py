@@ -319,7 +319,7 @@ class PandasServiceComponent(ApplicationSession):
                 print('thread pool stats:')
                 thread_pool.dumpStats()
             stats_loop = LoopingCall(_print_stats)
-            stats_loop.start(10*60.)
+            stats_loop.start(24*60*60.)
 
         except Exception as e:
             print("could not register procedure: {0}".format(e))
