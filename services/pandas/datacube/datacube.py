@@ -548,8 +548,11 @@ class Datacube:
 
 
     #todo: add sort and deprecate select()
-    def raw(self, select=None, coords=None, fields=None, filters=None, dim_order=None):
-        res = self._get_data(select, coords, fields, filters, dim_order)
+    def raw(self, select=None, coords=None, fields=None, filters=None, dim_order=None, sort=None, ascending=None):
+        res = self.df
+        if sort is not None:
+            res = self._sort(sort=sort, ascending=ascending, df=res)
+        res = self._get_data(select, coords, fields, filters, dim_order, df=res)
         size = sum([res[field].nbytes for field in res.variables])
         if size > self.max_response_size:
             raise ValueError('Requested would return ' + str(size) + ' bytes; please limit request to ' + str(self.max_response_size) + '.')
@@ -589,68 +592,6 @@ class Datacube:
             raise RuntimeError('Invalid or unsupported image format')
         #return {'data': bytes(buf.getvalue())}
         return {'data': 'data:image/' + image_format.lower() + ';base64,' + base64.b64encode(buf.getvalue()).decode()}
-
-
-    def select(self,
-               dim=None,
-               filters=None,
-               sort=None,
-               ascending=None,
-               start=0,
-               stop=None,
-               indexes=None,
-               fields=None,
-               options={}):
-        r = self.df
-        if dim is None:
-            dim = list(r.dims)[0]
-        redis_client = self.redis_client
-        if not filters and not fields == "indexes_only":
-            if indexes:
-                num_results = np.array(indexes)[start:stop].size
-            else:
-                num_results = r[dim][start:stop].size
-            if options.get('max_records') and num_results > options.get('max_records'):
-                raise ValueError('Requested would return ' + str(num_results) + ' records; please limit request to ' + str(options['max_records']) + ' records.')
-        inds = np.array(range(r.dims[dim]), dtype=np.int)
-        if filters is not None:
-            _, mask = self._query(filters)
-            if 'dim_0' in mask['inds']:
-                inds_elem = mask['inds']['dim_0']
-                if isinstance(inds_elem, slice):
-                    inds = inds[inds_elem]
-                else:
-                    inds = np.array(inds_elem)
-            if mask['masks']:
-                m = reduce(np.logical_and, mask['masks'])
-                inds = inds[m]
-        if indexes is not None:
-            indexes = [x for x in indexes if x != None]
-            if inds is not None:
-                inds = inds[np.in1d(inds, indexes)]
-            else:
-                inds = np.array(indexes, dtype=np.int)
-        if sort and r[dim].size > 0:
-            sorted_inds = self._sort_1d(dim, sort, ascending)
-            if inds is not None:
-                inds = sorted_inds[np.in1d(sorted_inds, inds)]
-            else:
-                inds = sorted_inds
-        filtered_total = inds.size
-        inds = inds[start:stop]
-        if fields == "indexes_only":
-            return inds, filtered_total
-        else:
-            if options.get('max_records') and inds.size > options.get('max_records'):
-                raise ValueError('Requested would return ' + str(inds.size) + ' records; please limit request to ' + str(options['max_records']) + ' records.')
-            if fields and type(fields) is list:
-                for field in fields:
-                    if field not in r.variables:
-                        raise ValueError('Requested field \'' + str(field) + '\' does not exist. Allowable fields are: ' + str(r.variables))
-                res = r[{dim: inds}][fields]
-            else:
-                res = r[{dim: inds}]
-            return res
 
 
     def corr(self, field, dim, seed_idx, select=None, coords=None, filters=None, groupby=None, agg_func=None):

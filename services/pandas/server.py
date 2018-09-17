@@ -206,35 +206,22 @@ class PandasServiceComponent(ApplicationSession):
                 request_cache_key = json.dumps(['request', name, filters, sort, ascending, start, stop, indexes, fields])
                 cached = yield redis.get(request_cache_key)
                 if not cached:
-                    #res = yield threads.deferToThreadPool(reactor,
-                    #                                      thread_pool,
                     res = yield threads.deferToThread(
-                                                          _ensure_computed,
-                                                          datacube.select,
-                                                          'dim_0',
-                                                          filters,
-                                                          sort,
-                                                          ascending,
-                                                          start,
-                                                          stop,
-                                                          indexes,
-                                                          fields,
-                                                          options={'max_records': args.max_records})
+                        _ensure_computed,
+                        datacube.raw,
+                        select={'dim_0': {'start': start, 'stop': stop}},
+                        coords={'dim_0': indexes} if indexes else indexes,
+                        fields=(['index'] if fields == 'indexes_only' else fields),
+                        filters=filters,
+                        sort=sort,
+                        ascending=ascending
+                    )
 
-                    #res = yield pool.apply_async('datacube.select',
-                    #                             (filters,
-                    #                             sort,
-                    #                             ascending,
-                    #                             start,
-                    #                             stop,
-                    #                             indexes,
-                    #                             fields),
-                    #                             {'options': {'max_records': args.max_records}})
                     yield redis.setnx(request_cache_key, pickle.dumps(res))
                 else:
                     res = pickle.loads(cached)
                 if fields == "indexes_only":
-                    returnValue({'filtered_total': int(res[1]), 'indexes': res[0].tolist()})
+                    returnValue({'filtered_total': res.dims['dim_0'], 'indexes': res.index.values.tolist()})
                 else:
                     ret = yield threads.deferToThread(_format_xr_dataset_response, res)
                     returnValue(ret)
@@ -243,12 +230,14 @@ class PandasServiceComponent(ApplicationSession):
                 _application_error(e)
 
 
-        #todo: support arbitrary dims (possibly use xr.Dataset.to_dict())
         def _format_xr_dataset_response(x):
             data = []
-            for field in x.keys():
-                col = x[field].values
+            for field in x.variables:
+                # ensure ascii
+                if x[field].dtype.kind == 'U':
+                    x[field] = x[field].astype('S')
                 # ensure network byte order
+                col = x[field].values
                 col = col.astype(col.dtype.str.replace('<', '>').replace('=', '>'))
                 data.append(col.tobytes())
             data = b''.join(data)
