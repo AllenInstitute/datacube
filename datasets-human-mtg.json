@@ -9,7 +9,7 @@
             {
                 "path": "human_mtg_transcriptomics.zarr.lmdb",
                 "calculate_stats": true,
-                "use_chunks": true,
+                "use_chunks": false,
                 "chunks": {"gene": 6286},
                 "max_cacheable_bytes": 104857600,
                 "missing_data": false,

@@ -653,9 +653,11 @@ class Datacube:
             res = xr.Dataset({agg_func: ((field,), empty_val)})
         else:
             if groupby is not None:
-                if any(df[field].ndim != 1 for field in groupby):
-                    raise ValueError('Cannot perform groupby on non 1-dimensional fields {}'.format([field for field in fields if df[field].ndim != 1]))
-                res_dims = {field: np.unique(df[field]).size for field in groupby}
+                res = res[list(set().union([field], groupby))]
+
+                if any(res[field].ndim != 1 for field in groupby):
+                    raise ValueError('Cannot perform groupby on non 1-dimensional fields {}'.format([field for field in groupby if res[field].ndim != 1]))
+                res_dims = {field: np.unique(res[field]).size for field in groupby}
                 if np.prod(list(res_dims.values()))*res[field].dtype.itemsize > self.max_cacheable_bytes:
                     raise ValueError('groupby result is too large ({}); try choosing different groupby fields.'.format(res_dims))
                 if field in res.dims:
@@ -667,7 +669,7 @@ class Datacube:
                 if sort is not None:
                     res = self._sort(sort=sort, ascending=ascending, df=res)
             else:
-                res = xr.Dataset({agg_func: ((field,), func(res))})
+                res = xr.Dataset({agg_func: ((field,), func2(res))})
         return res
 
 
