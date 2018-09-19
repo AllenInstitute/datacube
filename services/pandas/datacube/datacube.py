@@ -664,7 +664,9 @@ class Datacube:
                     func = func1
                 else:
                     func = func2
-                res = _multi_groupby(fields=groupby, func=func, df=res)
+                fields = [field for field, _ in sorted(res_dims.items(), key=lambda x: x[1])]
+                res = _multi_groupby(fields=fields, func=func, df=res)
+                res = res.transpose(*groupby)
                 res = xr.Dataset({agg_func: res})
                 if sort is not None:
                     res = self._sort(sort=sort, ascending=ascending, df=res)
