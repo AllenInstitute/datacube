@@ -15,5 +15,5 @@ dependencies:
     - -c constraints.txt
     - -e .
     - -e ./legacy_conn_routes
-    - -e ./services/pandas
+    - -e ./services/datacube
     - -e ./services/locator
