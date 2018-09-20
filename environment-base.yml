@@ -14,6 +14,6 @@ dependencies:
   - pip:
     - -c constraints.txt
     - -e .
-    - -e ./legacy_conn_routes
+    - -e ./services/legacy_conn_routes
     - -e ./services/datacube
     - -e ./services/locator
