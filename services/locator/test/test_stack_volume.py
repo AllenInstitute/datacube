@@ -1,6 +1,9 @@
+import sys, os
+path = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, path + '/../../')
+
 import pytest
 import numpy as np
-import os
 from mock import patch, mock_open, MagicMock, PropertyMock
 import cachetools
 from PIL import Image

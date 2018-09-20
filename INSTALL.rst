@@ -107,13 +107,17 @@ A Node.js installation is needed in order to install npm packages and to build t
 
     yum install nodejs
 
-First, an npm install for each of the services is needed::
+Now an npm install for each of the services is needed::
 
     ./nested-npm-install.sh
 
+Generate datasets for the demos::
+
+    python recache.py datasets-demo.json
+
 Then run the demo::
 
-    ./run.sh
+    crossbar start
 
 Wait for the "Server Ready." message, and then point your browser to http://localhost:8080/demo and click on the links.
 

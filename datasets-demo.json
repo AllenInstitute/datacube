@@ -52,14 +52,15 @@
         "data-dir": "./conn_data/",
         "files": [
             {
-                "path": "connectivity.nc",
+                "path": "connectivity.zarr.lmdb",
                 "use_chunks": true,
-                "chunks": {"experiment": 100},
+                "chunks": {"experiment": 20},
                 "max_cacheable_bytes": 104857600,
                 "missing_data": false,
-                "calculate_stats": true
+                "calculate_stats": false,
+                "persist": ["projection_flat", "is_projection_flat", "ccf_structure_flat", "ccf_structures_flat", "volume", "structure", "structures", "is_summary_structure", "is_primary"]
             }
         ],
-        "arguments": ["--data-src", "http://testwarehouse:9000/", "--internal", "--data-dir", "./conn_data/", "--data-name", "connectivity"]
+        "arguments": ["--data-src", "http://testwarehouse:9000/", "--internal", "--data-dir", "./conn_data/", "--data-name", "connectivity", "--resolution", "100"]
     }
 ]

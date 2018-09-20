@@ -169,7 +169,7 @@
             "executable": "run.sh",
             "arguments": ["ws://localhost:8080/auth_ws", "aibs", "services", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "../../datasets-demo.json", "--projection-map-dir", "/allen/aibs/informatics/heatmap/mouseconn_projection_maps/P56/"],
             "options": {
-                "workdir": "../services/pandas/"
+                "workdir": "../services/datacube/"
             }
 {% else %}
         {
@@ -178,7 +178,7 @@
             "executable": "run.sh",
             "arguments": ["ws://localhost:8080/auth_ws", "aibs", "services", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "../../datasets-bob.json", "--projection-map-dir", "../../conn_projection_maps/"],
             "options": {
-                "workdir": "../services/pandas/"
+                "workdir": "../services/datacube/"
             }
     {% if DATACUBE_ENV != 'development' %}
         },
@@ -188,7 +188,7 @@
             "executable": "run.sh",
             "arguments": ["ws://localhost:8080/auth_ws", "aibs", "services", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "../../datasets-conn.json", "--projection-map-dir", "../../conn_projection_maps/"],
             "options": {
-                "workdir": "../services/pandas/"
+                "workdir": "../services/datacube/"
             }
     {% endif %}
         },
@@ -208,7 +208,7 @@
             "executable": "run.sh",
             "arguments": ["ws://localhost:8080/auth_ws", "aibs", "services", "41zfIl85wTd0oytuoLZuCLc2FmPxV7zNt3Vhc1WR1rkhUB64Bb44KwuxfVZG0a93", "../../datasets-human-mtg.json", "--projection-map-dir", "../../conn_projection_maps/"],
             "options": {
-                "workdir": "../services/pandas/"
+                "workdir": "../services/datacube/"
             }
     {% endif %}
 {% endif %}

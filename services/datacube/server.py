@@ -32,7 +32,7 @@ from builtins import bytes
 from datacube import Datacube
 
 
-class PandasServiceComponent(ApplicationSession):
+class DatacubeServiceComponent(ApplicationSession):
 
 
     def onConnect(self):
@@ -367,4 +367,4 @@ if __name__ == '__main__':
                     **options)
 
     runner = ApplicationRunner(str(args.router), str(args.realm))
-    runner.run(PandasServiceComponent, auto_reconnect=True)
+    runner.run(DatacubeServiceComponent, auto_reconnect=True)

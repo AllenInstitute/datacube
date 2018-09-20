@@ -1,8 +1,11 @@
+import sys, os
+path = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, path + '/../../')
+
 import pytest
 import locator.classes.filmstrip_locator as fsl
 import locator.configuration_manager as cm
 import numpy as np
-import os
 
 @pytest.fixture()
 def context_manager():
