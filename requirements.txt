@@ -1,4 +1,4 @@
 -e .[test]
 -e ./legacy_conn_routes[test]
--e ./services/pandas[test]
+-e ./services/datacube[test]
 -e ./services/locator[test]
