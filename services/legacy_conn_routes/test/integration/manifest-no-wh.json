@@ -1,0 +1,98 @@
+[
+    {
+        "name": "query_0",
+        "extension": "json",
+        "suite": "structure",
+        "base": "http://tdatacube:8080",
+        "query": "mouseconn/data/search/injection_rows?injection_structures=254,987,645&primary_structure_only=true&transgenic_lines=299863660",
+        "suite": "structure"
+    },
+    {
+        "name": "query_1",
+        "extension": "json",
+        "base": "http://tdatacube:8080",
+        "query": "mouseconn/data/search/correlated_rows?seed=126907302",
+        "description": "very basic correlation request",
+        "suite": "correlation"
+    },
+    {
+        "name": "query_2",
+        "extension": "json",
+        "base": "http://tdatacube:8080",
+        "query": "mouseconn/data/search/correlated_rows?seed=126907302&showDetail=1",
+        "description": "basic correlation request with full response spectrum",
+        "suite": "correlation"
+    },
+    {
+        "name": "query_3",
+        "extension": "json",
+        "base": "http://tdatacube:8080",
+        "query": "mouseconn/data/search/correlated_rows?seed=126907302&showDetail=1&transgenic_lines=177837446,309779993,177838828,177839216",
+        "description": "with transgenic lines",
+        "suite": "correlation"
+    },
+    {
+        "name": "query_4",
+        "extension": "json",
+        "base": "http://tdatacube:8080",
+        "query": "mouseconn/data/search/correlated_rows?seed=126907302&showDetail=1&injection_structures=985,1089&primary_structure_only=true",
+        "description": "with injection structures",
+        "suite": "correlation"
+    },
+    {
+        "name": "query_5",
+        "extension": "json",
+        "base": "http://tdatacube:8080",
+        "query": "mouseconn/data/search/correlated_rows?seed=126907302&showDetail=1&domain=R:1089",
+        "description": "with domain",
+        "suite": "broken_correlation"
+    },
+    {
+        "name": "query_6",
+        "extension": "json",
+        "base": "http://tdatacube:8080",
+        "query": "mouseconn/data/projection_map/target?seedPoint=7100,3700,7850",
+        "description": "basic spatial query",
+        "suite": "spatial"
+    },
+    {
+        "name": "query_7",
+        "extension": "json",
+        "base": "http://tdatacube:8080",
+        "query": "mouseconn/data/projection_map/target?seedPoint=7350,3000,7850&product_ids=31",
+        "description": "retina spatial query",
+        "suite": "spatial"
+    },
+    {
+        "name": "query_8",
+        "extension": "json",
+        "base": "http://tdatacube:8080",
+        "query": "mouseconn/data/projection_map/target?seedPoint=4100,4650,7850&transgenic_lines=272833052,177838942,177837779,301021674",
+        "description": "transgenic line spatial query",
+        "suite": "spatial"
+    },
+    {
+        "name": "query_9",
+        "extension": "json",
+        "base": "http://tdatacube:8080",
+        "query": "mouseconn/data/projection_map/target?seedPoint=8850,1250,7850&injection_structures=549&primary_structure_only=true",
+        "description": "transgenic line spatial query",
+        "suite": "spatial"
+    },
+    {
+        "name": "query_10",
+        "extension": "json",
+        "base": "http://tdatacube:8080",
+        "query": "mouseconn/data/search/injection_coordinates?seedPoint=7000,5000,6000&showDetail=0",
+        "description": "basic injection coordinate query",
+        "suite": "injection_coordinate"
+    },
+    {
+        "name": "query_11",
+        "extension": "json",
+        "base": "http://tdatacube:8080",
+        "query": "mouseconn/data/search/injection_coordinates?seedPoint=7000,5000,6000&injection_structures=985&primary_structure_only=true",
+        "description": "injection coordinate query with injection structure",
+        "suite": "injection_coordinate"
+    }  
+]

@@ -20,8 +20,14 @@ def download_csv(query_string, file_path):
 
 def download_json(query_string, file_path):
     response = requests.get(query_string)
-    with open(file_path, 'w') as results_file:
-        json.dump(response.json(), results_file, indent=2)
+    try:
+        with open(file_path, 'w') as results_file:
+            json.dump(response.json(), results_file, indent=2)
+    except:
+        print(query_string)
+        print(response.text)
+        raise
+
 
 
 def safe_make_parent_dirs(path):

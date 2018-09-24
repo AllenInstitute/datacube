@@ -10,6 +10,7 @@ import requests
 datacube_wamp_transport = os.environ.get('DATACUBE_WAMP_TRANSPORT')
 datacube_wamp_realm = os.environ.get('DATACUBE_WAMP_REALM')
 conn_bridge_port = os.environ.get('CONN_BRIDGE_PORT')
+manifest_path = os.environ.get('MANIFEST_PATH')
 
 
 @pytest.fixture(autouse=True)
@@ -21,12 +22,13 @@ def network_config_specified():
         pytest.skip(msg='no DATACUBE_WAMP_TRANSPORT specified')
     if conn_bridge_port is None:
         pytest.skip(msg='no CONN_BRIDGE_PORT specified')
+    global manifest_path
+    if manifest_path is None:
+        parent_dir = os.path.dirname(__file__)
+        manifest_path = os.path.join(parent_dir, 'manifest.json')
 
 
 def get_manifest_suite(suite):
-    parent_dir = os.path.dirname(__file__)
-    manifest_path = os.path.join(parent_dir, 'manifest.json')
-
     with open(manifest_path, 'r') as manifest_file:
         manifest = json.load(manifest_file)
 
