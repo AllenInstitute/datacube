@@ -147,12 +147,14 @@ def get_masks(ds):
 
 def mask_field(ds, field):
     masks = get_masks(ds)
-    if len(masks)>1:
-        mask = reduce(xr.ufuncs.logical_and, masks)
+    aligned = []
+    for mask in masks:
+        aligned.append(align_mask(ds[field], mask))
+    if len(aligned)>1:
+        mask = reduce(xr.ufuncs.logical_and, aligned)
     else:
-        mask = masks[0]
-    return align_mask(ds[field], mask)
-
+        mask = aligned[0]
+    return mask
 
 def align_mask(data, mask):
     reduce_dims = set(mask.dims)-set(data.dims)
@@ -169,7 +171,6 @@ def align_mask(data, mask):
 
 
 def get_seed(ds, seed_label, dim):
-    data = ds['data']
     seed_ds = ds.sel(**{dim: [seed_label]})
     seed = seed_ds['data']
     mseed = mask_field(seed_ds, 'data')
