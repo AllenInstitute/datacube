@@ -537,14 +537,15 @@ class Datacube:
         variables = {name: {'type': da.dtype.name, 'dims': da.dims} for name, da in self.df.variables.items()}
         def serializable(x):
             try:
-                json.dumps(x)
-                return True
+                if isinstance(x, np.ndarray):
+                    x = x.tolist()
+                return json.dumps(x)
             except:
-                return False
+                return None
 
         for name, da in self.df.variables.items():
-            variables[name]['attrs'] = {k: v for k, v in da.attrs.items() if serializable(v)}
-        attrs = {k: v for k, v in self.df.attrs.items() if serializable(v)}
+            variables[name]['attrs'] = {k: serializable(v) for k, v in da.attrs.items()}
+        attrs = {k: serializable(v) for k, v in self.df.attrs.items()}
         return {'dims': dims, 'vars': variables, 'attrs': attrs}
 
 
