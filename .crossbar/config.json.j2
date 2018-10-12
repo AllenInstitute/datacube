@@ -180,7 +180,7 @@
             "options": {
                 "workdir": "../services/datacube/"
             }
-    {% if DATACUBE_ENV != 'development' %}
+    {% if DATACUBE_ENV not in ['development', 'test'] %}
         },
         {
             "id": "conn_datacube",
@@ -200,7 +200,7 @@
             "options": {
                 "workdir": "../services/locator/"
             }
-    {% if DATACUBE_ENV == 'development' %}
+    {% if DATACUBE_ENV in ['development', 'test'] %}
         },
         {
             "id": "human_mtg_datacube",
