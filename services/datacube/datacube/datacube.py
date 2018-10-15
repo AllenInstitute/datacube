@@ -149,11 +149,12 @@ def mask_field(ds, field):
     masks = get_masks(ds)
     aligned = []
     for mask in masks:
-        aligned.append(align_mask(ds[field], mask))
+        aligned.append(align_mask(ds[field], mask).data)
     if len(aligned)>1:
         mask = reduce(xr.ufuncs.logical_and, aligned)
     else:
-        mask = aligned[0]
+        mask = aligned[0].data
+    mask = xr.DataArray(mask, dims=ds[field].dims)
     return mask
 
 def align_mask(data, mask):
@@ -465,9 +466,11 @@ class Datacube:
         self.check_fields_in_variables(fields, res)
 
         if filters:
-            res, f = self._query(filters, df=res)
+            f = self._query(filters, df=res)
         if fields:
             res = res[fields]
+        if filters and f['inds']:
+            res = res[f['inds']]
         if filters and f['masks']:
             ds = res
             res = xr.Dataset()
@@ -515,8 +518,10 @@ class Datacube:
         if df is None:
             df = self.df
         data = self._get_data(select=select, coords=coords, df=df)
-        data, f = self._query(filters, df=data)
+        f = self._query(filters, df=data)
         data = self._get_data(fields=field, df=data)
+        if f['inds']:
+            data = data[f['inds']]
         if f['masks']:
             for mask in f['masks']:
                 mask.attrs['is_mask'] = True
@@ -650,13 +655,11 @@ class Datacube:
         else:
             raise ValueError("Unsupported `agg_func` supplied to groupby: '{}'".format(agg_func))
 
-        res = self._get_data(select=select, coords=coords, filters=filters, df=df)
+        res = self._get_data(fields=list(set().union([field], groupby)), select=select, coords=coords, filters=filters, df=df)
         if any(sz==0 for sz in res.dims.values()):
             res = xr.Dataset({agg_func: ((field,), empty_val)})
         else:
             if groupby is not None:
-                res = res[list(set().union([field], groupby))]
-
                 if any(res[field].ndim != 1 for field in groupby):
                     raise ValueError('Cannot perform groupby on non 1-dimensional fields {}'.format([field for field in groupby if res[field].ndim != 1]))
                 res_dims = {field: np.unique(res[field]).size for field in groupby}
@@ -915,7 +918,7 @@ class Datacube:
         if isinstance(filters, list):
             filters = {'and': filters}
         if not filters:
-            return (df, {'inds': {}, 'masks': []})
+            return {'inds': {}, 'masks': []}
         else:
             #todo: add ability to filter on a boolean field without any op/value
             #todo: add not-equals
@@ -1088,4 +1091,4 @@ class Datacube:
 
             res['masks'] = [mask[{dim: res['inds'][dim] for dim in set(res['inds'].keys()).intersection(mask.dims)}] for mask in res['masks']]
 
-            return (df[res['inds']], res)
+            return res
