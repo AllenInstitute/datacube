@@ -94,15 +94,16 @@ class DatacubeServiceComponent(ApplicationSession):
 
 
         @inlineCallbacks
-        def corr(field, dim, seed_idx, fields=None, select=None, coords=None, filters=None, name=None):
+        def corr(field, dim, seed_idx, fields=None, select=None, coords=None, filters=None, drop=True, name=None):
             try:
                 datacube = datacubes[name]
-                res = yield threads.deferToThread(_ensure_computed, datacube.corr, field, dim, seed_idx, select=select, coords=coords, filters=filters)
-                res = res.where(res.corr.notnull(), drop=True)
-                res = res.sortby('corr', ascending=False)
+                res = yield threads.deferToThread(_ensure_computed, datacube.corr, field, dim, seed_idx, select=select, coords=coords, filters=filters, drop=drop)
                 if fields is not None:
-                    additional_fields_result = yield threads.deferToThread(_ensure_computed, datacube.raw, coords={dim: res[dim].values.tolist()}, fields=fields)
+                    res_coords = {d: res[d].values.tolist() for d in dim}
+                    additional_fields_result = yield threads.deferToThread(_ensure_computed, datacube.raw, coords=res_coords, fields=fields)
                     res = xr.merge([res, additional_fields_result])
+                if res.corr.ndim==1:
+                    res = res.sortby('corr', ascending=False)
                 returnValue(res.to_dict())
             except Exception as e:
                 print({'field': field, 'dim': dim, 'seed_idx': seed_idx, 'fields': fields, 'select': select, 'filters': filters, 'name': name})

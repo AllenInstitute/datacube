@@ -157,6 +157,7 @@ def mask_field(ds, field):
     mask = xr.DataArray(mask, dims=ds[field].dims)
     return mask
 
+
 def align_mask(data, mask):
     reduce_dims = set(mask.dims)-set(data.dims)
     if reduce_dims:
@@ -203,8 +204,7 @@ def par_correlation(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda
     seed, mseed = get_seed(ds, seed_label, dim)
     seed = seed.compute()
     mseed = mseed.compute()
-    _memoize = lambda key, f, *args, **kwargs: memoize([dim]+key, f, *args, **kwargs)
-    corr = do_correlation(ds, seed, mseed, dim, num_chunks, max_workers, memoize=_memoize)
+    corr = do_correlation(ds, seed, mseed, dim, num_chunks, max_workers, memoize=memoize)
     return corr
 
 
@@ -601,13 +601,15 @@ class Datacube:
         return {'data': 'data:image/' + image_format.lower() + ';base64,' + base64.b64encode(buf.getvalue()).decode()}
 
 
-    def corr(self, field, dim, seed_idx, select=None, coords=None, filters=None, groupby=None, agg_func=None):
+    def corr(self, field, dim, seed_idx, select=None, coords=None, filters=None, groupby=None, agg_func=None, drop=True):
+        dim = (dim,) if isinstance(dim, str) else dim
+        seed_idx = (seed_idx,) if not isinstance(seed_idx, collections.Iterable) else tuple(seed_idx)
         ds, f = self._get_field(field, select, coords, filters, in_memory_only=(groupby is None))
         for i, mask in enumerate(f['masks']):
-            if mask.dims == (dim,):
-                mask.loc[{dim: seed_idx}] = True
+            if set(mask.dims).issubset(set(dim)):
+                mask.loc[dict(zip(dim, seed_idx))] = True
                 f['masks'][i] = mask
-        key_prefix = [self.name, 'mdata', field, select, filters]
+        key_prefix = [self.name, 'corr', field, dim, select, filters]
         memoize = lambda key, f, *args, **kwargs: self._memoize(key_prefix+key, f, *args, **kwargs)
         if groupby is not None:
             ds.merge(self.df, inplace=True)
@@ -618,8 +620,11 @@ class Datacube:
             res['data'] = res.data.fillna(0)
         else:
             res = ds
-        res = par_correlation(res, seed_idx, dim, self.num_chunks, self.max_workers, memoize=memoize)
-        res = res.dropna(dim, how='all', subset=['corr'])
+        res = res.stack(__corr_dim=tuple(dim))
+        res = par_correlation(res, seed_idx, '__corr_dim', self.num_chunks, self.max_workers, memoize=memoize)
+        res = res.unstack('__corr_dim')
+        if drop:
+            res = res.where(res.corr.notnull(), drop=True)
         return res
 
 
