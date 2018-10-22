@@ -359,6 +359,7 @@ class Datacube:
                 disk_store = zarr.storage.LMDBStore(path, readonly=True)
                 df = xr.open_zarr(store=disk_store, auto_chunk=True)
 
+            #TODO: support persisting all fields except list of excluded
             for field in persist:
                 print('loading field \'{}\' into memory as ndarray...'.format(field))
                 self.df[field] = df[field].load()
