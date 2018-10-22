@@ -99,7 +99,8 @@ class DatacubeServiceComponent(ApplicationSession):
                 datacube = datacubes[name]
                 res = yield threads.deferToThread(_ensure_computed, datacube.corr, field, dim, seed_idx, select=select, coords=coords, filters=filters, drop=drop)
                 if fields is not None:
-                    res_coords = {d: res[d].values.tolist() for d in dim}
+                    dims = (dim,) if isinstance(dim, str) else dim
+                    res_coords = {d: res[d].values.tolist() for d in dims}
                     additional_fields_result = yield threads.deferToThread(_ensure_computed, datacube.raw, coords=res_coords, fields=fields)
                     res = xr.merge([res, additional_fields_result])
                 if res.corr.ndim==1:

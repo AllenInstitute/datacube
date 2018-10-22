@@ -603,14 +603,14 @@ class Datacube:
 
 
     def corr(self, field, dim, seed_idx, select=None, coords=None, filters=None, groupby=None, agg_func=None, drop=True):
-        dim = (dim,) if isinstance(dim, str) else dim
-        seed_idx = (seed_idx,) if not isinstance(seed_idx, collections.Iterable) else tuple(seed_idx)
+        dims = (dim,) if isinstance(dim, str) else dim
+        seed_idxs = (seed_idx,) if not isinstance(seed_idx, collections.Iterable) else tuple(seed_idx)
         ds, f = self._get_field(field, select, coords, filters, in_memory_only=(groupby is None))
         for i, mask in enumerate(f['masks']):
-            if set(mask.dims).issubset(set(dim)):
-                mask.loc[dict(zip(dim, seed_idx))] = True
+            if set(mask.dims).issubset(set(dims)):
+                mask.loc[dict(zip(dims, seed_idxs))] = True
                 f['masks'][i] = mask
-        key_prefix = [self.name, 'corr', field, dim, select, filters]
+        key_prefix = [self.name, 'corr', field, dims, select, filters]
         memoize = lambda key, f, *args, **kwargs: self._memoize(key_prefix+key, f, *args, **kwargs)
         if groupby is not None:
             ds.merge(self.df, inplace=True)
@@ -621,8 +621,8 @@ class Datacube:
             res['data'] = res.data.fillna(0)
         else:
             res = ds
-        res = res.stack(__corr_dim=tuple(dim))
-        res = par_correlation(res, seed_idx, '__corr_dim', self.num_chunks, self.max_workers, memoize=memoize)
+        res = res.stack(__corr_dim=tuple(dims))
+        res = par_correlation(res, seed_idxs, '__corr_dim', self.num_chunks, self.max_workers, memoize=memoize)
         res = res.unstack('__corr_dim')
         if drop:
             res = res.where(res.corr.notnull(), drop=True)
