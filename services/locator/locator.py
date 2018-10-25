@@ -12,6 +12,7 @@ from twisted.internet.defer import inlineCallbacks
 from wamp import ApplicationSession, ApplicationRunner # copy of stock wamp.py with modified timeouts
 from twisted.internet.defer import inlineCallbacks, returnValue
 from autobahn.wamp.auth import compute_wcs
+import json
 
 from configuration_manager import ConfigurationManager
 
@@ -167,13 +168,12 @@ class LocatorServiceComponent(ApplicationSession):
 
 
         @inlineCallbacks
-        def spatial_search(voxel = None, map_dir = None):
-
+        def spatial_search(voxel = None, map_dir = None, string=False):
             search = SpatialSearch(config)
 
             results = yield threads.deferToThread(search.get, voxel, map_dir)
 
-            returnValue(results)
+            returnValue(json.dumps(results) if string else results)
 
 
         @inlineCallbacks

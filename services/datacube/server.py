@@ -128,19 +128,26 @@ class DatacubeServiceComponent(ApplicationSession):
                 name = 'connectivity'
                 conn_datacube = datacubes[name]
                 conn = conn_datacube.df
+                if 'ccf' not in conn.coords:
+                    conn = conn.assign_coords(**{'ccf': ['_'.join(map(str, map(int, [x,y,z])))for x,y,z in zip(conn.anterior_posterior_flat.values.tolist(), conn.superior_inferior_flat.values.tolist(), conn.left_right_flat.values.tolist())]})
+                    conn_datacube.df = conn
+                fields = [f for f in fields if f != 'projection']+['projection_flat']
+                coords = {d: c for d, c in iteritems(coords) if d not in ['anterior_posterior', 'superior_inferior', 'left_right']}
                 # round input voxel to nearest coordinate (conn datacube and streamlines are both at 100 micron resolution)
                 voxel['anterior_posterior'] = int(conn.anterior_posterior.sel(anterior_posterior=voxel['anterior_posterior'], method='nearest'))
                 voxel['superior_inferior'] = int(conn.superior_inferior.sel(superior_inferior=voxel['superior_inferior'], method='nearest'))
                 voxel['left_right'] = int(conn.left_right.sel(left_right=voxel['left_right'], method='nearest'))
                 voxel_xyz = [voxel['anterior_posterior'], voxel['superior_inferior'], voxel['left_right']]
+                coords['ccf'] = '_'.join(map(str, map(int, voxel_xyz)))
                 projection_map_dir = args.projection_map_dir
 
                 # timeout should be possible with options=CallOptions(timeout=XYZ), but this won't work until
                 #   https://github.com/crossbario/crossbar/issues/299 is implemented.
                 # relying on twisted instead.
-                d = self.call(u'org.brain_map.locator.get_streamlines_at_voxel', voxel=voxel_xyz, map_dir=projection_map_dir)
+                d = self.call(u'org.brain_map.locator.get_streamlines_at_voxel', voxel=voxel_xyz, map_dir=projection_map_dir, string=True)
                 d.addTimeout(10, reactor)
                 res = yield d
+                res = json.loads(res)
 
                 streamlines_list = res['results']
                 experiment_ids = np.array([e['data_set_id'] for e in streamlines_list])
@@ -152,6 +159,7 @@ class DatacubeServiceComponent(ApplicationSession):
                 coords['experiment'] = np.intersect1d(conn.experiment.values, coords['experiment']) #todo: shouldn't need this if the data lines up
                 coords['experiment'] = coords['experiment'].tolist()
                 res = yield threads.deferToThread(_ensure_computed, conn_datacube.raw, select=select, coords=coords, fields=fields, filters=filters)
+                res = res.rename({'projection_flat': 'projection'})
                 streamlines = xr.Dataset({'streamline': (['experiment'], streamlines_list), 'experiment': experiment_ids})
                 res = xr.merge([res, streamlines], join='left')
                 returnValue(res.to_dict())
