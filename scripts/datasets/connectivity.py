@@ -611,9 +611,9 @@ def main():
     ds.merge(ds_flat, inplace=True)
     # make a compound integer index for 'ccf' dim
     ds = ds.assign_coords(**{'ccf': [int(''.join(map(str, map(int, [x,y,z])))) for x,y,z in
-        zip(conn.anterior_posterior_flat.values.tolist(),
-        conn.superior_inferior_flat.values.tolist(),
-        conn.left_right_flat.values.tolist())]})
+        zip(ds.anterior_posterior_flat.values.tolist(),
+        ds.superior_inferior_flat.values.tolist(),
+        ds.left_right_flat.values.tolist())]})
 
     store_file = os.path.join(args.data_dir, args.data_name + '.zarr.lmdb')
     store = zarr.storage.LMDBStore(store_file)
