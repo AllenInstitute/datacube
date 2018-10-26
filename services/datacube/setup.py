@@ -24,6 +24,7 @@ setup(
         'redis',
         'six',
         'Pillow',
+        'lz4',
     ],
     extras_require={
         'dev': [

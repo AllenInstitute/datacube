@@ -117,6 +117,7 @@ dependencies:
     - incremental==17.5.0
     - klein==17.10.0
     - lmdb==0.94
+    - lz4==2.1.1
     - mistune==0.8.4
     - monotonic==1.5
     - msgpack==0.5.6

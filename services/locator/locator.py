@@ -13,6 +13,8 @@ from wamp import ApplicationSession, ApplicationRunner # copy of stock wamp.py w
 from twisted.internet.defer import inlineCallbacks, returnValue
 from autobahn.wamp.auth import compute_wcs
 import json
+import lz4.frame
+import base64
 
 from configuration_manager import ConfigurationManager
 
@@ -173,7 +175,7 @@ class LocatorServiceComponent(ApplicationSession):
 
             results = yield threads.deferToThread(search.get, voxel, map_dir)
 
-            returnValue(json.dumps(results) if string else results)
+            returnValue(base64.b64encode(lz4.frame.compress(str.encode(json.dumps(results)))) if string else results)
 
 
         @inlineCallbacks

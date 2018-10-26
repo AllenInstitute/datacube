@@ -16,6 +16,8 @@ import xarray as xr
 import traceback
 import json
 import zlib
+import lz4.frame
+import base64
 import argparse
 import pickle
 #import redis
@@ -129,16 +131,19 @@ class DatacubeServiceComponent(ApplicationSession):
                 conn_datacube = datacubes[name]
                 conn = conn_datacube.df
                 if 'ccf' not in conn.coords:
-                    conn = conn.assign_coords(**{'ccf': ['_'.join(map(str, map(int, [x,y,z])))for x,y,z in zip(conn.anterior_posterior_flat.values.tolist(), conn.superior_inferior_flat.values.tolist(), conn.left_right_flat.values.tolist())]})
+                    #TODO: move this to data generation script
+                    conn = conn.assign_coords(**{'ccf': [int(''.join(map(str, map(int, [x,y,z])))) for x,y,z in zip(conn.anterior_posterior_flat.values.tolist(), conn.superior_inferior_flat.values.tolist(), conn.left_right_flat.values.tolist())]})
                     conn_datacube.df = conn
                 fields = [f for f in fields if f != 'projection']+['projection_flat']
                 coords = {d: c for d, c in iteritems(coords) if d not in ['anterior_posterior', 'superior_inferior', 'left_right']}
                 # round input voxel to nearest coordinate (conn datacube and streamlines are both at 100 micron resolution)
-                voxel['anterior_posterior'] = int(conn.anterior_posterior.sel(anterior_posterior=voxel['anterior_posterior'], method='nearest'))
-                voxel['superior_inferior'] = int(conn.superior_inferior.sel(superior_inferior=voxel['superior_inferior'], method='nearest'))
-                voxel['left_right'] = int(conn.left_right.sel(left_right=voxel['left_right'], method='nearest'))
+                spacing = conn_datacube.df.ccf_structure.attrs['spacing']
+                voxel['anterior_posterior'] = np.around(voxel['anterior_posterior']/spacing[0], decimals=0)*spacing[0]
+                voxel['superior_inferior'] = np.around(voxel['superior_inferior']/spacing[1], decimals=0)*spacing[1]
+                voxel['left_right'] = np.around(voxel['left_right']/spacing[2], decimals=0)*spacing[2]
                 voxel_xyz = [voxel['anterior_posterior'], voxel['superior_inferior'], voxel['left_right']]
-                coords['ccf'] = '_'.join(map(str, map(int, voxel_xyz)))
+                coords['ccf'] = int(''.join(map(str, map(int, voxel_xyz))))
+                coords['ccf'] = coords['ccf'] if coords['ccf'] in conn.ccf.values else []
                 projection_map_dir = args.projection_map_dir
 
                 # timeout should be possible with options=CallOptions(timeout=XYZ), but this won't work until
@@ -147,7 +152,7 @@ class DatacubeServiceComponent(ApplicationSession):
                 d = self.call(u'org.brain_map.locator.get_streamlines_at_voxel', voxel=voxel_xyz, map_dir=projection_map_dir, string=True)
                 d.addTimeout(10, reactor)
                 res = yield d
-                res = json.loads(res)
+                res = json.loads(lz4.frame.decompress(base64.b64decode(res)).decode())
 
                 streamlines_list = res['results']
                 experiment_ids = np.array([e['data_set_id'] for e in streamlines_list])
@@ -365,7 +370,7 @@ if __name__ == '__main__':
                     raise RuntimeError('Refusing to run with ' + str(sum(existing)) + ' files when expecting ' + str(len(dataset['files'])) + ', for dataset "' + dataset['name'] + '". Specify --recache option to generate files (will overwrite existing files).')
                     exit(1)
                 data_file = next(f for f in dataset['files'] if re.search('(\.nc|\.zarr\.lmdb)$', f['path']))
-                option_keys = ['chunks', 'max_response_size', 'max_cacheable_bytes', 'missing_data', 'calculate_stats', 'persist']
+                option_keys = ['chunks', 'max_response_size', 'max_cacheable_bytes', 'missing_data', 'calculate_stats', 'one_sample_nan', 'persist']
                 options = {k:v for k,v in iteritems(data_file) if k in option_keys}
                 if not data_file['use_chunks']:
                     del options['chunks']

@@ -21,6 +21,7 @@ setup(
         "pynrrd",
         "Pillow",
         "autobahn",
+        "lz4",
     ],
     extras_require={
         'dev': [

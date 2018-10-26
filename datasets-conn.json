@@ -13,6 +13,7 @@
                 "max_cacheable_bytes": 104857600,
                 "missing_data": false,
                 "calculate_stats": false,
+                "one_sample_nan": false,
                 "persist": ["acronym", "anterior_posterior", "anterior_posterior_flat", "ccf_structure", "ccf_structure_flat", "ccf_structures", "ccf_structures_flat", "data_set_id", "experiment", "gender", "hemisphere", "injection", "injection_structure_paths", "injection_structures", "injection_structures_array", "injection_volume", "injection_x", "injection_y", "injection_z", "is_primary", "is_projection_flat", "is_summary_structure", "left_right", "left_right_flat", "name", "normalized", "primary_structure_color", "primary_structures", "product_id", "projection_flat", "specimen_name", "storage_directory", "strain", "structure", "structure_abbrev", "structure_color", "structure_id", "structure_name", "structure_volumes", "structures", "superior_inferior", "superior_inferior_flat", "transgenic_line", "transgenic_line_id", "volume"]
             }
         ],

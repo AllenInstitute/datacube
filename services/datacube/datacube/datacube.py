@@ -55,7 +55,7 @@ def get_num_samples(data, axis, masks, backend=np):
     return num_samples
 
 
-def einsum_corr(data, seed, axis, masks, mseed, backend=np, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
+def einsum_corr(data, seed, axis, masks, mseed, backend=np, one_sample_nan=True, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
     np.seterr(divide='ignore', invalid='ignore')
     dtype = np.result_type(np.float64, data.dtype, *[mask.dtype for mask in masks], seed.dtype, mseed.dtype) # use f64 at least
     
@@ -68,7 +68,8 @@ def einsum_corr(data, seed, axis, masks, mseed, backend=np, memoize=lambda k,f,*
 
     seed_num_samples = get_num_samples(seed, axis, [mseed], backend=backend)
     num_samples = memoize(['num_samples'], get_num_samples, data, axis, masks, backend=backend)
-    both_samples = get_num_samples(data, axis, masks+[mseed], backend=backend)
+    if one_sample_nan:
+        both_samples = get_num_samples(data, axis, masks+[mseed], backend=backend)
     mseed = mseed.astype(data.dtype)
     for i, mask in enumerate(masks):
         if mask.size<=mseed.size:
@@ -93,7 +94,8 @@ def einsum_corr(data, seed, axis, masks, mseed, backend=np, memoize=lambda k,f,*
     denominator = np.sqrt(seed_denominator*data_denominator)
 
     corr = backend.clip(numerator / denominator, -1.0, 1.0)
-    corr = corr * backend.sign(np.inf*(both_samples>1))
+    if one_sample_nan:
+        corr = corr * backend.sign(np.inf*(both_samples>1))
     corr = backend.reshape(corr, tuple(data.shape[i] if i == axis else 1 for i in range(data.ndim)))
     return corr
 
@@ -180,7 +182,7 @@ def get_seed(ds, seed_label, dim):
 
 
 @parallelize('dim', 'num_chunks', 'max_workers')
-def do_correlation(ds, seed, mseed, dim, num_chunks, max_workers, chunk_idx, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
+def do_correlation(ds, seed, mseed, dim, num_chunks, max_workers, chunk_idx, memoize=lambda k,f,*a,**kw: f(*a,**kw), one_sample_nan=True):
     data = ds['data']
     all_masks = get_masks(ds)
     row_masks = []
@@ -192,7 +194,7 @@ def do_correlation(ds, seed, mseed, dim, num_chunks, max_workers, chunk_idx, mem
             masks.append(align_mask(data, mask))
     axis = data.dims.index(dim)
     _memoize = lambda key, f, *args, **kwargs: memoize([chunk_idx]+key, f, *args, **kwargs)
-    corr = xr.Dataset({'corr': (data.dims, einsum_corr(data.data, seed, axis, masks, mseed, backend=np, memoize=_memoize))}).squeeze()
+    corr = xr.Dataset({'corr': (data.dims, einsum_corr(data.data, seed, axis, masks, mseed, backend=np, memoize=_memoize, one_sample_nan=one_sample_nan))}).squeeze()
     corr.coords[dim] = data.coords[dim]
     if row_masks:
         mask = reduce(xr_ufuncs.logical_and, row_masks)
@@ -200,11 +202,11 @@ def do_correlation(ds, seed, mseed, dim, num_chunks, max_workers, chunk_idx, mem
     return corr
 
 
-def par_correlation(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda k,f,*a,**kw: f(*a,**kw)):
+def par_correlation(ds, seed_label, dim, num_chunks, max_workers, memoize=lambda k,f,*a,**kw: f(*a,**kw), one_sample_nan=True):
     seed, mseed = get_seed(ds, seed_label, dim)
     seed = seed.compute()
     mseed = mseed.compute()
-    corr = do_correlation(ds, seed, mseed, dim, num_chunks, max_workers, memoize=memoize)
+    corr = do_correlation(ds, seed, mseed, dim, num_chunks, max_workers, memoize=memoize, one_sample_nan=one_sample_nan)
     return corr
 
 
@@ -245,6 +247,7 @@ class Datacube:
                  max_cacheable_bytes=100*1024*1024,
                  num_chunks=multiprocessing.cpu_count(),
                  max_workers=multiprocessing.cpu_count(),
+                 one_sample_nan=True,
                  persist=[]):
 
         self.name = name
@@ -254,6 +257,7 @@ class Datacube:
         self.max_cacheable_bytes = max_cacheable_bytes
         self.num_chunks = num_chunks
         self.max_workers = max_workers
+        self.one_sample_nan = one_sample_nan
         if path: 
             self.load(path, chunks, missing_data, calculate_stats, persist)
         #todo: would be nice to find a way to swap these out,
@@ -487,9 +491,10 @@ class Datacube:
             if mask.nbytes <= self.max_cacheable_bytes:
                 mask = mask.compute()
             mask = mask.assign_coords(**{d: ds.coords[d] for d in mask.dims if d not in mask.coords})
+            masks = {}
             for field in ds.variables:
-                reduce_dims = [dim for dim in mask.dims if dim not in ds[field].dims]
-                reduced = mask.any(dim=reduce_dims)
+                reduce_dims = tuple([dim for dim in mask.dims if dim not in ds[field].dims])
+                reduced = masks.get(reduce_dims, mask.any(dim=reduce_dims))
                 if reduced.dims == ds[field].dims:
                     filtered = ds[field].where(reduced, drop=True)
                 else:
@@ -619,7 +624,7 @@ class Datacube:
         else:
             res = ds
         res = res.stack(__corr_dim=tuple(dims))
-        res = par_correlation(res, seed_idxs, '__corr_dim', self.num_chunks, self.max_workers, memoize=memoize)
+        res = par_correlation(res, seed_idxs, '__corr_dim', self.num_chunks, self.max_workers, memoize=memoize, one_sample_nan=self.one_sample_nan)
         res = res.unstack('__corr_dim')
         if drop:
             res = res.where(res.corr.notnull(), drop=True)
