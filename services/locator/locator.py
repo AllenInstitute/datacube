@@ -175,7 +175,7 @@ class LocatorServiceComponent(ApplicationSession):
 
             results = yield threads.deferToThread(search.get, voxel, map_dir)
 
-            returnValue(base64.b64encode(lz4.frame.compress(str.encode(json.dumps(results)))) if string else results)
+            returnValue(base64.b64encode(lz4.frame.compress(str.encode(json.dumps(results)))).decode('ascii') if string else results)
 
 
         @inlineCallbacks
