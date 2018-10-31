@@ -155,7 +155,7 @@ def mask_field(ds, field):
     if len(aligned)>1:
         mask = reduce(xr.ufuncs.logical_and, aligned)
     else:
-        mask = aligned[0].data
+        mask = aligned[0]
     mask = xr.DataArray(mask, dims=ds[field].dims)
     return mask
 
