@@ -155,7 +155,7 @@ def mask_field(ds, field):
     if len(aligned)>1:
         mask = reduce(xr.ufuncs.logical_and, aligned)
     else:
-        mask = aligned[0].data
+        mask = aligned[0]
     mask = xr.DataArray(mask, dims=ds[field].dims)
     return mask
 
@@ -348,14 +348,6 @@ class Datacube:
                 print('building index for field \'{}\'...'.format(field))
                 self.argsorts[field] = np.argsort(self.df[field].values, axis=None)
 
-        stats_path = os.path.join(os.path.dirname(path), 'summary_statistics_{}.json'.format(self.name))
-        self.stats = summary_statistics.cache_summary_statistics(
-            self.df,
-            reader=functools.partial(summary_statistics.read_stats_from_json, stats_path),
-            writer=functools.partial(summary_statistics.write_stats_to_json, stats_path),
-            force=calculate_stats
-        )
-
         if persist:
             if path.endswith('.nc'):
                 df = self.df
@@ -367,6 +359,15 @@ class Datacube:
             for field in persist:
                 print('loading field \'{}\' into memory as ndarray...'.format(field))
                 self.df[field] = df[field].load()
+
+        stats_path = os.path.join(os.path.dirname(path), 'summary_statistics_{}.json'.format(self.name))
+        self.stats = summary_statistics.cache_summary_statistics(
+            self.df.chunk(chunks),
+            reader=functools.partial(summary_statistics.read_stats_from_json, stats_path),
+            writer=functools.partial(summary_statistics.write_stats_to_json, stats_path),
+            force=calculate_stats
+        )
+
         print('done loading \'{}\'.'.format(self.name))
 
 
