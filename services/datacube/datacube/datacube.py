@@ -304,7 +304,10 @@ class Datacube:
 
         log.msg('loading \'{}\' zarr LMDBstore as xarray dataset...'.format(shm_path), logLevel=logging.INFO)
         self.df = xr.open_zarr(store=shm_store, auto_chunk=True)
-        self.df = self.df.chunk(chunks)
+        try:
+            self.df = self.df.chunk(chunks)
+        except:
+            pass
 
 
     def load_nc_file(self, path, chunks):
@@ -690,6 +693,7 @@ class Datacube:
 
 
     def _memoize(self, key, f, *args, **kwargs):
+        key = json.dumps(key)
         cached = self.redis_client.get(key)
         if not cached:
             res = f(*args, **kwargs)
