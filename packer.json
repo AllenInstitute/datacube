@@ -1,0 +1,89 @@
+{
+  "variables": {
+    "aws_access_key": "",
+    "aws_secret_key": ""
+  },
+  "builders": [{
+    "type": "amazon-ebs",
+    "access_key": "AKIAJUBXSBU2SMK3D7VQ",
+    "secret_key": "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",
+    "ami_name": "datacube",
+    "snapshot_tags": {
+        "Name": "datacube"
+    },
+    "force_deregister": "true",
+    "force_delete_snapshot": "true",
+    "region": "us-west-2",
+    "source_ami_filter": {
+      "filters": {
+        "virtualization-type": "hvm",
+        "name": "RHEL-7.?*GA*",
+        "root-device-type": "ebs"
+      },
+      "owners": ["309956199498"],
+      "most_recent": true
+    },
+    "instance_type": "t3.small",
+    "ssh_username": "ec2-user",
+    "security_group_id": "sg-058673cd4caf5076d"
+  }],
+  "provisioners": [
+    {
+      "type": "file",
+      "source": "DC-DEV3-BUILD.tgz",
+      "destination": "/tmp/datacube.tgz"
+    },
+    {
+      "type": "file",
+      "source": "xrelease-master.zip",
+      "destination": "/tmp/xrelease-master.zip"
+    },
+    {
+      "type": "shell",
+      "inline": [
+        "set -x",
+        "sleep 30",
+        "sudo yum install -y wget",
+        "wget https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm -P /tmp",
+        "sudo yum install -y /tmp/epel-release-latest-7.noarch.rpm",
+        "sudo yum install -y redis",
+        "wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh",
+        "sudo yum install -y bzip2",
+        "mkdir /home/ec2-user/datacube",
+        "mv /tmp/datacube.tgz /home/ec2-user/datacube/",
+        "tar xvf /home/ec2-user/datacube/datacube.tgz -C /home/ec2-user/datacube",
+        "bash Miniconda3-latest-Linux-x86_64.sh -b -p /home/ec2-user/miniconda3",
+        "source /home/ec2-user/miniconda3/etc/profile.d/conda.sh",
+        "conda env remove --name datacube -y || true",
+        "sudo yum install -y gcc openssl-devel libffi-devel python-devel",
+        "conda env create --file /home/ec2-user/datacube/environment.yml --name datacube",
+        "conda activate datacube",
+        "conda install -c conda-forge numcodecs",
+        "conda deactivate",
+        "mkdir /home/ec2-user/xrelease",
+        "mv /tmp/xrelease-master.zip /home/ec2-user/xrelease/",
+        "sudo yum install -y unzip",
+        "unzip /home/ec2-user/xrelease/xrelease-master.zip -d /home/ec2-user/xrelease/",
+        "conda activate",
+        "pip install yasha",
+        "yasha --MINICONDA_DEPLOY_DIR=/home/ec2-user --DATACUBE_DEPLOY_DIR=/home/ec2-user/datacube --DATACUBE_ENV=aws_test /home/ec2-user/xrelease/templates/_etc_systemd_system_crossbar.service.j2",
+        "ln -s /home/ec2-user/miniconda3 /home/ec2-user/miniconda",
+        "conda deactivate",
+        "sudo cp /home/ec2-user/xrelease/templates/_etc_systemd_system_crossbar.service /etc/systemd/system/crossbar.service",
+        "sudo systemctl enable crossbar.service",
+        "sudo yum install -y nfs-utils",
+        "mkdir /home/ec2-user/efs",
+        "sudo echo 'fs-c7438b6f.efs.us-west-2.amazonaws.com:/ /home/ec2-user/efs nfs4 nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport 0 0' | sudo tee -a /etc/fstab > /dev/null",
+        "sudo mount /home/ec2-user/efs",
+        "sudo chmod go+rw efs",
+        "ln -s /home/ec2-user/efs/bob_data /home/ec2-user/datacube/bob_data",
+        "ln -s /home/ec2-user/efs/conn_data /home/ec2-user/datacube/conn_data",
+        "ln -s /home/ec2-user/efs/mouse_ccf_data /home/ec2-user/datacube/mouse_ccf_data",
+        "ln -s /home/ec2-user/efs/human_mtg_data /home/ec2-user/datacube/human_mtg_data",
+        "ln -s /home/ec2-user/efs/structure_meshes /home/ec2-user/datacube/structure_meshes",
+        "ln -s /home/ec2-user/efs/conn_projection_maps /home/ec2-user/datacube/conn_projection_maps",
+        "sudo sed -i 's/^SELINUX=.*$/SELINUX=permissive/g' /etc/selinux/config"
+      ]
+    }
+  ]
+}
