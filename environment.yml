@@ -44,7 +44,7 @@ dependencies:
   - locket=0.2.0=py36_1
   - markupsafe=1.0=py36h14c3975_1
   - matplotlib=3.0.0=py36h5429711_0
-  - mkl=2019.0=118
+  - mkl=2018.0.3=1
   - mkl_fft=1.0.6=py36h7dd41cf_0
   - mkl_random=1.0.1=py36h4414c95_1
   - msgpack-python=0.5.6=py36h6bb024c_1
@@ -98,11 +98,14 @@ dependencies:
     - attrs==18.2.0
     - autobahn==18.10.1
     - automat==0.7.0
+    - awscli==1.16.52
     - bitstring==3.1.5
+    - botocore==1.12.42
     - cachetools==2.1.0
     - cbor==1.0.0
     - cffi==1.11.5
     - chardet==3.0.4
+    - colorama==0.3.9
     - constantly==15.1.0
     - crossbar==18.10.1.post1
     - cryptography==2.3.1
@@ -115,6 +118,7 @@ dependencies:
     - hyperlink==18.0.0
     - idna==2.5
     - incremental==17.5.0
+    - jmespath==0.9.3
     - klein==17.10.0
     - lmdb==0.94
     - lz4==2.1.1
@@ -139,6 +143,8 @@ dependencies:
     - pytrie==0.3.1
     - redis==2.10.6
     - requests==2.20.0
+    - rsa==3.4.2
+    - s3transfer==0.1.13
     - sdnotify==0.3.2
     - service-identity==17.0.0
     - setproctitle==1.1.10
