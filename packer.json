@@ -1,15 +1,14 @@
 {
   "variables": {
-    "aws_access_key": "",
-    "aws_secret_key": ""
+    "datacube_env": "{{env `DATACUBE_ENV`}}"
   },
   "builders": [{
     "type": "amazon-ebs",
     "access_key": "AKIAJUBXSBU2SMK3D7VQ",
     "secret_key": "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",
-    "ami_name": "datacube",
+    "ami_name": "datacube {{user `datacube_env`}}",
     "snapshot_tags": {
-        "Name": "datacube"
+        "Name": "datacube {{user `datacube_env`}}"
     },
     "force_deregister": "true",
     "force_delete_snapshot": "true",
@@ -30,7 +29,7 @@
   "provisioners": [
     {
       "type": "file",
-      "source": "DC-DEV3-BUILD.tgz",
+      "source": "datacube.tgz",
       "destination": "/tmp/datacube.tgz"
     },
     {
@@ -66,7 +65,8 @@
         "unzip /home/ec2-user/xrelease/xrelease-master.zip -d /home/ec2-user/xrelease/",
         "conda activate",
         "pip install yasha",
-        "yasha --MINICONDA_DEPLOY_DIR=/home/ec2-user --DATACUBE_DEPLOY_DIR=/home/ec2-user/datacube --DATACUBE_ENV=aws_test /home/ec2-user/xrelease/templates/_etc_systemd_system_crossbar.service.j2",
+        "yasha --DATACUBE_ENV={{user `datacube_env`}} /home/ec2-user/datacube/.crossbar/config.json.j2 -o /home/ec2-user/datacube/.crossbar/config-aws_test.json",
+        "yasha --MINICONDA_DEPLOY_DIR=/home/ec2-user --DATACUBE_DEPLOY_DIR=/home/ec2-user/datacube --DATACUBE_ENV={{user `datacube_env`}} /home/ec2-user/xrelease/templates/_etc_systemd_system_crossbar.service.j2",
         "ln -s /home/ec2-user/miniconda3 /home/ec2-user/miniconda",
         "conda deactivate",
         "sudo cp /home/ec2-user/xrelease/templates/_etc_systemd_system_crossbar.service /etc/systemd/system/crossbar.service",
