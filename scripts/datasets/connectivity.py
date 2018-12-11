@@ -618,6 +618,10 @@ def main():
     store_file = os.path.join(args.data_dir, args.data_name + '.zarr.lmdb')
     store = zarr.storage.LMDBStore(store_file)
     logging.info('writing dataset to {}'.format(store_file))
+
+    # https://github.com/AllenInstitute/datacube/issues/101
+    # https://github.com/pydata/xarray/issues/2300
+
     # monkey patch to get zarr to ignore dask chunks and use its own heuristics
     def copy_func(f):
         g = types.FunctionType(f.__code__, f.__globals__, name=f.__name__,
